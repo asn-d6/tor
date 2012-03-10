@@ -1142,6 +1142,41 @@ pt_prepare_proxy_list_for_config_read(void)
   tor_assert(unconfigured_proxies_n == 0);
 }
 
+/** Stringify the SOCKS arguments in <b>socks_args</b> according to
+ *  180_pluggable_transport.txt.  The string is allocated on the heap
+ *  and it's the responsibility of the caller to free it after use. */
+char *
+pt_stringify_socks_args(const smartlist_t *socks_args)
+{
+  /* tmp place to store escaped socks arguments, so that we can
+     concatenate them up afterwards */
+  smartlist_t *sl_tmp = NULL;
+  char *escaped_string = NULL;
+  char *new_string = NULL;
+
+  tor_assert(socks_args);
+  tor_assert(smartlist_len(socks_args) > 0);
+
+  sl_tmp = smartlist_new();
+
+  SMARTLIST_FOREACH_BEGIN(socks_args, const char *, s) {
+    /* Escape ';' and '\'. */
+    escaped_string = tor_escape_string(s, ";\\", '\\');
+    if (!escaped_string)
+      goto done;
+
+    smartlist_add(sl_tmp, escaped_string);
+  } SMARTLIST_FOREACH_END(s);
+
+  new_string = smartlist_join_strings(sl_tmp, ";", 0, NULL);
+
+ done:
+  SMARTLIST_FOREACH(sl_tmp, char *, s, tor_free(s));
+  smartlist_free(sl_tmp);
+
+  return new_string;
+}
+
 /** The tor config was read.
  *  Destroy all managed proxies that were marked by a previous call to
  *  prepare_proxy_list_for_config_read() and are not used by the new
