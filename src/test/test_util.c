@@ -315,6 +315,7 @@ test_util_config_line(void)
   tor_free(v);
 }
 
+/** Test tor_escape_string(). */
 static void
 test_util_config_line_quotes(void)
 {
@@ -639,6 +640,41 @@ test_util_expand_filename(void)
   tor_free(str);
 }
 #endif
+
+static void
+test_util_escape_string(void)
+{
+  char *escaped_string = NULL;
+
+  /** One character to-be-escaped character set. */
+  escaped_string = tor_escape_string("Where am I?", " ", '\\');
+  test_assert(escaped_string);
+  test_streq(escaped_string, "Where\\ am\\ I?");
+  tor_free(escaped_string);
+
+  /** Illegal: Empty to-be-escaped character set. */
+  escaped_string = tor_escape_string("In the Village.", "", '\\');
+  test_assert(!escaped_string);
+
+  /** Multi-character to-be-escaped character set. */
+  escaped_string = tor_escape_string("What do you want?", "o?", 'Z');
+  test_assert(escaped_string);
+  test_streq(escaped_string, "What dZo yZou wantZ?");
+  tor_free(escaped_string);
+
+  /** Ilegal: Empty to-be-escaped string. */
+  escaped_string = tor_escape_string("", "Information.", 'Z');
+  test_assert(!escaped_string);
+
+  /** Escape all characters. */
+  escaped_string = tor_escape_string("Information", "Information", '\\');
+  test_assert(escaped_string);
+  test_streq(escaped_string, "\\I\\n\\f\\o\\r\\m\\a\\t\\i\\o\\n");
+  tor_free(escaped_string);
+
+ done:
+  tor_free(escaped_string);
+}
 
 /** Test basic string functionality. */
 static void
@@ -2469,6 +2505,31 @@ test_util_split_lines(void *ptr)
 }
 
 static void
+test_util_string_is_key_value(void *ptr)
+{
+  char string[1024];
+
+  strcpy(string, "key=value");
+  tor_assert(string_is_key_value(string));
+
+  strcpy(string, "k=v");
+  tor_assert(string_is_key_value(string));
+
+  strcpy(string, "=value");
+  tor_assert(!string_is_key_value(string));
+
+  strcpy(string, "key=");
+  tor_assert(!string_is_key_value(string));
+
+  strcpy(string, "=");
+  tor_assert(!string_is_key_value(string));
+
+  /* ??? */
+  /* strcpy(string, "==="); */
+  /* tor_assert(!string_is_key_value(string)); */
+}
+
+static void
 test_util_di_ops(void)
 {
 #define LT -1
@@ -2884,6 +2945,7 @@ struct testcase_t util_tests[] = {
   UTIL_LEGACY(config_line_comment_character),
   UTIL_LEGACY(config_line_escaped_content),
   UTIL_LEGACY(expand_filename),
+  UTIL_LEGACY(escape_string),
   UTIL_LEGACY(strmisc),
   UTIL_LEGACY(pow2),
   UTIL_LEGACY(gzip),
@@ -2896,6 +2958,7 @@ struct testcase_t util_tests[] = {
   UTIL_LEGACY(sscanf),
   UTIL_LEGACY(path_is_relative),
   UTIL_LEGACY(strtok),
+  UTIL_LEGACY(string_is_key_value),
   UTIL_LEGACY(di_ops),
   UTIL_TEST(find_str_at_start_of_line, 0),
   UTIL_TEST(string_is_C_identifier, 0),
