@@ -828,6 +828,35 @@ string_is_C_identifier(const char *string)
   return 1;
 }
 
+/** Return true if <b>string</b> is a valid 'key=value' string. */
+int
+string_is_key_value(const char *string)
+{
+  /* position of equal sign in string */
+  char *equal_sign_pos = NULL;
+
+  tor_assert(string);
+
+  if (strlen(string) < 3) /* "x=a" is shortest args string */
+    return 0;
+
+  equal_sign_pos = strchr(string, '=');
+  if (!equal_sign_pos) {
+    log_warn(LD_GENERAL, "'%s' is not a k=v value.", string);
+    return 0;
+  }
+
+  /* validate that the '=' is not in the beginning or the end of the
+     string. */
+  if (equal_sign_pos == string ||
+      equal_sign_pos == string + strlen(string) - 1) {
+    log_warn(LD_GENERAL, "'%s' is not a valid k=v value.", string);
+    return 0;
+  }
+
+  return 1;
+}
+
 /** Return true iff the 'len' bytes at 'mem' are all zero. */
 int
 tor_mem_is_zero(const char *mem, size_t len)
@@ -1217,6 +1246,59 @@ wrap_string(smartlist_t *out, const char *string, size_t width,
     line[line_len-1] = '\0';
     smartlist_add(out, line);
   }
+}
+
+/** Return true if the character <b>c</b>, belongs to the set of
+ *  characters <b>set</b>. */
+static int
+tor_char_is_in_set(char c, const char *set)
+{
+  tor_assert(set);
+
+  while (*set) {
+    if (c == *set++)
+      return 1;
+  }
+
+  return 0;
+}
+
+/** Escape every character of <b>string</b> that belongs to the set of
+ *  characters <b>set</b>. Use <b>escape_char</b> as the character to
+ *  use for escaping. */
+char *
+tor_escape_string(const char *string, const char *set, char escape_char)
+{
+  char *new_string = NULL;
+  char *new_cp = NULL;
+  size_t length, new_length;
+
+  tor_assert(string && set);
+
+  length = strlen(string);
+
+  if (!length)
+    return NULL;
+  if (strlen(set) == 0)
+    return NULL;
+  /* (new_length > SIZE_MAX) => ((length * 2) + 1 > SIZE_MAX) =>
+     (length*2 > SIZE_MAX - 1) => (length > (SIZE_MAX - 1)/2) */
+  if (length > (SIZE_MAX - 1)/2) /* check for overflow */
+    return NULL;
+
+  /* this should be enough even if all characters must be escaped */
+  new_length = (length * 2) + 1;
+
+  new_string = new_cp = tor_malloc_zero(new_length);
+
+  while (*string) {
+    if (tor_char_is_in_set(*string, set))
+      *new_cp++ = escape_char;
+
+    *new_cp++ = *string++;
+  }
+
+  return new_string;
 }
 
 /* =====
