@@ -3825,9 +3825,11 @@ options_validate(or_options_t *old_options, or_options_t *options,
 
   /* Check if more than one proxy type has been enabled. */
   if (!!options->Socks4Proxy + !!options->Socks5Proxy +
-      !!options->HTTPSProxy + !!options->ClientTransportPlugin > 1)
+      !!options->HTTPSProxy + !!options->ClientTransportPlugin +
+      !!options->Socks5ProxyUsername + !!options->Socks5ProxyPassword  > 1)
     REJECT("You have configured more than one proxy type. "
-           "(Socks4Proxy|Socks5Proxy|HTTPSProxy|ClientTransportPlugin)");
+           "(Socks4Proxy|Socks5Proxy|HTTPSProxy|ClientTransportPlugin|"
+           "Socks5ProxyUsername|Socks5ProxyPassword)");
 
   if (options->Socks5ProxyUsername) {
     size_t len;
@@ -4914,10 +4916,11 @@ parse_bridge_line(const char *line, int validate_only)
   int r;
   char *addrport=NULL, *fingerprint=NULL;
   char *transport_name=NULL;
-  char *field1=NULL;
+  char *field=NULL;
   tor_addr_t addr;
   uint16_t port = 0;
   char digest[DIGEST_LEN];
+  smartlist_t *socks_args = NULL;
 
   items = smartlist_new();
   smartlist_split_string(items, line, NULL,
@@ -4927,13 +4930,13 @@ parse_bridge_line(const char *line, int validate_only)
     goto err;
   }
 
-  /* field1 is either a transport name or addrport */
-  field1 = smartlist_get(items, 0);
+  /* field is either a transport name or addrport */
+  field = smartlist_get(items, 0);
   smartlist_del_keeporder(items, 0);
 
-  if (!(strstr(field1, ".") || strstr(field1, ":"))) {
+  if (!(strstr(field, ".") || strstr(field, ":"))) {
     /* new-style bridge line */
-    transport_name = field1;
+    transport_name = field;
     if (smartlist_len(items) < 1) {
       log_warn(LD_CONFIG, "Too few items to Bridge line.");
       goto err;
@@ -4941,7 +4944,7 @@ parse_bridge_line(const char *line, int validate_only)
     addrport = smartlist_get(items, 0);
     smartlist_del_keeporder(items, 0);
   } else {
-    addrport = field1;
+    addrport = field;
   }
 
   if (tor_addr_port_lookup(addrport, &addr, &port)<0) {
@@ -4955,8 +4958,28 @@ parse_bridge_line(const char *line, int validate_only)
     port = 443;
   }
 
+  /* If transports are enabled, next field could be a fingerprint or a
+     socks argument. If transports are disabled, next field should be
+     a fingerprint. */
   if (smartlist_len(items)) {
-    fingerprint = smartlist_join_strings(items, "", 0, NULL);
+    if (transport_name) { /* transports enabled: */
+      field = smartlist_get(items, 0);
+      smartlist_del_keeporder(items, 0);
+
+      /* If '=', it's a k=v value pair. */
+      if (strchr(field, '=')) {
+        socks_args = smartlist_new();
+        smartlist_add(socks_args, field);
+      } else { /* If no '=', it's the fingerprint. */
+        fingerprint = field;
+      }
+
+    } else { /* transports disabled: */
+      fingerprint = smartlist_join_strings(items, "", 0, NULL);
+    }
+  }
+
+  if (fingerprint) {
     if (strlen(fingerprint) != HEX_DIGEST_LEN) {
       log_warn(LD_CONFIG, "Key digest for Bridge is wrong length.");
       goto err;
@@ -4967,13 +4990,39 @@ parse_bridge_line(const char *line, int validate_only)
     }
   }
 
+  /* If we are using transports, any remaining items in the smartlist
+     must be k=v values. */
+  if (transport_name && smartlist_len(items)) {
+    if (!socks_args)
+      socks_args = smartlist_new();
+
+    /* append remaining items of 'items' to 'socks_args' */
+    smartlist_add_all(socks_args, items);
+    smartlist_clear(items);
+
+    tor_assert(smartlist_len(socks_args) > 0);
+  }
+
   if (!validate_only) {
     log_debug(LD_DIR, "Bridge at %s:%d (transport: %s) (%s)",
               fmt_addr(&addr), (int)port,
               transport_name ? transport_name : "no transport",
               fingerprint ? fingerprint : "no key listed");
+
+    if (socks_args) { /* print socks arguments */
+      int i = 0;
+
+      tor_assert(smartlist_len(socks_args) > 0);
+
+      log_debug(LD_DIR, "Bridge uses %d SOCKS arguments:",
+                smartlist_len(socks_args));
+      SMARTLIST_FOREACH(socks_args, const char *, arg,
+                        log_debug(LD_CONFIG, "%d: %s", ++i, arg));
+    }
+
     bridge_add_from_config(&addr, port,
-                           fingerprint ? digest : NULL, transport_name);
+                           fingerprint ? digest : NULL,
+                           transport_name, socks_args);
   }
 
   r = 0;
@@ -4988,6 +5037,14 @@ parse_bridge_line(const char *line, int validate_only)
   tor_free(addrport);
   tor_free(transport_name);
   tor_free(fingerprint);
+
+  /* We only have to free socks_args if we are validating, since
+     otherwise bridge_add_from_config() steals its reference. */
+  if (socks_args && validate_only) {
+    SMARTLIST_FOREACH(socks_args, char*, s, tor_free(s));
+    smartlist_free(socks_args);
+  }
+
   return r;
 }
 
