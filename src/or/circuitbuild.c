@@ -5005,8 +5005,8 @@ get_socks_args_by_bridge_addrport(const tor_addr_t *addr, uint16_t port)
  * transport, but the transport could not be found.
  */
 int
-find_transport_by_bridge_addrport(const tor_addr_t *addr, uint16_t port,
-                                  const transport_t **transport)
+get_transport_by_bridge_addrport(const tor_addr_t *addr, uint16_t port,
+                                 const transport_t **transport)
 {
   *transport = NULL;
   if (!bridge_list)

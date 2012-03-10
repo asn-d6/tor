@@ -163,8 +163,8 @@ transport_t *transport_new(const tor_addr_t *addr, uint16_t port,
 const smartlist_t *get_socks_args_by_bridge_addrport(const tor_addr_t *addr,
                                                      uint16_t port);
 
-int find_transport_by_bridge_addrport(const tor_addr_t *addr, uint16_t port,
-                                      const transport_t **transport);
+int get_transport_by_bridge_addrport(const tor_addr_t *addr, uint16_t port,
+                                     const transport_t **transport);
 transport_t *transport_get_by_name(const char *name);
 
 int validate_pluggable_transports_config(void);
