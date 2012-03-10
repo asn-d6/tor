@@ -1177,6 +1177,22 @@ pt_stringify_socks_args(const smartlist_t *socks_args)
   return new_string;
 }
 
+/** Return a string of the SOCKS arguments that we should pass to the
+ *  pluggable transports proxy in <b>addr</b>:<b>port</b> according to
+ *  180_pluggable_transport.txt.  The string is allocated on the heap
+ *  and it's the responsibility of the caller to free it after use. */
+char *
+pt_get_socks_args_for_proxy_addr_port(const tor_addr_t *addr, uint16_t port)
+{
+  const smartlist_t *socks_args = NULL;
+
+  socks_args = get_socks_args_by_bridge_addrport(addr, port);
+  if (!socks_args)
+    return NULL;
+
+  return pt_stringify_socks_args(socks_args);
+}
+
 /** The tor config was read.
  *  Destroy all managed proxies that were marked by a previous call to
  *  prepare_proxy_list_for_config_read() and are not used by the new
