@@ -84,5 +84,14 @@ void var_cell_pack_header(const var_cell_t *cell, char *hdr_out);
 var_cell_t *var_cell_new(uint16_t payload_len);
 void var_cell_free(var_cell_t *cell);
 
+ext_or_cmd_t *ext_or_cmd_new(uint16_t len);
+void ext_or_cmd_free(ext_or_cmd_t *cmd);
+void connection_or_set_ext_or_identifier(or_connection_t *conn);
+void connection_or_remove_from_ext_or_id_map(or_connection_t *conn);
+void connection_or_clear_ext_or_id_map(void);
+
+int connection_ext_or_finished_flushing(or_connection_t *conn);
+int connection_ext_or_process_inbuf(or_connection_t *or_conn);
+
 #endif
 
