@@ -4152,7 +4152,7 @@ get_bindaddr_from_transport_listen_line(const char *line,const char *transport)
   smartlist_t *items = NULL;
   const char *parsed_transport = NULL;
   char *addrport = NULL;
-  tor_addr_t addr;
+  char *addr = NULL;
   uint16_t port = 0;
 
   items = smartlist_new();
@@ -4172,7 +4172,7 @@ get_bindaddr_from_transport_listen_line(const char *line,const char *transport)
     goto err;
 
   /* Validate addrport */
-  if (tor_addr_port_lookup(addrport, &addr, &port)<0) {
+  if (tor_addr_port_split(LOG_WARN, addrport, &addr, &port)<0) {
     log_warn(LD_CONFIG, "Error parsing ServerTransportListenAddr "
              "address '%s'", addrport);
     goto err;
@@ -4193,6 +4193,7 @@ get_bindaddr_from_transport_listen_line(const char *line,const char *transport)
  done:
   SMARTLIST_FOREACH(items, char*, s, tor_free(s));
   smartlist_free(items);
+  tor_free(addr);
 
   return addrport;
 }
