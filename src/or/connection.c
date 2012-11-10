@@ -1469,6 +1469,11 @@ get_proxy_type(void)
     return PROXY_NONE;
 }
 
+/* One byte for the version, one for the command, two for the
+   port, and four for the addr... and, one more for the
+   username NUL: */
+#define SOCKS4_STANDARD_BUFFER_SIZE 1 + 1 + 2 + 4 + 1
+
 /** Write a proxy request of <b>type</b> (socks4, socks5, https) to conn
  * for conn->addr:conn->port, authenticating with the auth details given
  * in the configuration (if available). SOCKS 5 and HTTP CONNECT proxies
@@ -1520,11 +1525,6 @@ connection_proxy_connect(connection_t *conn, int type)
     }
 
     case PROXY_SOCKS4: {
-        /* One byte for the version, one for the command, two for the
-           port, and four for the addr... and, one more for the
-           username NUL: */
-      #define SOCKS4_STANDARD_BUFFER_SIZE 1 + 1 + 2 + 4 + 1
-
       unsigned char *buf;
       uint16_t portn;
       uint32_t ip4addr;
@@ -1574,8 +1574,9 @@ connection_proxy_connect(connection_t *conn, int type)
 
       if (socks_args_string) { /* place the SOCKS args string: */
         tor_assert(strlen(socks_args_string) > 0);
-        tor_assert(buf_size >= SOCKS4_STANDARD_BUFFER_SIZE + strlen(socks_args_string));
-        strcpy((char *)buf + 8, socks_args_string);
+        tor_assert(buf_size >=
+                   SOCKS4_STANDARD_BUFFER_SIZE + strlen(socks_args_string));
+        strlcpy((char *)buf + 8, socks_args_string, buf_size - 8);
         tor_free(socks_args_string);
       } else {
         buf[8] = 0; /* no userid */
@@ -1820,10 +1821,9 @@ connection_read_proxy_handshake(connection_t *conn)
             pass = socks_args_string + MAX_SOCKS5_AUTH_FIELD_SIZE;
             psize = strlen(socks_args_string) - MAX_SOCKS5_AUTH_FIELD_SIZE;
           } else {
-            static const char *null_pass = "\0";
             user = socks_args_string;
             usize = strlen(socks_args_string);
-            pass = null_pass;
+            pass = "\0";
             psize = 1;
           }
 

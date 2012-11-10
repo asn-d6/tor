@@ -315,7 +315,6 @@ test_util_config_line(void)
   tor_free(v);
 }
 
-/** Test tor_escape_string(). */
 static void
 test_util_config_line_quotes(void)
 {
@@ -641,6 +640,7 @@ test_util_expand_filename(void)
 }
 #endif
 
+/** Test tor_escape_string(). */
 static void
 test_util_escape_string(void)
 {
@@ -2507,26 +2507,14 @@ test_util_split_lines(void *ptr)
 static void
 test_util_string_is_key_value(void *ptr)
 {
-  char string[1024];
-
-  strcpy(string, "key=value");
-  tor_assert(string_is_key_value(string));
-
-  strcpy(string, "k=v");
-  tor_assert(string_is_key_value(string));
-
-  strcpy(string, "=value");
-  tor_assert(!string_is_key_value(string));
-
-  strcpy(string, "key=");
-  tor_assert(!string_is_key_value(string));
-
-  strcpy(string, "=");
-  tor_assert(!string_is_key_value(string));
+  test_assert(string_is_key_value("key=value"));
+  test_assert(string_is_key_value("k=v"));
+  test_assert(!string_is_key_value("=value"));
+  test_assert(!string_is_key_value("key="));
+  test_assert(!string_is_key_value("="));
 
   /* ??? */
-  /* strcpy(string, "==="); */
-  /* tor_assert(!string_is_key_value(string)); */
+  /* test_assert(!string_is_key_value("===")); */
 }
 
 static void
