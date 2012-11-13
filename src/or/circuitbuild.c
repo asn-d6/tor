@@ -4983,17 +4983,10 @@ find_bridge_by_digest(const char *digest)
 const smartlist_t *
 get_socks_args_by_bridge_addrport(const tor_addr_t *addr, uint16_t port)
 {
-  if (!bridge_list)
-    return NULL;
-
-  SMARTLIST_FOREACH_BEGIN(bridge_list, const bridge_info_t *, bridge) {
-    if (tor_addr_eq(&bridge->addr, addr) &&
-        (bridge->port == port)) { /* bridge matched */
-      return bridge->socks_args;
-    }
-  } SMARTLIST_FOREACH_END(bridge);
-
-  return NULL;
+  bridge_info_t *bridge = get_configured_bridge_by_addr_port_digest(addr,
+                                                                    port,
+                                                                    NULL);
+  return bridge ? bridge->socks_args : NULL;
 }
 
 /** If <b>addr</b> and <b>port</b> match the address and port of a

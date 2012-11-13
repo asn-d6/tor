@@ -828,7 +828,8 @@ string_is_C_identifier(const char *string)
   return 1;
 }
 
-/** Return true if <b>string</b> is a valid 'key=value' string. */
+/** Return true if <b>string</b> is a valid '<key>=<value>' string.
+ *  <value> is optional, to indicate the empty string. */
 int
 string_is_key_value(const char *string)
 {
@@ -837,8 +838,10 @@ string_is_key_value(const char *string)
 
   tor_assert(string);
 
-  if (strlen(string) < 3) /* "x=a" is shortest args string */
+  if (strlen(string) < 2) { /* "x=a" is shortest args string */
+    log_warn(LD_GENERAL, "'%s' is too short to be a k=v value.", string);
     return 0;
+  }
 
   equal_sign_pos = strchr(string, '=');
   if (!equal_sign_pos) {
@@ -846,10 +849,8 @@ string_is_key_value(const char *string)
     return 0;
   }
 
-  /* validate that the '=' is not in the beginning or the end of the
-     string. */
-  if (equal_sign_pos == string ||
-      equal_sign_pos == string + strlen(string) - 1) {
+  /* validate that the '=' is not in the beginning of the string. */
+  if (equal_sign_pos == string) {
     log_warn(LD_GENERAL, "'%s' is not a valid k=v value.", string);
     return 0;
   }

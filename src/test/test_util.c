@@ -2507,14 +2507,17 @@ test_util_split_lines(void *ptr)
 static void
 test_util_string_is_key_value(void *ptr)
 {
+  (void)ptr;
   test_assert(string_is_key_value("key=value"));
   test_assert(string_is_key_value("k=v"));
+  test_assert(string_is_key_value("key="));
   test_assert(!string_is_key_value("=value"));
-  test_assert(!string_is_key_value("key="));
   test_assert(!string_is_key_value("="));
 
   /* ??? */
   /* test_assert(!string_is_key_value("===")); */
+ done:
+  ;
 }
 
 static void
