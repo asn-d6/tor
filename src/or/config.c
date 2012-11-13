@@ -3825,8 +3825,7 @@ options_validate(or_options_t *old_options, or_options_t *options,
 
   /* Check if more than one proxy type has been enabled. */
   if (!!options->Socks4Proxy + !!options->Socks5Proxy +
-      !!options->HTTPSProxy + !!options->ClientTransportPlugin +
-      !!options->Socks5ProxyUsername + !!options->Socks5ProxyPassword  > 1)
+      !!options->HTTPSProxy + !!options->ClientTransportPlugin > 1)
     REJECT("You have configured more than one proxy type. "
            "(Socks4Proxy|Socks5Proxy|HTTPSProxy|ClientTransportPlugin|"
            "Socks5ProxyUsername|Socks5ProxyPassword)");

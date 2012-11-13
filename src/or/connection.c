@@ -1796,13 +1796,7 @@ connection_read_proxy_handshake(connection_t *conn)
         const char *user, *pass;
         char *socks_args_string = NULL;
 
-        if (get_options()->Socks5ProxyUsername) {
-          user = get_options()->Socks5ProxyUsername;
-          pass = get_options()->Socks5ProxyPassword;
-          tor_assert(user && pass);
-          usize = strlen(user);
-          psize = strlen(pass);
-        } else if (get_proxy_type() == PROXY_PLUGGABLE) {
+        if (get_proxy_type() == PROXY_PLUGGABLE) {
           socks_args_string =
             pt_get_socks_args_for_proxy_addr_port(&conn->addr, conn->port);
           if (!socks_args_string) {
@@ -1826,7 +1820,12 @@ connection_read_proxy_handshake(connection_t *conn)
             pass = "\0";
             psize = 1;
           }
-
+        } else if (get_options()->Socks5ProxyUsername) {
+          user = get_options()->Socks5ProxyUsername;
+          pass = get_options()->Socks5ProxyPassword;
+          tor_assert(user && pass);
+          usize = strlen(user);
+          psize = strlen(pass);
         } else {
           log_err(LD_BUG, "We entered %s for no reason!", __func__);
           tor_fragile_assert();
