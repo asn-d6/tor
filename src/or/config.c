@@ -4172,15 +4172,9 @@ get_bindaddr_from_transport_listen_line(const char *line,const char *transport)
     goto err;
 
   /* Validate addrport */
-  if (tor_addr_port_split(LOG_WARN, addrport, &addr, &port)<0) {
+  if (tor_addr_port_parse(LOG_WARN, addrport, &addr, &port)<0) {
     log_warn(LD_CONFIG, "Error parsing ServerTransportListenAddr "
              "address '%s'", addrport);
-    goto err;
-  }
-
-  if (!port) {
-    log_warn(LD_CONFIG,
-             "ServerTransportListenAddr address '%s' has no port.", addrport);
     goto err;
   }
 

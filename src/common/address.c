@@ -1393,7 +1393,43 @@ is_internal_IP(uint32_t ip, int for_listening)
   return tor_addr_is_internal(&myaddr, for_listening);
 }
 
-/** Given an address of the form "host:port", try to divide it into its host
+/** Given an address of the form "ip:port", try to divide it into its
+ * ip and port portions, setting *<b>address_out</b> to a newly
+ * allocated string holding the address portion and *<b>port_out</b>
+ * to the port.
+ *
+ * Don't do DNS lookups and don't allow domain names in the <ip> field.
+ * Don't accept <b>addrport</b> of the form "<ip>" or "<ip>:0".
+ *
+ * Return 0 on success, -1 on failure. */
+int
+tor_addr_port_parse(int severity, const char *addrport,
+                    char **address_out, uint16_t *port_out)
+{
+  int r;
+  tor_addr_t addr_tmp;
+
+  tor_assert(addrport);
+  tor_assert(address_out);
+  tor_assert(port_out);
+
+  r = tor_addr_port_split(severity, addrport, address_out, port_out);
+  if (r < 0)
+    return -1;
+
+  if (!*port_out)
+    return -1;
+
+  /* make sure that address_out is an IP address */
+  if (tor_addr_parse(&addr_tmp, *address_out) < 0) {
+    tor_free(*address_out);
+    return -1;
+  }
+
+  return 0;
+}
+
+/** Given an address of the form "host[:port]", try to divide it into its host
  * ane port portions, setting *<b>address_out</b> to a newly allocated string
  * holding the address portion and *<b>port_out</b> to the port (or 0 if no
  * port is given).  Return 0 on success, -1 on failure. */
