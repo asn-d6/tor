@@ -45,6 +45,7 @@
 #include "routerset.h"
 #include "statefile.h"
 #include "transports.h"
+#include "ext_orport.h"
 #ifdef _WIN32
 #include <shlobj.h>
 #endif
@@ -226,6 +227,7 @@ static config_var_t option_vars_[] = {
   V(ExitPolicyRejectPrivate,     BOOL,     "1"),
   V(ExitPortStatistics,          BOOL,     "0"),
   V(ExtendAllowPrivateAddresses, BOOL,     "0"),
+  VPORT(ExtORPort,               LINELIST, NULL),
   V(ExtraInfoStatistics,         BOOL,     "1"),
 
 #if defined (WINCE)
@@ -1357,8 +1359,14 @@ options_act(const or_options_t *old_options)
     return -1;
   }
 
-  if (init_cookie_authentication(options->CookieAuthentication) < 0) {
-    log_warn(LD_CONFIG,"Error creating cookie authentication file.");
+  if (init_control_cookie_authentication(options->CookieAuthentication) < 0) {
+    log_warn(LD_CONFIG,"Error creating control cookie authentication file.");
+    return -1;
+  }
+
+  /* If we have an ExtORPort, initialize its auth cookie. */
+  if (init_ext_or_cookie_authentication(!!options->ExtORPort_lines) < 0) {
+    log_warn(LD_CONFIG,"Error creating Extended ORPort cookie file.");
     return -1;
   }
 
@@ -4951,6 +4959,14 @@ parse_ports(or_options_t *options, int validate_only,
                           "0.0.0.0", 0,
                           CL_PORT_SERVER_OPTIONS) < 0) {
       *msg = tor_strdup("Invalid ORPort/ORListenAddress configuration");
+      goto err;
+    }
+    if (parse_port_config(ports,
+                          options->ExtORPort_lines, NULL,
+                          "ExtOR", CONN_TYPE_EXT_OR_LISTENER,
+                          "127.0.0.1", 0,
+                          CL_PORT_SERVER_OPTIONS) < 0) {
+      *msg = tor_strdup("Invalid ExtORPort configuration");
       goto err;
     }
     if (parse_port_config(ports,
