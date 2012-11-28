@@ -1249,38 +1249,22 @@ wrap_string(smartlist_t *out, const char *string, size_t width,
   }
 }
 
-/** Return true if the character <b>c</b>, belongs to the set of
- *  characters <b>set</b>. */
-static int
-tor_char_is_in_set(char c, const char *set)
-{
-  tor_assert(set);
-
-  while (*set) {
-    if (c == *set++)
-      return 1;
-  }
-
-  return 0;
-}
-
 /** Escape every character of <b>string</b> that belongs to the set of
  *  characters <b>set</b>. Use <b>escape_char</b> as the character to
  *  use for escaping. */
 char *
-tor_escape_string(const char *string, const char *set, char escape_char)
+tor_escape_str_for_socks_arg(const char *string)
 {
   char *new_string = NULL;
   char *new_cp = NULL;
   size_t length, new_length;
+  static const char *chars_to_escape = ";\\";
 
-  tor_assert(string && set);
+  tor_assert(string);
 
   length = strlen(string);
 
   if (!length)
-    return NULL;
-  if (strlen(set) == 0)
     return NULL;
   /* (new_length > SIZE_MAX) => ((length * 2) + 1 > SIZE_MAX) =>
      (length*2 > SIZE_MAX - 1) => (length > (SIZE_MAX - 1)/2) */
@@ -1293,8 +1277,8 @@ tor_escape_string(const char *string, const char *set, char escape_char)
   new_string = new_cp = tor_malloc_zero(new_length);
 
   while (*string) {
-    if (tor_char_is_in_set(*string, set))
-      *new_cp++ = escape_char;
+    if (strchr(chars_to_escape, *string))
+      *new_cp++ = '\\';
 
     *new_cp++ = *string++;
   }

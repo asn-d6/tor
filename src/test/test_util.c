@@ -640,36 +640,32 @@ test_util_expand_filename(void)
 }
 #endif
 
-/** Test tor_escape_string(). */
+/** Test tor_escape_str_for_socks_arg(). */
 static void
-test_util_escape_string(void)
+test_util_escape_string_socks(void)
 {
   char *escaped_string = NULL;
 
-  /** One character to-be-escaped character set. */
-  escaped_string = tor_escape_string("Where am I?", " ", '\\');
+  /** Simple backslash escape. */
+  escaped_string = tor_escape_str_for_socks_arg("This is a backslash: \\");
   test_assert(escaped_string);
-  test_streq(escaped_string, "Where\\ am\\ I?");
+  test_streq(escaped_string, "This is a backslash: \\\\");
   tor_free(escaped_string);
 
-  /** Illegal: Empty to-be-escaped character set. */
-  escaped_string = tor_escape_string("In the Village.", "", '\\');
-  test_assert(!escaped_string);
-
-  /** Multi-character to-be-escaped character set. */
-  escaped_string = tor_escape_string("What do you want?", "o?", 'Z');
+  /** Simple semicolon escape. */
+  escaped_string = tor_escape_str_for_socks_arg("First rule: Do not use ;");
   test_assert(escaped_string);
-  test_streq(escaped_string, "What dZo yZou wantZ?");
+  test_streq(escaped_string, "First rule: Do not use \\;");
   tor_free(escaped_string);
 
-  /** Ilegal: Empty to-be-escaped string. */
-  escaped_string = tor_escape_string("", "Information.", 'Z');
+  /** Ilegal: Empty string. */
+  escaped_string = tor_escape_str_for_socks_arg("");
   test_assert(!escaped_string);
 
   /** Escape all characters. */
-  escaped_string = tor_escape_string("Information", "Information", '\\');
+  escaped_string = tor_escape_str_for_socks_arg(";\\;\\");
   test_assert(escaped_string);
-  test_streq(escaped_string, "\\I\\n\\f\\o\\r\\m\\a\\t\\i\\o\\n");
+  test_streq(escaped_string, "\\;\\\\\\;\\\\");
   tor_free(escaped_string);
 
  done:
@@ -2936,7 +2932,7 @@ struct testcase_t util_tests[] = {
   UTIL_LEGACY(config_line_comment_character),
   UTIL_LEGACY(config_line_escaped_content),
   UTIL_LEGACY(expand_filename),
-  UTIL_LEGACY(escape_string),
+  UTIL_LEGACY(escape_string_socks),
   UTIL_LEGACY(strmisc),
   UTIL_LEGACY(pow2),
   UTIL_LEGACY(gzip),
