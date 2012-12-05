@@ -3236,7 +3236,7 @@ typedef struct {
   /** Ports to listen on for SOCKS connections. */
   config_line_t *SocksPort_lines;
   /** Ports to listen on for extended OR connections. */
-  config_line_t *ExtORPort;
+  config_line_t *ExtORPort_lines;
   /** Ports to listen on for transparent pf/netfilter connections. */
   config_line_t *TransPort_lines;
   config_line_t *NATDPort_lines; /**< Ports to listen on for transparent natd

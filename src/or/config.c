@@ -226,7 +226,7 @@ static config_var_t option_vars_[] = {
   V(ExitPolicyRejectPrivate,     BOOL,     "1"),
   V(ExitPortStatistics,          BOOL,     "0"),
   V(ExtendAllowPrivateAddresses, BOOL,     "0"),
-  V(ExtORPort,                   LINELIST, NULL),
+  VPORT(ExtORPort,               LINELIST, NULL),
   V(ExtraInfoStatistics,         BOOL,     "1"),
 
 #if defined (WINCE)
@@ -1368,7 +1368,7 @@ options_act(const or_options_t *old_options)
   }
 
   /* If we have an ExtORPort, initialize its auth cookie. */
-  if (init_ext_or_auth_cookie_authentication(!!options->ExtORPort) < 0) {
+  if (init_ext_or_auth_cookie_authentication(!!options->ExtORPort_lines) < 0) {
     log_warn(LD_CONFIG,"Error creating Extended ORPort cookie file.");
     return -1;
   }
@@ -5055,7 +5055,7 @@ parse_ports(or_options_t *options, int validate_only,
       goto err;
     }
     if (parse_port_config(ports,
-                          options->ExtORPort, NULL,
+                          options->ExtORPort_lines, NULL,
                           "ExtOR", CONN_TYPE_EXT_OR_LISTENER,
                           "127.0.0.1", 0,
                           CL_PORT_SERVER_OPTIONS) < 0) {
