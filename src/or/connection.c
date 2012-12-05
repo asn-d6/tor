@@ -44,7 +44,7 @@
 #include "router.h"
 #include "transports.h"
 #include "routerparse.h"
-
+#include "ext_orport.h"
 #ifdef USE_BUFFEREVENTS
 #include <event2/event.h>
 #endif

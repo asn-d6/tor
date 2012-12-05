@@ -96,6 +96,7 @@
 #include "router.h"
 #include "statefile.h"
 #include "connection_or.h"
+#include "ext_orport.h"
 
 static process_environment_t *
 create_managed_proxy_environment(const managed_proxy_t *mp);
