@@ -95,6 +95,7 @@
 #include "util.h"
 #include "router.h"
 #include "statefile.h"
+#include "connection_or.h"
 
 static process_environment_t *
 create_managed_proxy_environment(const managed_proxy_t *mp);
@@ -1137,6 +1138,8 @@ get_bindaddr_for_server_proxy(const managed_proxy_t *mp)
 static process_environment_t *
 create_managed_proxy_environment(const managed_proxy_t *mp)
 {
+  const or_options_t *options = get_options();
+
   /* Environment variables to be added to or set in mp's environment. */
   smartlist_t *envs = smartlist_new();
   /* XXXX The next time someone touches this code, shorten the name of
@@ -1190,7 +1193,22 @@ create_managed_proxy_environment(const managed_proxy_t *mp)
      * (If we remove this line entirely, some joker will stick this
      * variable in Tor's environment and crash PTs that try to parse
      * it even when not run in server mode.) */
-    smartlist_add(envs, tor_strdup("TOR_PT_EXTENDED_SERVER_PORT="));
+
+    if (options->ExtORPort) {
+      char *ext_or_addrport_tmp =
+        get_first_listener_addrport_string(CONN_TYPE_EXT_OR_LISTENER);
+      char *cookie_file_loc = get_ext_or_auth_cookie_file();
+
+      smartlist_add_asprintf(envs, "TOR_PT_EXTENDED_SERVER_PORT=%s",
+                             ext_or_addrport_tmp);
+      smartlist_add_asprintf(envs, "TOR_PT_AUTH_COOKIE_FILE=%s", cookie_file_loc);
+
+      tor_free(ext_or_addrport_tmp);
+      tor_free(cookie_file_loc);
+
+    } else {
+      smartlist_add_asprintf(envs, "TOR_PT_EXTENDED_SERVER_PORT=");
+    }
   }
 
   SMARTLIST_FOREACH_BEGIN(envs, const char *, env_var) {

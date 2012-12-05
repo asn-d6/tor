@@ -186,8 +186,10 @@ void
 connection_or_remove_from_ext_or_id_map(or_connection_t *conn)
 {
   or_connection_t *tmp;
-  if (!orconn_identity_map)
-    orconn_identity_map = digestmap_new();
+  if (!orconn_ext_or_id_map)
+    return;
+  if (!conn->ext_or_conn_id)
+    return;
 
   tmp = digestmap_remove(orconn_ext_or_id_map, conn->ext_or_conn_id);
   if (!tor_digest_is_zero(conn->ext_or_conn_id))
@@ -201,6 +203,7 @@ void
 connection_or_clear_ext_or_id_map(void)
 {
   digestmap_free(orconn_ext_or_id_map, NULL);
+  orconn_ext_or_id_map = NULL;
 }
 
 /** Creates an Extended ORPort identifier for <b>conn<b/> and deposits
@@ -215,12 +218,15 @@ connection_or_set_ext_or_identifier(or_connection_t *conn)
     orconn_ext_or_id_map = digestmap_new();
 
   /* Remove any previous identifiers: */
-  if (!tor_digest_is_zero(conn->ext_or_conn_id))
+  if (conn->ext_or_conn_id && !tor_digest_is_zero(conn->ext_or_conn_id))
       connection_or_remove_from_ext_or_id_map(conn);
 
   do {
     crypto_rand(random_id, sizeof(random_id));
   } while (digestmap_get(orconn_ext_or_id_map, random_id));
+
+  if (!conn->ext_or_conn_id)
+    conn->ext_or_conn_id = tor_malloc_zero(EXT_OR_CONN_ID_LEN);
 
   memcpy(conn->ext_or_conn_id, random_id, EXT_OR_CONN_ID_LEN);
 
@@ -2438,14 +2444,82 @@ connection_write_ext_or_command(connection_t *conn,
 static void
 connection_ext_or_transition(or_connection_t *conn)
 {
-  tor_assert(conn->_base.type == CONN_TYPE_EXT_OR);
+  tor_assert(conn->base_.type == CONN_TYPE_EXT_OR);
 
-  conn->_base.type = CONN_TYPE_OR;
+  conn->base_.type = CONN_TYPE_OR;
   control_event_or_conn_status(conn, OR_CONN_EVENT_NEW, 0);
   connection_tls_start_handshake(conn, 1);
 }
 
-#define EXT_OR_CMD_WANT_CONTROL 0x0003
+/** DOCDOCDOC */
+#define EXT_OR_PORT_AUTH_COOKIE_LEN 32
+#define EXT_OR_PORT_AUTH_COOKIE_HEADER_LEN 32
+#define EXT_OR_PORT_AUTH_COOKIE_FILE_LEN EXT_OR_PORT_AUTH_COOKIE_LEN+EXT_OR_PORT_AUTH_COOKIE_HEADER_LEN
+#define EXT_OR_PORT_AUTH_COOKIE_HEADER "! Extended ORPort Auth Cookie !\x0a"
+
+/** If true, we've set ext_or_auth_cookie to a secret code and stored
+ * it to disk. */
+static int ext_or_auth_cookie_is_set = 0;
+/** If ext_or_auth_cookie_is_set, a secret cookie that we've stored to disk
+ * and which we're using to authenticate controllers.  (If the controller can
+ * read it off disk, it has permission to connect.) */
+static char ext_or_auth_cookie[EXT_OR_PORT_AUTH_COOKIE_LEN] = {0};
+
+/** Helper: Return a newly allocated string containing a path to the
+ * file where we store our authentication cookie. */
+char *
+get_ext_or_auth_cookie_file(void)
+{
+  const or_options_t *options = get_options();
+  if (options->ExtORPortCookieAuthFile && strlen(options->ExtORPortCookieAuthFile)) {
+    return tor_strdup(options->ExtORPortCookieAuthFile);
+  } else {
+    return get_datadir_fname("extended_orport_auth_cookie");
+  }
+}
+
+/** Choose a random authentication cookie and write it to disk.
+ * Anybody who can read the cookie from disk will be considered
+ * authorized to use the control connection. Return -1 if we can't
+ * write the file, or 0 on success. */
+int
+init_ext_or_auth_cookie_authentication(int is_enabled)
+{
+  char *fname;
+  char cookie_file_string[EXT_OR_PORT_AUTH_COOKIE_FILE_LEN];
+
+  if (!is_enabled) {
+    ext_or_auth_cookie_is_set = 0;
+    return 0;
+  }
+
+  /* We don't want to generate a new cookie every time we call
+   * options_act(). One should be enough. */
+  if (ext_or_auth_cookie_is_set)
+    return 0; /* all set */
+
+  fname = get_ext_or_auth_cookie_file();
+  crypto_rand(ext_or_auth_cookie, EXT_OR_PORT_AUTH_COOKIE_LEN);
+  ext_or_auth_cookie_is_set = 1;
+
+  memcpy(cookie_file_string, EXT_OR_PORT_AUTH_COOKIE_HEADER, EXT_OR_PORT_AUTH_COOKIE_HEADER_LEN);
+  memcpy(cookie_file_string+EXT_OR_PORT_AUTH_COOKIE_HEADER_LEN,
+         ext_or_auth_cookie, EXT_OR_PORT_AUTH_COOKIE_LEN);
+
+  if (write_bytes_to_file(fname, cookie_file_string,
+                          EXT_OR_PORT_AUTH_COOKIE_FILE_LEN, 1)) {
+    log_warn(LD_FS,"Error writing authentication cookie to %s.",
+             escaped(fname));
+    tor_free(fname);
+    return -1;
+  }
+
+  log_warn(LD_GENERAL, "Generated Extended ORPort cookie file in '%s'.",
+           fname);
+
+  tor_free(fname);
+  return 0;
+}
 
 /** Extended ORPort commands (Transport-to-Bridge) */
 #define EXT_OR_CMD_TB_DONE 0x0000
@@ -2514,14 +2588,6 @@ connection_ext_or_process_inbuf(or_connection_t *or_conn)
       /* record the address */
       tor_addr_copy(&conn->addr, &addr);
       conn->port = port;
-    } else if (command->cmd == EXT_OR_CMD_WANT_CONTROL) {
-      char response[128];
-      char *cp;
-      memcpy(response, or_conn->ext_or_conn_id, EXT_OR_CONN_ID_LEN);
-      cp = response+EXT_OR_CONN_ID_LEN;
-      /* XXXX write the TransportControlPort; advance cp. */
-      connection_write_ext_or_command(conn, EXT_OR_CMD_BT_OKAY, response,
-                                      cp-response);
     } else {
       log_notice(LD_NET, "Got an Extended ORPort command we don't understand (%u).",
                  command->cmd);
@@ -2529,6 +2595,8 @@ connection_ext_or_process_inbuf(or_connection_t *or_conn)
 
     ext_or_cmd_free(command);
   }
+
+  return 0;
 
  err:
   ext_or_cmd_free(command);
@@ -2541,7 +2609,7 @@ connection_ext_or_process_inbuf(or_connection_t *or_conn)
 int
 connection_ext_or_finished_flushing(or_connection_t *conn)
 {
-  if (conn->_base.state == EXT_OR_CONN_STATE_FLUSHING) {
+  if (conn->base_.state == EXT_OR_CONN_STATE_FLUSHING) {
     connection_start_reading(TO_CONN(conn));
     connection_ext_or_transition(conn);
   }
