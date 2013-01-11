@@ -541,7 +541,7 @@ const char *tor_socket_strerror(int e);
 #define ERRNO_IS_EAGAIN(e)           ((e) == EAGAIN || (e) == EWOULDBLOCK)
 #define ERRNO_IS_EINPROGRESS(e)      ((e) == EINPROGRESS)
 #define ERRNO_IS_CONN_EINPROGRESS(e) ((e) == EINPROGRESS)
-#define ERRNO_IS_ACCEPT_EAGAIN(e)    ((e) == EAGAIN || (e) == ECONNABORTED)
+#define ERRNO_IS_ACCEPT_EAGAIN(e)    ((e) == EAGAIN || (e) == EWOULDBLOCK || (e) == ECONNABORTED)
 #define ERRNO_IS_ACCEPT_RESOURCE_LIMIT(e) \
   ((e) == EMFILE || (e) == ENFILE || (e) == ENOBUFS || (e) == ENOMEM)
 #define ERRNO_IS_EADDRINUSE(e)       ((e) == EADDRINUSE)
