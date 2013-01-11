@@ -538,7 +538,7 @@ int tor_socket_errno(tor_socket_t sock);
 const char *tor_socket_strerror(int e);
 #else
 #define SOCK_ERRNO(e) e
-#define ERRNO_IS_EAGAIN(e)           ((e) == EAGAIN)
+#define ERRNO_IS_EAGAIN(e)           ((e) == EAGAIN || (e) == EWOULDBLOCK)
 #define ERRNO_IS_EINPROGRESS(e)      ((e) == EINPROGRESS)
 #define ERRNO_IS_CONN_EINPROGRESS(e) ((e) == EINPROGRESS)
 #define ERRNO_IS_ACCEPT_EAGAIN(e)    ((e) == EAGAIN || (e) == ECONNABORTED)

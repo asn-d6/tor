@@ -1,0 +1,4 @@
+  o Minor bugfixes:
+    - Start considering EWOULDBLOCK as a variant of EAGAIN in
+      non-Windows platforms, as specified by POSIX.1-2001. Fixes bug
+      7935; bugfix on svn commit 398.
