@@ -95,6 +95,7 @@
 #include "util.h"
 #include "router.h"
 #include "statefile.h"
+#include "control.h"
 
 static process_environment_t *
 create_managed_proxy_environment(const managed_proxy_t *mp);
@@ -655,6 +656,7 @@ register_server_proxy(const managed_proxy_t *mp)
     save_transport_to_state(t->name, &t->addr, t->port);
     log_notice(LD_GENERAL, "Registered server transport '%s' at '%s'",
                t->name, fmt_addrport(&t->addr, t->port));
+    control_event_transport_launched("server", t->name, &t->addr, t->port);
   } SMARTLIST_FOREACH_END(t);
 }
 
@@ -677,9 +679,11 @@ register_client_proxy(const managed_proxy_t *mp)
       break;
     case 0:
       log_info(LD_GENERAL, "Succesfully registered transport %s", t->name);
+      control_event_transport_launched("client", t->name, &t->addr, t->port);
       break;
     case 1:
       log_info(LD_GENERAL, "Succesfully registered transport %s", t->name);
+      control_event_transport_launched("client", t->name, &t->addr, t->port);
       transport_free(transport_tmp);
       break;
     }
