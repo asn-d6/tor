@@ -2852,7 +2852,9 @@ directory_handle_command_get(dir_connection_t *conn, const char *headers,
       tor_addr_t addr;
       if (tor_inet_aton((TO_CONN(conn))->address, &in)) {
         tor_addr_from_ipv4h(&addr, ntohl(in.s_addr));
-        geoip_note_client_seen(act, &addr, time(NULL));
+        geoip_note_client_seen(act,
+                               &addr, NULL,
+                               time(NULL));
         geoip_note_ns_response(act, GEOIP_SUCCESS);
         /* Note that a request for a network status has started, so that we
          * can measure the download time later on. */
