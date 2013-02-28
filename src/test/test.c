@@ -1737,7 +1737,6 @@ test_geoip(void)
   test_streq(entry_stats_2, s);
   tor_free(s);
 
-
   /* Stop collecting entry statistics. */
   geoip_entry_stats_term();
   get_options_mutable()->EntryStatistics = 0;
@@ -1795,7 +1794,6 @@ test_geoip_with_pt(void)
     SET_TEST_ADDRESS(i);
     geoip_note_client_seen(GEOIP_CLIENT_CONNECT, &addr, "yout", now-7200);
   }
-
 
   /* Test the transport history string. */
   s = geoip_get_transport_history();
