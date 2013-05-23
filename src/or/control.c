@@ -40,6 +40,8 @@
 #include "router.h"
 #include "routerlist.h"
 #include "routerparse.h"
+#include "rendclient.h"
+#include "rendcommon.h"
 
 #ifndef _WIN32
 #include <pwd.h>
@@ -1650,7 +1652,6 @@ getinfo_helper_dir(control_connection_t *control_conn,
 {
   const node_t *node;
   const routerinfo_t *ri = NULL;
-  (void) control_conn;
   if (!strcmpstart(question, "desc/id/")) {
     node = node_get_by_hex_id(question+strlen("desc/id/"));
     if (node)
@@ -1707,6 +1708,25 @@ getinfo_helper_dir(control_connection_t *control_conn,
     *answer = smartlist_join_strings(sl, "", 0, NULL);
     SMARTLIST_FOREACH(sl, char *, c, tor_free(c));
     smartlist_free(sl);
+  } else if (!strcmpstart(question, "hs/desc/id/")) {
+    rend_cache_entry_t *e = NULL;
+
+    question += strlen("hs/desc/id/");
+    if (strlen(question) != REND_SERVICE_ID_LEN_BASE32) {
+        connection_printf_to_buf(control_conn, "512 \"%s\" is not an onion address.", question);
+        return -1;
+    }
+
+    /* XXX do we even care if it's old? */
+    if (rend_cache_lookup_entry(question, -1, &e) > 0 &&
+        rend_client_any_intro_points_usable(e)) {
+      /* descriptor found in cache */
+      *answer = tor_strdup(e->desc);
+    } else {
+      /* descriptor not found in cache */
+      connection_printf_to_buf(control_conn, "552 \"%s\" was not found in the cache.", question);
+      return -1;
+    }
   } else if (!strcmpstart(question, "md/id/")) {
     const node_t *node = node_get_by_hex_id(question+strlen("md/id/"));
     const microdesc_t *md = NULL;
@@ -2187,6 +2207,7 @@ static const getinfo_item_t getinfo_items[] = {
   PREFIX("md/id/", dir, "Microdescriptors by ID"),
   PREFIX("md/name/", dir, "Microdescriptors by name"),
   PREFIX("extra-info/digest/", dir, "Extra-info documents by digest."),
+  PREFIX("hs/desc/id", dir, "Hidden Service descriptor by onion."),
   PREFIX("net/listeners/", listeners, "Bound addresses by type"),
   ITEM("ns/all", networkstatus,
        "Brief summary of router status (v2 directory format)"),
