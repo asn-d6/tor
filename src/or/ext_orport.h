@@ -10,5 +10,5 @@ int connection_ext_or_finished_flushing(or_connection_t *conn);
 int connection_ext_or_process_inbuf(or_connection_t *or_conn);
 
 int init_ext_or_cookie_authentication(int is_enabled);
-char *get_ext_or_auth_cookie_file(void);
+char *get_ext_or_auth_cookie_filename(void);
 

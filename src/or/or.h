@@ -1381,9 +1381,14 @@ typedef struct or_connection_t {
   /** Hash of the public RSA key for the other side's identity key, or zeroes
    * if the other side hasn't shown us a valid identity key. */
   char identity_digest[DIGEST_LEN];
+
   /** Extended ORPort connection identifier. */
   char *ext_or_conn_id;
-  /** Client hash of the Extended ORPort authentication scheme */
+  /** This is the ClientHash value we expect to receive from the
+   *  client during the Extended ORPort authentication protocol. We
+   *  compute it upon receiving the ClientNoce from the client, and we
+   *  compare it with the acual ClientHash value sent by the
+   *  client. */
   char *ext_or_auth_correct_client_hash;
 
   char *nickname; /**< Nickname of OR on other side (if any). */
