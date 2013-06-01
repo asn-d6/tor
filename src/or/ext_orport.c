@@ -107,7 +107,7 @@ static int ext_or_auth_cookie_is_set = 0;
 /** If ext_or_auth_cookie_is_set, a secret cookie that we've stored to disk
  * and which we're using to authenticate controllers.  (If the controller can
  * read it off disk, it has permission to connect.) */
-static char ext_or_auth_cookie[EXT_OR_PORT_AUTH_COOKIE_LEN] = {0};
+static uint8_t ext_or_auth_cookie[EXT_OR_PORT_AUTH_COOKIE_LEN] = {0};
 
 /** Helper: Return a newly allocated string containing a path to the
  * file where we store our authentication cookie. */
@@ -143,7 +143,7 @@ init_ext_or_cookie_authentication(int is_enabled)
   if (ext_or_auth_cookie_is_set)
     return 0; /* all set */
 
-  if (crypto_rand(ext_or_auth_cookie, EXT_OR_PORT_AUTH_COOKIE_LEN) < 0)
+  if (crypto_rand((char *)ext_or_auth_cookie, EXT_OR_PORT_AUTH_COOKIE_LEN) < 0)
     return -1;
   ext_or_auth_cookie_is_set = 1;
 
@@ -255,13 +255,13 @@ connection_ext_or_auth_handle_client_nonce(connection_t *conn)
            server_nonce, EXT_OR_PORT_AUTH_NONCE_LEN);
 
     crypto_hmac_sha256(server_hash,
-                       ext_or_auth_cookie,
+                       (char *)ext_or_auth_cookie,
                        EXT_OR_PORT_AUTH_COOKIE_LEN,
                        hmac_s_msg,
                        hmac_s_msg_len);
 
     crypto_hmac_sha256(correct_client_hash,
-                       ext_or_auth_cookie,
+                       (char *)ext_or_auth_cookie,
                        EXT_OR_PORT_AUTH_COOKIE_LEN,
                        hmac_c_msg,
                        hmac_c_msg_len);

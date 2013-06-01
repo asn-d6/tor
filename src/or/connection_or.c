@@ -191,8 +191,8 @@ connection_or_remove_from_ext_or_id_map(or_connection_t *conn)
   if (!conn->ext_or_conn_id)
     return;
 
-  tmp = digestmap_remove(orconn_ext_or_id_map, conn->ext_or_conn_id);
-  if (!tor_digest_is_zero(conn->ext_or_conn_id))
+  tmp = digestmap_remove(orconn_ext_or_id_map, (char *)conn->ext_or_conn_id);
+  if (!tor_digest_is_zero((char*)conn->ext_or_conn_id))
     tor_assert(tmp == conn);
 
   memset(conn->ext_or_conn_id, 0, EXT_OR_CONN_ID_LEN);
@@ -218,7 +218,7 @@ connection_or_set_ext_or_identifier(or_connection_t *conn)
     orconn_ext_or_id_map = digestmap_new();
 
   /* Remove any previous identifiers: */
-  if (conn->ext_or_conn_id && !tor_digest_is_zero(conn->ext_or_conn_id))
+  if (conn->ext_or_conn_id && !tor_digest_is_zero((char*)conn->ext_or_conn_id))
       connection_or_remove_from_ext_or_id_map(conn);
 
   do {
