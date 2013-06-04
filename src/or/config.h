@@ -84,6 +84,10 @@ uint32_t get_effective_bwburst(const or_options_t *options);
 
 char *get_transport_bindaddr_from_config(const char *transport);
 
+int init_cookie_authentication(const char *fname, const char *header,
+                               int cookie_len,
+                               uint8_t **cookie_out, int *cookie_is_set_out);
+
 #ifdef CONFIG_PRIVATE
 /* Used only by config.c and test.c */
 or_options_t *options_new(void);

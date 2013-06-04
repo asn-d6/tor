@@ -86,9 +86,6 @@ connection_ext_or_transition(or_connection_t *conn)
 #define EXT_OR_PORT_AUTH_COOKIE_LEN 32
 /** Length of the header of the cookie file. */
 #define EXT_OR_PORT_AUTH_COOKIE_HEADER_LEN 32
-/** Total length of the cookie file. */
-#define EXT_OR_PORT_AUTH_COOKIE_FILE_LEN \
-  EXT_OR_PORT_AUTH_COOKIE_LEN+EXT_OR_PORT_AUTH_COOKIE_HEADER_LEN
 /** Static cookie file header. */
 #define EXT_OR_PORT_AUTH_COOKIE_HEADER "! Extended ORPort Auth Cookie !\x0a"
 /** Length of safe-cookie protocol hashes. */
@@ -107,7 +104,7 @@ static int ext_or_auth_cookie_is_set = 0;
 /** If ext_or_auth_cookie_is_set, a secret cookie that we've stored to disk
  * and which we're using to authenticate controllers.  (If the controller can
  * read it off disk, it has permission to connect.) */
-static uint8_t ext_or_auth_cookie[EXT_OR_PORT_AUTH_COOKIE_LEN] = {0};
+static uint8_t *ext_or_auth_cookie = NULL;
 
 /** Helper: Return a newly allocated string containing a path to the
  * file where we store our authentication cookie. */
@@ -123,49 +120,27 @@ get_ext_or_auth_cookie_filename(void)
   }
 }
 
-/** Choose a random authentication cookie and write it to disk.
- * Anybody who can read the cookie from disk will be considered
- * authorized to use the control connection. Return -1 if we can't
- * write the file, or 0 on success. */
+/* Initialize the cookie-based authentication system of the
+ * Extended ORPort. If <b>is_enabled</b> is 0, then disable the cookie
+ * authentication system. */
 int
 init_ext_or_cookie_authentication(int is_enabled)
 {
-  char *fname;
-  char cookie_file_string[EXT_OR_PORT_AUTH_COOKIE_FILE_LEN];
+  char *fname = NULL;
+  int retval;
 
   if (!is_enabled) {
     ext_or_auth_cookie_is_set = 0;
     return 0;
   }
 
-  /* We don't want to generate a new cookie every time we call
-   * options_act(). One should be enough. */
-  if (ext_or_auth_cookie_is_set)
-    return 0; /* all set */
-
-  if (crypto_rand((char *)ext_or_auth_cookie, EXT_OR_PORT_AUTH_COOKIE_LEN) < 0)
-    return -1;
-  ext_or_auth_cookie_is_set = 1;
-
-  memcpy(cookie_file_string, EXT_OR_PORT_AUTH_COOKIE_HEADER,
-         EXT_OR_PORT_AUTH_COOKIE_HEADER_LEN);
-  memcpy(cookie_file_string+EXT_OR_PORT_AUTH_COOKIE_HEADER_LEN,
-         ext_or_auth_cookie, EXT_OR_PORT_AUTH_COOKIE_LEN);
-
   fname = get_ext_or_auth_cookie_filename();
-  if (write_bytes_to_file(fname, cookie_file_string,
-                          EXT_OR_PORT_AUTH_COOKIE_FILE_LEN, 1)) {
-    log_warn(LD_FS,"Error writing authentication cookie to %s.",
-             escaped(fname));
-    tor_free(fname);
-    return -1;
-  }
-
-  log_info(LD_GENERAL, "Generated Extended ORPort cookie file in '%s'.",
-           fname);
-
+  retval = init_cookie_authentication(fname, EXT_OR_PORT_AUTH_COOKIE_HEADER,
+                                      EXT_OR_PORT_AUTH_COOKIE_HEADER_LEN,
+                                      &ext_or_auth_cookie,
+                                      &ext_or_auth_cookie_is_set);
   tor_free(fname);
-  return 0;
+  return retval;
 }
 
 /** Read data from <b>conn</b> and see if the client sent us the
