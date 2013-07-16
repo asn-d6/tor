@@ -2167,7 +2167,7 @@ static struct testcase_t test_array[] = {
   ENT(policies),
   ENT(rend_fns),
   ENT(geoip),
-  ENT(geoip_with_pt),
+  FORK(geoip_with_pt),
   FORK(stats),
 
   END_OF_TESTCASES
