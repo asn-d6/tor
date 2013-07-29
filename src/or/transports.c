@@ -635,9 +635,10 @@ configure_proxy(managed_proxy_t *mp)
 
  done:
   /* if the proxy finished configuring, exit the loop. */
-  if (proxy_configuration_finished(mp))
+  if (proxy_configuration_finished(mp)) {
     handle_finished_proxy(mp);
     configuration_finished = 1;
+  }
 
   if (proxy_output) {
     SMARTLIST_FOREACH(proxy_output, char *, cp, tor_free(cp));
