@@ -211,9 +211,6 @@ handle_client_auth_nonce(const char *client_nonce, size_t client_nonce_len,
   if (client_nonce_len != EXT_OR_PORT_AUTH_NONCE_LEN)
     return -1;
 
-  reply_len = EXT_OR_PORT_AUTH_COOKIE_LEN+EXT_OR_PORT_AUTH_NONCE_LEN;
-  reply = tor_malloc_zero(reply_len);
-
   /* Get our nonce */
   if (crypto_rand(server_nonce, EXT_OR_PORT_AUTH_NONCE_LEN) < 0)
     return -1;
@@ -291,6 +288,9 @@ handle_client_auth_nonce(const char *client_nonce, size_t client_nonce_len,
   }
 
   { /* write reply: (server_hash, server_nonce) */
+
+    reply_len = EXT_OR_PORT_AUTH_COOKIE_LEN+EXT_OR_PORT_AUTH_NONCE_LEN;
+    reply = tor_malloc_zero(reply_len);
     memcpy(reply, server_hash, EXT_OR_PORT_AUTH_HASH_LEN);
     memcpy(reply + EXT_OR_PORT_AUTH_HASH_LEN, server_nonce,
            EXT_OR_PORT_AUTH_NONCE_LEN);
