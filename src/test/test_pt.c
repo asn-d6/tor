@@ -196,7 +196,7 @@ static void
 test_pt_configure_proxy(void *arg)
 {
   (void) arg;
-  int i;
+  int i, retval;
   managed_proxy_t *mp = NULL;
 
   MOCK(tor_get_lines_from_handle,
@@ -214,9 +214,21 @@ test_pt_configure_proxy(void *arg)
      times while it is uninitialized and then finally finalizing its
      configuration. */
   for (i = 0 ; i < 5 ; i++) {
-    test_assert(configure_proxy(mp) == 0);
+    retval = configure_proxy(mp);
+    // retval should be zero because proxy hasn't finished configuring yet
+    test_assert(retval == 0);
+    // check the number of registered transports
+    test_assert(smartlist_len(mp->transports) == i+1);
+    // check that the mp is still waiting for transports
+    test_assert(mp->conf_state == PT_PROTO_ACCEPTING_METHODS);
   }
-  test_assert(configure_proxy(mp) == 1);
+
+  // this final configure_proxy() should finalize the proxy configuration.
+  retval = configure_proxy(mp);
+  // retval should be 1 since the proxy finished configuring
+  test_assert(retval == 1);
+  // check the mp state
+  test_assert(mp->conf_state == PT_PROTO_COMPLETED);
 
  done:
   UNMOCK(tor_get_lines_from_handle);
