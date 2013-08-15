@@ -193,6 +193,7 @@ test_ext_or_init_auth(void *arg)
      write_bytes_to_file(). See if the problem is handled properly. */
   MOCK(write_bytes_to_file, write_bytes_to_file_fail);
   tt_int_op(-1, ==, init_ext_or_cookie_authentication(1));
+  tt_int_op(ext_or_auth_cookie_is_set, ==, 0);
   UNMOCK(write_bytes_to_file);
 
   /* Now do the actual initialization. */
