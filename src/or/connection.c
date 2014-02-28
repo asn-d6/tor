@@ -3129,15 +3129,6 @@ connection_handle_read_impl(connection_t *conn)
   before = buf_datalen(conn->inbuf);
   if (connection_read_to_buf(conn, &max_to_read, &socket_error) < 0) {
     /* There's a read error; kill the connection.*/
-    if (conn->type == CONN_TYPE_OR) {
-      connection_or_notify_error(TO_OR_CONN(conn),
-                                 socket_error != 0 ?
-                                   errno_to_orconn_end_reason(socket_error) :
-                                   END_OR_CONN_REASON_CONNRESET,
-                                 socket_error != 0 ?
-                                   tor_socket_strerror(socket_error) :
-                                   "(unknown, errno was 0)");
-    }
     if (CONN_IS_EDGE(conn)) {
       edge_connection_t *edge_conn = TO_EDGE_CONN(conn);
       connection_edge_end_errno(edge_conn);
@@ -3152,6 +3143,19 @@ connection_handle_read_impl(connection_t *conn)
      * connection_or_notify_error() above.
      */
     connection_mark_for_close_internal(conn);
+
+    /* If it's an OR connection, notify the other components of its
+       failure. */
+    if (conn->type == CONN_TYPE_OR) {
+      connection_or_notify_error(TO_OR_CONN(conn),
+                                 socket_error != 0 ?
+                                   errno_to_orconn_end_reason(socket_error) :
+                                   END_OR_CONN_REASON_CONNRESET,
+                                 socket_error != 0 ?
+                                   tor_socket_strerror(socket_error) :
+                                   "(unknown, errno was 0)");
+    }
+
     return -1;
   }
   n_read += buf_datalen(conn->inbuf) - before;
@@ -4162,6 +4166,25 @@ connection_dir_get_by_purpose_and_resource(int purpose,
   } SMARTLIST_FOREACH_END(conn);
 
   return NULL;
+}
+
+/** Return 1 if there are any active OR connections. We use this to
+ * guess if we should tell the controller that we didn't manage to
+ * connect to any of our bridges. */
+int
+any_active_or_conns(void)
+{
+  smartlist_t *conns = get_connection_array();
+  SMARTLIST_FOREACH_BEGIN(conns, connection_t *, conn) {
+    if (conn->type == CONN_TYPE_OR &&
+        !conn->marked_for_close) {
+      log_debug(LD_DIR, "%s: Found an OR connection: %s",
+                __func__, conn->address);
+      return 1;
+    }
+  } SMARTLIST_FOREACH_END(conn);
+
+  return 0;
 }
 
 /** Return 1 if <b>conn</b> is a listener conn, else return 0. */

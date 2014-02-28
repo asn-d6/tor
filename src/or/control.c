@@ -4898,9 +4898,10 @@ control_event_bootstrap_problem, (const char *warn, int reason))
   if (reason == END_OR_CONN_REASON_NO_ROUTE)
     recommendation = "warn";
 
-  if (get_options()->UseBridges &&
-      !any_bridge_descriptors_known() &&
-      !any_pending_bridge_descriptor_fetches())
+  /* If we are using bridges and all our OR connections are now
+     closed, it means that we totally failed to connect to our
+     bridges. Throw a warning. */
+  if (get_options()->UseBridges && !any_active_or_conns())
     recommendation = "warn";
 
   if (we_are_hibernating())
