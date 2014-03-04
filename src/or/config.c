@@ -3262,11 +3262,14 @@ options_validate(or_options_t *old_options, or_options_t *options,
      Extended ORPort, inform the user that she is missing out. */
   if (server_mode(options) && options->ServerTransportPlugin &&
       !options->ExtORPort_lines) {
-    log_notice(LD_CONFIG, "We are a bridge with a pluggable transport "
-               "proxy but the Extended ORPort is disabled. The "
-               "Extended ORPort helps Tor communicate with the pluggable "
-               "transport proxy. Please enable it using the ExtORPort "
-               "torrc option.");
+    log_notice(LD_CONFIG, "We use pluggable transports but the Extended "
+               "ORPort is disabled. Tor and your pluggable transports proxy "
+               "communicate with each other via the Extended ORPort so it "
+               "is suggested you enable it: it will also allow your Bridge "
+               "to collect statistics about its clients that use pluggable "
+               "transports. Please enable it using the ExtORPort torrc option "
+               "(e.g. set 'ExtORPort auto').");
+
   }
 
   if (options->ConstrainedSockets) {
