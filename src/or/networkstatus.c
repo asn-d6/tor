@@ -885,10 +885,19 @@ update_consensus_networkstatus_fetch_time(time_t now)
 
 /** Return 1 if there's a reason we shouldn't try any directory
  * fetches yet (e.g. we demand bridges and none are yet known).
- * Else return 0. */
+ * Else return 0.
+
+ * If we return 1 and <b>msg_out</b> is provided, set <b>msg_out</b>
+ * to an explanation of why directory fetches are delayed. (If we
+ * return 0, we set msg_out to NULL.)
+ */
 int
 should_delay_dir_fetches(const or_options_t *options, const char **msg_out)
 {
+  if (msg_out) {
+    *msg_out = NULL;
+  }
+
   if (options->UseBridges) {
     if (!any_bridge_descriptors_known()) {
       if (msg_out) {
