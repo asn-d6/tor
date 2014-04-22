@@ -105,7 +105,7 @@ create_managed_proxy_environment(const managed_proxy_t *mp);
 
 static INLINE int proxy_configuration_finished(const managed_proxy_t *mp);
 
-static void report_proxy_stderr(managed_proxy_t *mp);
+static void report_proxy_stderr(const managed_proxy_t *mp);
 
 static void handle_finished_proxy(managed_proxy_t *mp);
 static void parse_method_error(const char *line, int is_server_method);
@@ -660,7 +660,7 @@ configure_proxy(managed_proxy_t *mp)
 /** Report any output from the stderr of managed proxy <b>mp</b>.
  *  Log output, and return nothing. */
 static void
-report_proxy_stderr(managed_proxy_t *mp)
+report_proxy_stderr(const managed_proxy_t *mp)
 {
   enum stream_status err_stream_status = 0;
   smartlist_t *proxy_err_output = NULL;
@@ -668,7 +668,7 @@ report_proxy_stderr(managed_proxy_t *mp)
   proxy_err_output =
     tor_get_lines_from_handle(tor_process_get_stderr_pipe(mp->process_handle),
                               &err_stream_status);
-  if (!proxy_err_output) {
+  if (!proxy_err_output) { /* No output in stderr. Bail. */
     return;
   }
 
@@ -683,8 +683,6 @@ report_proxy_stderr(managed_proxy_t *mp)
            "the standard error stream (stderr) - stderr output follows:",
            mp->argv[0]);
   SMARTLIST_FOREACH_BEGIN(proxy_err_output, const char *, line) {
-    /* Should we expect any output from stderr to contribute to the proxy
-     * config process? (We assume not.) */
     log_info(LD_GENERAL, "Managed proxy '%s' says (over stderr): %s",
              mp->argv[0], escaped(line));
   } SMARTLIST_FOREACH_END(line);

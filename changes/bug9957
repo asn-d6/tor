@@ -1,6 +1,5 @@
-
   o Minor bugfixes (transport proxies):
-    - Have Tor report stderr output of transport proxies to log.
+    - Have Tor log the stderr output of transport proxies.
       Previously we ignored standard error streams of transport proxies.
       This would sometimes cause confusion when they would fail
       prematurely (e.g. obfsproxy tracebacks get dumped to stderr.) We now
