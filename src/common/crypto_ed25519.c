@@ -17,12 +17,33 @@
 
 #include "ed25519/ref10/ed25519_ref10.h"
 
+int
+ed25519_secret_key_generate(ed25519_secret_key_t *seckey_out,
+                        int extra_strong)
+{
+  (void) extra_strong;
+  if (ed25519_ref10_seckey(seckey_out->seckey) < 0)
+    return -1;
+  return 0;
+}
+
+int
+ed25519_public_key_generate(ed25519_public_key_t *pubkey_out,
+                        const ed25519_secret_key_t *seckey)
+{
+  if (ed25519_ref10_pubkey(pubkey_out->pubkey, seckey->seckey) < 0)
+    return -1;
+  return 0;
+}
+
 /** Generate a new ed25519 keypair in <b>keypair_out</b>.  If
  * <b>extra_strong</b> is set, try to mix some system entropy into the key
  * generation process. Return 0 on success, -1 on failure. */
 int
-ed25519_keypair_generate(ed25519_keypair_t *keypair_out)
+ed25519_keypair_generate(ed25519_keypair_t *keypair_out, int extra_strong)
 {
+  (void) extra_strong;
+
   if (ed25519_ref10_keygen(keypair_out->pubkey.pubkey,
                            keypair_out->seckey.seckey)<0)
     return -1;

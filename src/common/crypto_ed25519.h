@@ -33,7 +33,11 @@ typedef struct {
 } ed25519_keypair_t;
 
 #ifdef CURVE25519_ENABLED
-int ed25519_keypair_generate(ed25519_keypair_t *keypair_out);
+int ed25519_secret_key_generate(ed25519_secret_key_t *seckey_out,
+                            int extra_strong);
+int ed25519_public_key_generate(ed25519_public_key_t *pubkey_out,
+                            const ed25519_secret_key_t *seckey);
+int ed25519_keypair_generate(ed25519_keypair_t *keypair_out, int extra_strong);
 int ed25519_sign(ed25519_signature_t *signature_out,
                  const uint8_t *msg, size_t len,
                  const ed25519_keypair_t *key);
