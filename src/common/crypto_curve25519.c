@@ -142,7 +142,8 @@ crypto_write_tagged_contents_to_file(const char *fname,
   int r = -1;
 
   memset(header, 0, sizeof(header));
-  if (tor_snprintf(header, sizeof(header), "== %s: %s ==", typestring, tag) < 0)
+  if (tor_snprintf(header, sizeof(header),
+                   "== %s: %s ==", typestring, tag) < 0)
     goto end;
   ch0.bytes = header;
   ch0.len = 32;
