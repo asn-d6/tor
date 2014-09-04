@@ -1665,7 +1665,7 @@ circuit_launch_by_extend_info(uint8_t purpose,
       uint8_t old_purpose = circ->base_.purpose;
       struct timeval old_timestamp_began = circ->base_.timestamp_began;
 
-      log_info(LD_CIRC,"Cannibalizing circ '%s' for purpose %d (%s)",
+      log_warn(LD_CIRC,"Cannibalizing circ '%s' for purpose %d (%s)",
                build_state_get_exit_nickname(circ->build_state), purpose,
                circuit_purpose_to_string(purpose));
 
@@ -1989,14 +1989,14 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
       if (want_onehop) flags |= CIRCLAUNCH_ONEHOP_TUNNEL;
       if (need_uptime) flags |= CIRCLAUNCH_NEED_UPTIME;
       if (need_internal) flags |= CIRCLAUNCH_IS_INTERNAL;
-      /* yes */
+
+      if (new_circ_purpose == CIRCUIT_PURPOSE_C_ESTABLISH_REND) {
+        log_warn(LD_GENERAL, "About to establish rend, baby.");
+      }
+
       circ = circuit_launch_by_extend_info(new_circ_purpose, extend_info,
                                            flags);
     }
-
-    log_info(LD_REND,"Chose %s as intro point for '%s'.",
-             extend_info_describe(extend_info),
-             safe_str_client(rend_data->onion_address));
 
     extend_info_free(extend_info);
 

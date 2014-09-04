@@ -62,7 +62,7 @@ rend_client_send_establish_rendezvous(origin_circuit_t *circ)
 {
   tor_assert(circ->base_.purpose == CIRCUIT_PURPOSE_C_ESTABLISH_REND);
   tor_assert(circ->rend_data);
-  log_info(LD_REND, "Sending an ESTABLISH_RENDEZVOUS cell");
+  log_warn(LD_REND, "Sending an ESTABLISH_RENDEZVOUS cell for %s", circ->rend_data->onion_address);
 
   if (crypto_rand(circ->rend_data->rend_cookie, REND_COOKIE_LEN) < 0) {
     log_warn(LD_BUG, "Internal error: Couldn't produce random cookie.");

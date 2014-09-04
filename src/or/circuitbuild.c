@@ -1757,7 +1757,7 @@ choose_good_exit_server(uint8_t purpose,
     flags |= CRN_NEED_CAPACITY;
 
   switch (purpose) {
-    case CIRCUIT_PURPOSE_C_GENERAL:
+  case CIRCUIT_PURPOSE_C_GENERAL: /* XXX also add brackets here */
       if (options->AllowInvalid_ & ALLOW_INVALID_MIDDLE)
         flags |= CRN_ALLOW_INVALID;
       if (is_internal) /* pick it like a middle hop */
@@ -1765,10 +1765,19 @@ choose_good_exit_server(uint8_t purpose,
       else
         return choose_good_exit_server_general(need_uptime,need_capacity);
     case CIRCUIT_PURPOSE_C_ESTABLISH_REND:
-      if (options->AllowInvalid_ & ALLOW_INVALID_RENDEZVOUS)
-        flags |= CRN_ALLOW_INVALID;
-      /* this is where the rendezvous point is chosen! */
-      return router_choose_random_node(NULL, options->ExcludeNodes, flags);
+      {
+        const node_t *rendezvous_node = NULL;
+
+        if (options->AllowInvalid_ & ALLOW_INVALID_RENDEZVOUS) {
+          flags |= CRN_ALLOW_INVALID;
+        }
+
+        /* this is where the rendezvous point is chosen! */
+        rendezvous_node = router_choose_random_node(NULL, options->ExcludeNodes, flags);
+        log_warn(LD_GENERAL, "Picked RP: %s", node_describe(rendezvous_node));
+
+        return rendezvous_node;
+      }
   }
   log_warn(LD_BUG,"Unhandled purpose %d", purpose);
   tor_fragile_assert();
