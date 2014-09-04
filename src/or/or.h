@@ -3598,6 +3598,8 @@ typedef struct {
    * circuits.) */
   int Tor2webMode;
 
+  routerset_t *Tor2webRendezvousPoints; /* DOCDOCODOC */
+
   /** Close hidden service client circuits immediately when they reach
    * the normal circuit-build timeout, even if they have already sent
    * an INTRODUCE1 cell on its way to the service. */

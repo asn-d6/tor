@@ -1735,6 +1735,23 @@ choose_good_exit_server_general(int need_uptime, int need_capacity)
   return NULL;
 }
 
+static const node_t *
+pick_rendezvous_node(router_crn_flags_t flags)
+{
+  const or_options_t *options = get_options();
+
+  if (options->AllowInvalid_ & ALLOW_INVALID_RENDEZVOUS)
+    flags |= CRN_ALLOW_INVALID;
+
+  if (options->Tor2webRendezvousPoints) {
+    routerset_get_all_nodes(sl, options->Tor2webRendezvousPoints, NULL, 0);
+  }
+
+  return router_choose_random_node(NULL, options->ExcludeNodes, flags);
+}
+
+
+
 /** Return a pointer to a suitable router to be the exit node for the
  * circuit of purpose <b>purpose</b> that we're about to build (or NULL
  * if no router is suitable).
