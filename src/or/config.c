@@ -407,7 +407,7 @@ static config_var_t option_vars_[] = {
   OBSOLETE("TestVia"),
   V(TokenBucketRefillInterval,   MSEC_INTERVAL, "100 msec"),
   V(Tor2webMode,                 BOOL,     "0"),
-  V(Tor2webRendezvousPoints,      ROUTERSET, NULL);
+  V(Tor2webRendezvousPoints,      ROUTERSET, NULL),
   V(TLSECGroup,                  STRING,   NULL),
   V(TrackHostExits,              CSV,      NULL),
   V(TrackHostExitsExpire,        INTERVAL, "30 minutes"),

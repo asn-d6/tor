@@ -1739,15 +1739,38 @@ static const node_t *
 pick_rendezvous_node(router_crn_flags_t flags)
 {
   const or_options_t *options = get_options();
+  smartlist_t *excluded_rps = NULL;
+  const node_t *rp_node = NULL;
+
+  log_warn(LD_GENERAL, "In!");
 
   if (options->AllowInvalid_ & ALLOW_INVALID_RENDEZVOUS)
     flags |= CRN_ALLOW_INVALID;
 
+  /* XXX see if we need to validate Tor2webRendezvousPoints somehow during config read */
+  /* DOCDOCDOC We want to create a smartlist that contains _all_ Tor
+     nodes except from the ones we actually want to use. Then we
+     pass this smartlist, as "excluded" to router_choose_random_node(). */
+
   if (options->Tor2webRendezvousPoints) {
-    routerset_get_all_nodes(sl, options->Tor2webRendezvousPoints, NULL, 0);
+    excluded_rps = smartlist_new();
+
+    smartlist_t *all_nodes = nodelist_get_list();
+    SMARTLIST_FOREACH_BEGIN(all_nodes, node_t *, node) {
+      /* If node not in RP whitelist, add it to the excluded nodes list. */
+      if (!routerset_contains_node(options->Tor2webRendezvousPoints, node)) {
+          smartlist_add(excluded_rps, node);
+      }
+    } SMARTLIST_FOREACH_END(node);
+    log_warn(LD_GENERAL, "allnodes: %d excluded_rps %d",
+             smartlist_len(all_nodes), smartlist_len(excluded_rps));
   }
 
-  return router_choose_random_node(NULL, options->ExcludeNodes, flags);
+  /* XXX free() all the smartlists */
+  rp_node = router_choose_random_node(excluded_rps, options->ExcludeNodes, flags);
+  log_warn(LD_GENERAL, "Out!");
+
+  return rp_node;
 }
 
 
@@ -1783,14 +1806,9 @@ choose_good_exit_server(uint8_t purpose,
         return choose_good_exit_server_general(need_uptime,need_capacity);
     case CIRCUIT_PURPOSE_C_ESTABLISH_REND:
       {
-        const node_t *rendezvous_node = NULL;
-
-        if (options->AllowInvalid_ & ALLOW_INVALID_RENDEZVOUS) {
-          flags |= CRN_ALLOW_INVALID;
-        }
+        const node_t *rendezvous_node = pick_rendezvous_node(flags);
 
         /* this is where the rendezvous point is chosen! */
-        rendezvous_node = router_choose_random_node(NULL, options->ExcludeNodes, flags);
         log_warn(LD_GENERAL, "Picked RP: %s", node_describe(rendezvous_node));
 
         return rendezvous_node;
