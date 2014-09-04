@@ -1735,45 +1735,65 @@ choose_good_exit_server_general(int need_uptime, int need_capacity)
   return NULL;
 }
 
+/* DOCDOC In the man page of Tor2webRendezvousPoints mention that ExcludeNodes takes preference */
+/* XXX see if we need to validate Tor2webRendezvousPoints somehow during config read */
+/* DOCDOCDOC We want to create a smartlist that contains _all_ Tor
+   nodes except from the ones we actually want to use. Then we
+   pass this smartlist, as "excluded" to router_choose_random_node(). */
+static const node_t *
+pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *options)
+{
+  const node_t *rp_node = NULL;
+  const int allow_invalid = (flags & CRN_ALLOW_INVALID) != 0;
+  const int need_desc = (flags & CRN_NEED_DESC) != 0;
+
+  smartlist_t *white_listed_live_rps = smartlist_new();
+  smartlist_t *all_live_nodes = smartlist_new();
+
+  tor_assert(options->Tor2webRendezvousPoints);
+
+  router_add_running_nodes_to_smartlist(all_live_nodes,
+                                        allow_invalid,
+                                        0, 0, 0,
+                                        need_desc);
+
+  /* Only add alive _and_ whitelisted RPs to 'white_listed_live_rps' */
+  SMARTLIST_FOREACH_BEGIN(all_live_nodes, node_t *, live_node) {
+    if (routerset_contains_node(options->Tor2webRendezvousPoints, live_node)) {
+      smartlist_add(white_listed_live_rps, live_node);
+    }
+  } SMARTLIST_FOREACH_END(live_node);
+
+  /* Honor ExcludeNodes */
+  if (options->ExcludeNodes) {
+    routerset_subtract_nodes(white_listed_live_rps, options->ExcludeNodes);
+  }
+
+  log_warn(LD_GENERAL, "Found %d live whitelisted RPs.", smartlist_len(white_listed_live_rps));
+
+  /* XXX free() all the smartlists */
+
+  /* Pick randomly amongst the whitelisted RPs. No need to waste time
+     doing bandwidth load balancing, for most use cases
+     'white_listed_live_rps' contains a single OR anyway. */
+  rp_node = smartlist_choose(white_listed_live_rps);
+  return rp_node; /* XXX might be NULL */
+}
+
 static const node_t *
 pick_rendezvous_node(router_crn_flags_t flags)
 {
   const or_options_t *options = get_options();
-  smartlist_t *excluded_rps = NULL;
-  const node_t *rp_node = NULL;
-
-  log_warn(LD_GENERAL, "In!");
 
   if (options->AllowInvalid_ & ALLOW_INVALID_RENDEZVOUS)
     flags |= CRN_ALLOW_INVALID;
 
-  /* XXX see if we need to validate Tor2webRendezvousPoints somehow during config read */
-  /* DOCDOCDOC We want to create a smartlist that contains _all_ Tor
-     nodes except from the ones we actually want to use. Then we
-     pass this smartlist, as "excluded" to router_choose_random_node(). */
-
   if (options->Tor2webRendezvousPoints) {
-    excluded_rps = smartlist_new();
-
-    smartlist_t *all_nodes = nodelist_get_list();
-    SMARTLIST_FOREACH_BEGIN(all_nodes, node_t *, node) {
-      /* If node not in RP whitelist, add it to the excluded nodes list. */
-      if (!routerset_contains_node(options->Tor2webRendezvousPoints, node)) {
-          smartlist_add(excluded_rps, node);
-      }
-    } SMARTLIST_FOREACH_END(node);
-    log_warn(LD_GENERAL, "allnodes: %d excluded_rps %d",
-             smartlist_len(all_nodes), smartlist_len(excluded_rps));
+    return pick_tor2web_rendezvous_node(flags, options);
   }
 
-  /* XXX free() all the smartlists */
-  rp_node = router_choose_random_node(excluded_rps, options->ExcludeNodes, flags);
-  log_warn(LD_GENERAL, "Out!");
-
-  return rp_node;
+  return router_choose_random_node(NULL, options->ExcludeNodes, flags);
 }
-
-
 
 /** Return a pointer to a suitable router to be the exit node for the
  * circuit of purpose <b>purpose</b> that we're about to build (or NULL
