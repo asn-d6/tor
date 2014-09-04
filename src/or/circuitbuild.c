@@ -1767,6 +1767,7 @@ choose_good_exit_server(uint8_t purpose,
     case CIRCUIT_PURPOSE_C_ESTABLISH_REND:
       if (options->AllowInvalid_ & ALLOW_INVALID_RENDEZVOUS)
         flags |= CRN_ALLOW_INVALID;
+      /* this is where the rendezvous point is chosen! */
       return router_choose_random_node(NULL, options->ExcludeNodes, flags);
   }
   log_warn(LD_BUG,"Unhandled purpose %d", purpose);
@@ -1873,6 +1874,7 @@ onion_pick_cpath_exit(origin_circuit_t *circ, extend_info_t *exit)
              extend_info_describe(exit));
     exit = extend_info_dup(exit);
   } else { /* we have to decide one */
+    /* here! */
     const node_t *node =
       choose_good_exit_server(circ->base_.purpose, state->need_uptime,
                               state->need_capacity, state->is_internal);

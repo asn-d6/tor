@@ -1987,9 +1987,14 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
       if (want_onehop) flags |= CIRCLAUNCH_ONEHOP_TUNNEL;
       if (need_uptime) flags |= CIRCLAUNCH_NEED_UPTIME;
       if (need_internal) flags |= CIRCLAUNCH_IS_INTERNAL;
+      /* yes */
       circ = circuit_launch_by_extend_info(new_circ_purpose, extend_info,
                                            flags);
     }
+
+    log_info(LD_REND,"Chose %s as intro point for '%s'.",
+             extend_info_describe(extend_info),
+             safe_str_client(rend_data->onion_address));
 
     extend_info_free(extend_info);
 

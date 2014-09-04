@@ -1215,7 +1215,7 @@ choose_random_entry_impl(cpath_build_state_t *state, int for_directory,
       if (node) {
         entry_guards_changed();
         /* XXX we start over here in case the new node we added shares
-         * a family with our exit node. There's a chance that we'll just
+         * a family with our exit node. Thmere's a chance that we'll just
          * load up on entry guards here, if the network we're using is
          * one big family. Perhaps we should teach add_an_entry_guard()
          * to understand nodes-to-avoid-if-possible? -RD */
