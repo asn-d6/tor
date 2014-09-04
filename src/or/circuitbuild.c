@@ -1752,12 +1752,14 @@ pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *optio
 
   tor_assert(options->Tor2webRendezvousPoints);
 
+  /* Add all running nodes to 'all_live_nodes' */
   router_add_running_nodes_to_smartlist(all_live_nodes,
                                         allow_invalid,
                                         0, 0, 0,
                                         need_desc);
 
-  /* Only add alive _and_ whitelisted RPs to 'white_listed_live_rps' */
+  /* Filter 'all_live_nodes' to add live && whitelisted RPs to the
+   *  'white_listed_live_rps' list. */
   SMARTLIST_FOREACH_BEGIN(all_live_nodes, node_t *, live_node) {
     if (routerset_contains_node(options->Tor2webRendezvousPoints, live_node)) {
       smartlist_add(white_listed_live_rps, live_node);
@@ -1773,7 +1775,7 @@ pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *optio
 
   /* XXX free() all the smartlists */
 
-  /* Pick randomly amongst the whitelisted RPs. No need to waste time
+  /* Now pick randomly amongst the whitelisted RPs. No need to waste time
      doing bandwidth load balancing, for most use cases
      'white_listed_live_rps' contains a single OR anyway. */
   rp_node = smartlist_choose(white_listed_live_rps);
@@ -1788,6 +1790,7 @@ pick_rendezvous_node(router_crn_flags_t flags)
   if (options->AllowInvalid_ & ALLOW_INVALID_RENDEZVOUS)
     flags |= CRN_ALLOW_INVALID;
 
+  /* The user wants us to pick specific RPs. */
   if (options->Tor2webRendezvousPoints) {
     return pick_tor2web_rendezvous_node(flags, options);
   }
