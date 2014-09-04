@@ -1647,6 +1647,8 @@ circuit_launch_by_extend_info(uint8_t purpose,
   origin_circuit_t *circ;
   int onehop_tunnel = (flags & CIRCLAUNCH_ONEHOP_TUNNEL) != 0;
 
+  int specific_rp = 1; /* XXX This is to avoid canibalization!!! FIXME */
+
   if (!onehop_tunnel && !router_have_minimum_dir_info()) {
     log_debug(LD_CIRC,"Haven't fetched enough directory info yet; canceling "
               "circuit launch.");
@@ -1654,7 +1656,7 @@ circuit_launch_by_extend_info(uint8_t purpose,
   }
 
   if ((extend_info || purpose != CIRCUIT_PURPOSE_C_GENERAL) &&
-      purpose != CIRCUIT_PURPOSE_TESTING && !onehop_tunnel) {
+      purpose != CIRCUIT_PURPOSE_TESTING && !onehop_tunnel && !specific_rp) {
     /* see if there are appropriate circs available to cannibalize. */
     /* XXX if we're planning to add a hop, perhaps we want to look for
      * internal circs rather than exit circs? -RD */
