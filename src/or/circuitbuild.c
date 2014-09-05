@@ -1779,6 +1779,12 @@ pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *optio
      doing bandwidth load balancing, for most use cases
      'white_listed_live_rps' contains a single OR anyway. */
   rp_node = smartlist_choose(white_listed_live_rps);
+
+  if (!rp_node) { /* XXX fix log domains */
+    log_warn(LD_GENERAL, "Could not find a Rendezvous Point that suits "
+             "the purposes of Tor2webRendezvousPoints.");
+  }
+
   return rp_node; /* XXX might be NULL */
 }
 

@@ -1592,6 +1592,7 @@ circuit_build_failed(origin_circuit_t *circ)
     case CIRCUIT_PURPOSE_C_ESTABLISH_REND:
       /* at Alice, waiting for Bob */
       circuit_increment_failure_count();
+      /* XXX THis is where failures to establish an RP are going. */
       /* Alice will pick a new rend point when this one dies, if
        * the stream in question still cares. No need to act here. */
       break;
