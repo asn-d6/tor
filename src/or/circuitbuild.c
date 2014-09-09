@@ -1825,7 +1825,7 @@ choose_good_exit_server(uint8_t purpose,
     flags |= CRN_NEED_CAPACITY;
 
   switch (purpose) {
-  case CIRCUIT_PURPOSE_C_GENERAL: /* XXX also add brackets here */
+    case CIRCUIT_PURPOSE_C_GENERAL:
       if (options->AllowInvalid_ & ALLOW_INVALID_MIDDLE)
         flags |= CRN_ALLOW_INVALID;
       if (is_internal) /* pick it like a middle hop */
@@ -1946,7 +1946,6 @@ onion_pick_cpath_exit(origin_circuit_t *circ, extend_info_t *exit)
              extend_info_describe(exit));
     exit = extend_info_dup(exit);
   } else { /* we have to decide one */
-    /* here! */
     const node_t *node =
       choose_good_exit_server(circ->base_.purpose, state->need_uptime,
                               state->need_capacity, state->is_internal);
