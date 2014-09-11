@@ -1740,7 +1740,8 @@ choose_good_exit_server_general(int need_uptime, int need_capacity)
  * alive, and return it. Return NULL if no usable RP could be found in
  * Tor2webRendezvousPoints. */
 STATIC const node_t *
-pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *options)
+pick_tor2web_rendezvous_node(router_crn_flags_t flags,
+                             const or_options_t *options)
 {
   const node_t *rp_node = NULL;
   const int allow_invalid = (flags & CRN_ALLOW_INVALID) != 0;

@@ -24,7 +24,7 @@ router_descriptor_is_older_than_replacement(const routerinfo_t *router,
 
 /** Parse a file containing router descriptors and load them to our
     routerlist. This function is used to setup an artificial network
-    so that we can conduct entry guard tests. */
+    so that we can conduct tests on it. */
 void
 helper_setup_fake_routerlist(void)
 {
@@ -47,7 +47,8 @@ helper_setup_fake_routerlist(void)
 
   /* Sanity checking of routerlist and nodelist. */
   our_routerlist = router_get_routerlist();
-  tt_int_op(smartlist_len(our_routerlist->routers), ==, HELPER_NUMBER_OF_DESCRIPTORS);
+  tt_int_op(smartlist_len(our_routerlist->routers), ==,
+              HELPER_NUMBER_OF_DESCRIPTORS);
   routerlist_assert_ok(our_routerlist);
 
   our_nodelist = nodelist_get_list();
@@ -63,3 +64,4 @@ helper_setup_fake_routerlist(void)
  done:
   UNMOCK(router_descriptor_is_older_than);
 }
+
