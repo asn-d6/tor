@@ -1738,7 +1738,7 @@ choose_good_exit_server_general(int need_uptime, int need_capacity)
 /* DOCDOCDOC We want to create a smartlist that contains _all_ Tor
    nodes except from the ones we actually want to use. Then we
    pass this smartlist, as "excluded" to router_choose_random_node(). */
-static const node_t *
+STATIC const node_t *
 pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *options)
 {
   const node_t *rp_node = NULL;
