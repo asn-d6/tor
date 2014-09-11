@@ -3598,7 +3598,8 @@ typedef struct {
    * circuits.) */
   int Tor2webMode;
 
-  routerset_t *Tor2webRendezvousPoints; /* DOCDOCODOC */
+  /** A routerset that should be used when picking RPs for HS circuits. */
+  routerset_t *Tor2webRendezvousPoints;
 
   /** Close hidden service client circuits immediately when they reach
    * the normal circuit-build timeout, even if they have already sent

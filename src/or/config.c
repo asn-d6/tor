@@ -66,6 +66,7 @@ static config_abbrev_t option_abbrevs_[] = {
   PLURAL(ExitNode),
   PLURAL(EntryNode),
   PLURAL(ExcludeNode),
+  PLURAL(Tor2webRendezvousPoint),
   PLURAL(FirewallPort),
   PLURAL(LongLivedPort),
   PLURAL(HiddenServiceNode),
@@ -1245,6 +1246,8 @@ options_need_geoip_info(const or_options_t *options, const char **reason_out)
     routerset_needs_geoip(options->ExcludeExitNodes) ||
     routerset_needs_geoip(options->ExcludeNodes);
 
+  /* XXX Tor2Web and counrty codes? */
+
   if (routerset_usage && reason_out) {
     *reason_out = "We've been configured to use (or avoid) nodes in certain "
       "countries, and we need GEOIP information to figure out which ones they "
@@ -1624,6 +1627,8 @@ options_act(const or_options_t *old_options)
                          options->ExcludeExitNodes) ||
         !routerset_equal(old_options->EntryNodes, options->EntryNodes) ||
         !routerset_equal(old_options->ExitNodes, options->ExitNodes) ||
+        !routerset_equal(old_options->Tor2webRendezvousPoints,
+                         options->Tor2webRendezvousPoints) ||
         options->StrictNodes != old_options->StrictNodes) {
       log_info(LD_CIRC,
                "Changed to using entry guards or bridges, or changed "

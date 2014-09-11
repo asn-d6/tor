@@ -1735,7 +1735,6 @@ choose_good_exit_server_general(int need_uptime, int need_capacity)
   return NULL;
 }
 
-/* XXX see if we need to validate Tor2webRendezvousPoints somehow during config read */
 /* DOCDOCDOC We want to create a smartlist that contains _all_ Tor
    nodes except from the ones we actually want to use. Then we
    pass this smartlist, as "excluded" to router_choose_random_node(). */

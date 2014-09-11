@@ -1592,7 +1592,6 @@ circuit_build_failed(origin_circuit_t *circ)
     case CIRCUIT_PURPOSE_C_ESTABLISH_REND:
       /* at Alice, waiting for Bob */
       circuit_increment_failure_count();
-      /* XXX THis is where failures to establish an RP are going. */
       /* Alice will pick a new rend point when this one dies, if
        * the stream in question still cares. No need to act here. */
       break;
@@ -1647,7 +1646,7 @@ circuit_launch_by_extend_info(uint8_t purpose,
 {
   origin_circuit_t *circ;
   int onehop_tunnel = (flags & CIRCLAUNCH_ONEHOP_TUNNEL) != 0;
-  int need_specific_rp = 0; /* XXX This is to avoid canibalization!!! FIXME */
+  int need_specific_rp = 0;
 
   if (!onehop_tunnel && !router_have_minimum_dir_info()) {
     log_debug(LD_CIRC,"Haven't fetched enough directory info yet; canceling "
