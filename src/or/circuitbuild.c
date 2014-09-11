@@ -1776,9 +1776,9 @@ pick_tor2web_rendezvous_node(router_crn_flags_t flags,
      'whitelisted_live_rps' contains a single OR anyway. */
   rp_node = smartlist_choose(whitelisted_live_rps);
 
-  if (!rp_node) { /* XXX fix log domains */
+  if (!rp_node)
     log_warn(LD_REND, "Could not find a Rendezvous Point that suits "
-             "the purposes of Tor2webRendezvousPoints.");
+             "the purposes of Tor2webRendezvousPoints. Choosing random one.");
   }
 
   smartlist_free(whitelisted_live_rps);
