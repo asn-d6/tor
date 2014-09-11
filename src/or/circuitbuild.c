@@ -1735,10 +1735,6 @@ choose_good_exit_server_general(int need_uptime, int need_capacity)
   return NULL;
 }
 
-/* DOCDOCDOC We want to create a smartlist that contains _all_ Tor
-   nodes except from the ones we actually want to use. Then we
-   pass this smartlist, as "excluded" to router_choose_random_node(). */
-
 /* The config option Tor2webRendezvousPoints has been set and we need
  * to pick an RP out of that set. Make sure that the RP we choose is
  * alive, and return it. Return NULL if no usable RP could be found in
@@ -1776,8 +1772,6 @@ pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *optio
 
   log_warn(LD_GENERAL, "Found %d live whitelisted RPs.", smartlist_len(whitelisted_live_rps));
 
-  /* XXX free() all the smartlists */
-
   /* Now pick randomly amongst the whitelisted RPs. No need to waste time
      doing bandwidth load balancing, for most use cases
      'whitelisted_live_rps' contains a single OR anyway. */
@@ -1788,9 +1782,13 @@ pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *optio
              "the purposes of Tor2webRendezvousPoints.");
   }
 
-  return rp_node; /* XXX might be NULL */
+  smartlist_free(whitelisted_live_rps);
+  smartlist_free(all_live_nodes);
+
+  return rp_node;
 }
 
+/* Pick a Rendezvous Point for our HS circuits according to <b>flags</b>. */
 static const node_t *
 pick_rendezvous_node(router_crn_flags_t flags)
 {

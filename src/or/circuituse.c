@@ -1654,14 +1654,17 @@ circuit_launch_by_extend_info(uint8_t purpose,
     return NULL;
   }
 
-  /* If Tor2webRendezvousPoints is enabled, we want a specific RP
-     node, so we shouldn't canibalize an already existing circuit. */
-  if (get_options()->Tor2webRendezvousPoints) {
+  /* If Tor2webRendezvousPoints is enabled and we are dealing with an
+     RP circuit, we want a specific RP node so we shouldn't canibalize
+     an already existing circuit. */
+  if (get_options()->Tor2webRendezvousPoints &&
+      purpose == CIRCUIT_PURPOSE_C_ESTABLISH_REND) {
     need_specific_rp = 1;
   }
 
   if ((extend_info || purpose != CIRCUIT_PURPOSE_C_GENERAL) &&
-      purpose != CIRCUIT_PURPOSE_TESTING && !onehop_tunnel && !need_specific_rp) {
+      purpose != CIRCUIT_PURPOSE_TESTING &&
+      !onehop_tunnel && !need_specific_rp) {
     /* see if there are appropriate circs available to cannibalize. */
     /* XXX if we're planning to add a hop, perhaps we want to look for
      * internal circs rather than exit circs? -RD */
