@@ -1770,15 +1770,13 @@ pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *optio
     routerset_subtract_nodes(whitelisted_live_rps, options->ExcludeNodes);
   }
 
-  log_warn(LD_GENERAL, "Found %d live whitelisted RPs.", smartlist_len(whitelisted_live_rps));
-
   /* Now pick randomly amongst the whitelisted RPs. No need to waste time
      doing bandwidth load balancing, for most use cases
      'whitelisted_live_rps' contains a single OR anyway. */
   rp_node = smartlist_choose(whitelisted_live_rps);
 
   if (!rp_node) { /* XXX fix log domains */
-    log_warn(LD_GENERAL, "Could not find a Rendezvous Point that suits "
+    log_warn(LD_REND, "Could not find a Rendezvous Point that suits "
              "the purposes of Tor2webRendezvousPoints.");
   }
 
@@ -1840,11 +1838,9 @@ choose_good_exit_server(uint8_t purpose,
         return choose_good_exit_server_general(need_uptime,need_capacity);
     case CIRCUIT_PURPOSE_C_ESTABLISH_REND:
       {
+        /* Pick a new RP */
         const node_t *rendezvous_node = pick_rendezvous_node(flags);
-
-        /* this is where the rendezvous point is chosen! */
-        log_warn(LD_GENERAL, "Picked RP: %s", node_describe(rendezvous_node));
-
+        log_info(LD_REND, "Picked new RP: %s", node_describe(rendezvous_node));
         return rendezvous_node;
       }
   }
