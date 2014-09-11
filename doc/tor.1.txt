@@ -1335,8 +1335,8 @@ The following options are useful only for clients (that is, if
     which means that nodes specified in ExcludeNodes will not be
     picked as RPs.
  +
-    If all the nodes in Tor2webRendezvousPoints are currently
-    unavailable, Tor will refuse to connect to Hidden Services.
+    If no nodes in Tor2webRendezvousPoints are currently available for
+    use, Tor will choose a random node when building HS circuits.
 
 [[UseMicrodescriptors]] **UseMicrodescriptors** **0**|**1**|**auto**::
     Microdescriptors are a smaller version of the information that Tor needs

@@ -1244,9 +1244,8 @@ options_need_geoip_info(const or_options_t *options, const char **reason_out)
     routerset_needs_geoip(options->EntryNodes) ||
     routerset_needs_geoip(options->ExitNodes) ||
     routerset_needs_geoip(options->ExcludeExitNodes) ||
-    routerset_needs_geoip(options->ExcludeNodes);
-
-  /* XXX Tor2Web and counrty codes? */
+    routerset_needs_geoip(options->ExcludeNodes) ||
+    routerset_needs_geoip(options->Tor2webRendezvousPoints);
 
   if (routerset_usage && reason_out) {
     *reason_out = "We've been configured to use (or avoid) nodes in certain "

@@ -1801,7 +1801,11 @@ pick_rendezvous_node(router_crn_flags_t flags)
 
   /* The user wants us to pick specific RPs. */
   if (options->Tor2webRendezvousPoints) {
-    return pick_tor2web_rendezvous_node(flags, options);
+    const node_t *tor2web_rp = pick_tor2web_rendezvous_node(flags, options);
+    if (tor2web_rp) {
+      return tor2web_rp;
+    }
+    /* Else, if no tor2web RP was found, fall back to choosing a random node */
   }
 
   return router_choose_random_node(NULL, options->ExcludeNodes, flags);
