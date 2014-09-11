@@ -2964,6 +2964,10 @@ options_validate(or_options_t *old_options, or_options_t *options,
     options->UseEntryGuards = 0;
   }
 
+  if (options->Tor2webRendezvousPoints && !options->Tor2webMode) {
+    REJECT("Tor2webRendezvousPoints cannot be set without Tor2webMode.");
+  }
+
   if (!(options->UseEntryGuards) &&
       (options->RendConfigLines != NULL)) {
     log_warn(LD_CONFIG,

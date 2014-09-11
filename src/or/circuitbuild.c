@@ -1738,6 +1738,11 @@ choose_good_exit_server_general(int need_uptime, int need_capacity)
 /* DOCDOCDOC We want to create a smartlist that contains _all_ Tor
    nodes except from the ones we actually want to use. Then we
    pass this smartlist, as "excluded" to router_choose_random_node(). */
+
+/* The config option Tor2webRendezvousPoints has been set and we need
+ * to pick an RP out of that set. Make sure that the RP we choose is
+ * alive, and return it. Return NULL if no usable RP could be found in
+ * Tor2webRendezvousPoints. */
 STATIC const node_t *
 pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *options)
 {
@@ -1745,38 +1750,38 @@ pick_tor2web_rendezvous_node(router_crn_flags_t flags, const or_options_t *optio
   const int allow_invalid = (flags & CRN_ALLOW_INVALID) != 0;
   const int need_desc = (flags & CRN_NEED_DESC) != 0;
 
-  smartlist_t *white_listed_live_rps = smartlist_new();
+  smartlist_t *whitelisted_live_rps = smartlist_new();
   smartlist_t *all_live_nodes = smartlist_new();
 
   tor_assert(options->Tor2webRendezvousPoints);
 
-  /* Add all running nodes to 'all_live_nodes' */
+  /* Add all running nodes to all_live_nodes */
   router_add_running_nodes_to_smartlist(all_live_nodes,
                                         allow_invalid,
                                         0, 0, 0,
                                         need_desc);
 
-  /* Filter 'all_live_nodes' to add live && whitelisted RPs to the
-   *  'white_listed_live_rps' list. */
+  /* Filter all_live_nodes to only add live *and* whitelisted RPs to
+   * the list whitelisted_live_rps. */
   SMARTLIST_FOREACH_BEGIN(all_live_nodes, node_t *, live_node) {
     if (routerset_contains_node(options->Tor2webRendezvousPoints, live_node)) {
-      smartlist_add(white_listed_live_rps, live_node);
+      smartlist_add(whitelisted_live_rps, live_node);
     }
   } SMARTLIST_FOREACH_END(live_node);
 
   /* Honor ExcludeNodes */
   if (options->ExcludeNodes) {
-    routerset_subtract_nodes(white_listed_live_rps, options->ExcludeNodes);
+    routerset_subtract_nodes(whitelisted_live_rps, options->ExcludeNodes);
   }
 
-  log_warn(LD_GENERAL, "Found %d live whitelisted RPs.", smartlist_len(white_listed_live_rps));
+  log_warn(LD_GENERAL, "Found %d live whitelisted RPs.", smartlist_len(whitelisted_live_rps));
 
   /* XXX free() all the smartlists */
 
   /* Now pick randomly amongst the whitelisted RPs. No need to waste time
      doing bandwidth load balancing, for most use cases
-     'white_listed_live_rps' contains a single OR anyway. */
-  rp_node = smartlist_choose(white_listed_live_rps);
+     'whitelisted_live_rps' contains a single OR anyway. */
+  rp_node = smartlist_choose(whitelisted_live_rps);
 
   if (!rp_node) { /* XXX fix log domains */
     log_warn(LD_GENERAL, "Could not find a Rendezvous Point that suits "
