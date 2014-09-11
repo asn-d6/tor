@@ -1997,7 +1997,6 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
       if (want_onehop) flags |= CIRCLAUNCH_ONEHOP_TUNNEL;
       if (need_uptime) flags |= CIRCLAUNCH_NEED_UPTIME;
       if (need_internal) flags |= CIRCLAUNCH_IS_INTERNAL;
-
       circ = circuit_launch_by_extend_info(new_circ_purpose, extend_info,
                                            flags);
     }
