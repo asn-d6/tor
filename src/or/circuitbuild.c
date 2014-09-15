@@ -1776,7 +1776,7 @@ pick_tor2web_rendezvous_node(router_crn_flags_t flags,
      'whitelisted_live_rps' contains a single OR anyway. */
   rp_node = smartlist_choose(whitelisted_live_rps);
 
-  if (!rp_node)
+  if (!rp_node) {
     log_warn(LD_REND, "Could not find a Rendezvous Point that suits "
              "the purposes of Tor2webRendezvousPoints. Choosing random one.");
   }
@@ -1841,7 +1841,7 @@ choose_good_exit_server(uint8_t purpose,
       {
         /* Pick a new RP */
         const node_t *rendezvous_node = pick_rendezvous_node(flags);
-        log_info(LD_REND, "Picked new RP: %s", node_describe(rendezvous_node));
+        log_warn(LD_REND, "Picked new RP: %s", node_describe(rendezvous_node));
         return rendezvous_node;
       }
   }
