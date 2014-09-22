@@ -127,6 +127,7 @@ test_hs_desc_event(void *arg)
   tor_free(received_msg);
 }
 
+#ifdef NON_ANONYMOUS_MODE_ENABLED
 /* Make sure we always pick the right RP, given a well formatted
  * Tor2webRendezvousPoints value. */
 static void
@@ -195,15 +196,20 @@ test_pick_bad_tor2web_rendezvous_node(void *arg)
  done:
   routerset_free(options->Tor2webRendezvousPoints);
 }
+#endif
 
 struct testcase_t hs_tests[] = {
   { "hs_desc_event", test_hs_desc_event, TT_FORK,
     NULL, NULL },
+
+#ifdef NON_ANONYMOUS_MODE_ENABLED
   { "pick_tor2web_rendezvous_node", test_pick_tor2web_rendezvous_node, TT_FORK,
     NULL, NULL },
   { "pick_bad_tor2web_rendezvous_node",
     test_pick_bad_tor2web_rendezvous_node, TT_FORK,
     NULL, NULL },
+#endif
+
   END_OF_TESTCASES
 };
 

@@ -1654,6 +1654,7 @@ circuit_launch_by_extend_info(uint8_t purpose,
     return NULL;
   }
 
+#ifdef NON_ANONYMOUS_MODE_ENABLED
   /* If Tor2webRendezvousPoints is enabled and we are dealing with an
      RP circuit, we want a specific RP node so we shouldn't canibalize
      an already existing circuit. */
@@ -1661,6 +1662,7 @@ circuit_launch_by_extend_info(uint8_t purpose,
       purpose == CIRCUIT_PURPOSE_C_ESTABLISH_REND) {
     need_specific_rp = 1;
   }
+#endif
 
   if ((extend_info || purpose != CIRCUIT_PURPOSE_C_GENERAL) &&
       purpose != CIRCUIT_PURPOSE_TESTING &&
