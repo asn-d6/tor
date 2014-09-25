@@ -10,6 +10,8 @@ crypto_sign_seckey(unsigned char *sk)
 {
   unsigned char seed[32];
 
+  /* ASN_REVIEW: no retval check for randombytes() and
+     crypto_strongest_rand can return -1. */
   randombytes(seed,32);
 
   crypto_sign_seckey_expand(sk, seed);

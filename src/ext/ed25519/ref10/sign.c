@@ -1,3 +1,5 @@
+/* ASN_REVIEW: Add "Modified by Tor?" header? */
+
 #include <string.h>
 #include "crypto_sign.h"
 #include "crypto_hash_sha512.h"

@@ -19,6 +19,10 @@ int crypto_sign_open(
   ge_p3 A;
   ge_p2 R;
 
+  /* ASN_REVIEW: Commit 27f423bca690d42ba6ee1523a3c2a37aa498087f
+     removed a length check here. Was that intended? If yes, I think
+     it should be documented that 'signature' is at least 64 bytes
+     long. */
   if (signature[63] & 224) goto badsig;
   if (ge_frombytes_negate_vartime(&A,pk) != 0) goto badsig;
 

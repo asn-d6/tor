@@ -159,7 +159,8 @@ crypto_write_tagged_contents_to_file(const char *fname,
   return r;
 }
 
-/** DOCDOC */
+/** ASN_REVIEW: Would be nice to document functions like this. Not
+    sure what tags refers to. */
 ssize_t
 crypto_read_tagged_contents_from_file(const char *fname,
                                       const char *typestring,

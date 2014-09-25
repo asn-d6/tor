@@ -3,6 +3,8 @@
 #define crypto_hash_sha512(out, inp, len) \
   SHA512((inp), (len), (out))
 
+/* ASN_REVIEW Documentation here would be nice too, even though it's
+   not too hard to figure out what's happening. */
 #define crypto_hash_sha512_2(out, inp1, len1, inp2, len2)               \
   do {                                                                  \
       SHA512_CTX sha_ctx_;                                              \

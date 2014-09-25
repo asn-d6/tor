@@ -137,6 +137,7 @@ ed25519_checksig_batch(int *okay_out,
       okay_out[i] = (r == 0);
   }
 
+  /* ASN_REVIEW: Hm. I see dead code. Document it? Or maybe delete it? */
 #if 0
   const uint8_t **ms;
   size_t *lens;

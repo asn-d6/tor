@@ -40,6 +40,8 @@ int ed25519_ref10_derive_secret_key(unsigned char *out,
   return 0;
 }
 
+/* ASN_REVIEW: Is this function specific to blinding (I think so)?
+   Maybe it should be named accordingly. */
 int ed25519_ref10_derive_public_key(unsigned char *out,
                               const unsigned char *inp,
                               const unsigned char *param)
@@ -57,6 +59,9 @@ int ed25519_ref10_derive_public_key(unsigned char *out,
    * better-suited primitives to work with here... (but I don't wish that so
    * strongly that I'm about to code my own ge_scalarmult_vartime). */
 
+  /* ASN_REVIEW: Why the double negation? Is it because there is no
+     simple ge_frombytes()? Maybe documenting why this is done would
+     be helpful. */
   /* We negate the public key first, so that we can pass it to
    * frombytes_negate_vartime, which negates it again. */
   memcpy(pkcopy, inp, 32);
@@ -69,6 +74,10 @@ int ed25519_ref10_derive_public_key(unsigned char *out,
   memwipe(tweak, 0, sizeof(tweak));
   memwipe(&A, 0, sizeof(A));
   memwipe(&Aprime, 0, sizeof(Aprime));
+  /* ASN_REVIEW: Maybe you want to give 'pkcopy' instead of its
+     address here? That's the style used in the other memwipe()s at
+     least. I think it doesn't matter though, because it's an array on
+     the stack and &pkcopy == pkcopy.  */
   memwipe(&pkcopy, 0, sizeof(pkcopy));
 
   return 0;
