@@ -9,6 +9,8 @@
  * \brief Code to parse and validate router descriptors and directories.
  **/
 
+#define ROUTERPARSE_PRIVATE
+
 #include "or.h"
 #include "config.h"
 #include "circuitstats.h"
@@ -1792,6 +1794,84 @@ find_start_of_next_routerstatus(const char *s)
     return eos;
 }
 
+/* Return 1 if the vote_routerstatus_t represents a guard
+ * node. Otherwise, return 0. */
+static int
+vote_routerstatus_is_a_guard(const vote_routerstatus_t *vote_rs,
+                             networkstatus_t *vote)
+{
+  int guard_idx;
+
+  tor_assert(vote_rs);
+  tor_assert(vote);
+
+  /* find the guard flag index in the known flags bitmap */
+  guard_idx = smartlist_string_pos(vote->known_flags, "Guard");
+  if (guard_idx < 0) {
+    log_warn(LD_BUG, "Guard flag not found in known flags.");
+    return 0;
+  }
+
+  /* peek into the bitmap and check for the correct index */
+  return (vote_rs->flags & (U64_LITERAL(1) << guard_idx)) != 0;
+}
+
+/** Parse the GuardFraction string from a consensus or vote.
+ *
+ *  If <b>vote</b> or <b>vote_rs</b> are set the document getting
+ *  parsed is a vote routerstatus. Otherwise it's a consensus. This is
+ *  the same semantic as in routerstatus_parse_entry_from_string(). */
+STATIC int
+routerstatus_parse_guardfraction(const char *guardfraction_str,
+                                 networkstatus_t *vote,
+                                 vote_routerstatus_t *vote_rs,
+                                 routerstatus_t *rs)
+{
+  /* Here we parse guardfraction from votes or consensuses. */
+  int should_apply_guardfraction = 1;
+  int ok;
+  uint32_t guardfraction;
+
+  tor_assert(bool_eq(vote, vote_rs));
+
+  guardfraction = (uint32_t)tor_parse_ulong(strchr(guardfraction_str, '=')+1,
+                                         10, 0, 100, &ok, NULL);
+  if (!ok) {
+    log_warn(LD_DIR, "Invalid GuardFraction %s", escaped(guardfraction_str));
+    return -1;
+  }
+
+  log_warn(LD_GENERAL, "[*] Parsed %s guardfraction '%s' for '%s'.",
+           vote_rs ? "vote" : "consensus",
+           guardfraction_str, rs->nickname);
+
+  /* Only apply GuardFraction to guard nodes. */
+  if  (vote && !vote_routerstatus_is_a_guard(vote_rs, vote)) {
+    should_apply_guardfraction = 0;
+  }
+  if (!vote && !rs->is_possible_guard) {
+    should_apply_guardfraction = 0;
+  }
+
+  if (!should_apply_guardfraction) {
+    log_warn(LD_BUG, "Found GuardFraction for non-guard %s in %s. "
+             "This is not supposed to happen. Not applying. ",
+             rs->nickname, vote ? "vote" : "consensus");
+  }
+
+  if (should_apply_guardfraction) {
+    if (vote_rs) { /* We are parsing a vote */
+      vote_rs->guardfraction_percentage = guardfraction;
+      vote_rs->has_measured_guardfraction = 1;
+    } else { /* we are parsing a consensus */
+      rs->guardfraction_percentage = guardfraction;
+      rs->has_guardfraction = 1;
+    }
+  }
+
+  return 0;
+}
+
 /** Given a string at *<b>s</b>, containing a routerstatus object, and an
  * empty smartlist at <b>tokens</b>, parse and return the first router status
  * object in the string, and advance *<b>s</b> to just after the end of the
@@ -1994,6 +2074,11 @@ routerstatus_parse_entry_from_string(memarea_t *area,
         vote->has_measured_bws = 1;
       } else if (!strcmpstart(tok->args[i], "Unmeasured=1")) {
         rs->bw_is_unmeasured = 1;
+      } else if (!strcmpstart(tok->args[i], "GuardFraction=")) {
+        if (routerstatus_parse_guardfraction(tok->args[i],
+                                             vote, vote_rs, rs) < 0) {
+          goto err;
+        }
       }
     }
   }
