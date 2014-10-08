@@ -1694,6 +1694,53 @@ getinfo_helper_entry_guards(control_connection_t *conn,
   return 0;
 }
 
+/* Given the original bandwidth of a guard and its guardfraction,
+ * calculate how much bandwidth the guard should have as a guard and
+ * as a non-guard.
+ *
+ * Quoting from proposal236:
+ *
+ *   Let Wpf denote the weight from the 'bandwidth-weights' line a
+ *   client would apply to N for position p if it had the guard
+ *   flag, Wpn the weight if it did not have the guard flag, and B the
+ *   measured bandwidth of N in the consensus.  Then instead of choosing
+ *   N for position p proportionally to Wpf*B or Wpn*B, clients should
+ *   choose N proportionally to F*Wpf*B + (1-F)*Wpn*B.
+ *
+ * This function sets <b>guard_bw</b> to F*B and <b>non_guard_bw</b>
+ * to (1-F)*B.
+ *
+ * Allocates and returns a guardfraction_bandwidth_t object with the
+ * information above. It's up to the caller to free the allocated
+ * memory.
+ */
+guardfraction_bandwidth_t *
+guard_get_guardfraction_bandwidth(int orig_bandwidth,
+                               uint32_t guardfraction_percentage)
+{
+  double guardfraction_fraction;
+  guardfraction_bandwidth_t *guardfraction_bw;
+  guardfraction_bw = tor_malloc(sizeof(guardfraction_bandwidth_t));
+
+  /* Turn the percentage into a fraction. */
+  tor_assert(guardfraction_percentage <= 100);
+  guardfraction_fraction = guardfraction_percentage / 100.0;
+
+  /* XXX Should we cast to int or ceil/floor this? */
+  guardfraction_bw->guard_bw = (int) (guardfraction_fraction * orig_bandwidth);
+
+  guardfraction_bw->non_guard_bw =
+    (int) ((1 - guardfraction_fraction) * orig_bandwidth);
+
+  /* XXX There is also an invariant here, namely:
+   *       guard_bw + non_guard_bw = orig_bandwidth
+   *     but I'm not smart enough to assert and guarantee that the
+   *     floating point division and integer casting will always work
+   *     properly.  */
+
+  return guardfraction_bw;
+}
+
 /** A list of configured bridges. Whenever we actually get a descriptor
  * for one, we add it as an entry guard.  Note that the order of bridges
  * in this list does not necessarily correspond to the order of bridges
