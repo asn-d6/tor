@@ -1922,6 +1922,14 @@ routerstatus_format_entry(const routerstatus_t *rs, const char *version,
       smartlist_add_asprintf(chunks,
                        " Measured=%d", vrs->measured_bw_kb);
     }
+    /* Write down guardfraction information if we have it. */
+    if (format == NS_V3_VOTE && vrs && vrs->has_measured_guardfraction) {
+      tor_assert(vrs->status.is_possible_guard);
+      smartlist_add_asprintf(chunks,
+                             " GuardFraction=%d",
+                             vrs->guardfraction_percentage);
+    }
+
     smartlist_add(chunks, tor_strdup("\n"));
 
     if (desc) {
