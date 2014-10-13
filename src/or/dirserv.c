@@ -2203,11 +2203,13 @@ guardfraction_line_apply(const char *guard_id,
  * * 1 if the line was proper and its information got registered.
  * * 0 if the line was proper but no currently active guard was found
  *     to register the guardfraction information to.
- * * -1 if the line could not be parsed.
+ * * -1 if the line could not be parsed and set <b>err_msg</b> to a
+      newly allocated string containing the error message.
  */
 static int
 guardfraction_file_parse_guard_line(const char *guard_line,
-                                 smartlist_t *vote_routerstatuses)
+                                    smartlist_t *vote_routerstatuses,
+                                    char **err_msg)
 {
   char guard_id[DIGEST_LEN];
   uint32_t guardfraction;
@@ -2217,19 +2219,21 @@ guardfraction_file_parse_guard_line(const char *guard_line,
   smartlist_t *sl = smartlist_new();
   int retval = -1;
 
+  tor_assert(err_msg);
+
   /* guard_line should contain something like this:
      <hex digest> <guardfraction> <appearances> */
   smartlist_split_string(sl, guard_line, " ",
                          SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 3);
   if (smartlist_len(sl) < 3) {
-    log_warn(LD_CONFIG, "Guardfraction: bad line '%s'", guard_line);
+    tor_asprintf(err_msg, "bad line '%s'", guard_line);
     goto done;
   }
 
   inputs_tmp = smartlist_get(sl, 0);
   if (strlen(inputs_tmp) != HEX_DIGEST_LEN ||
       base16_decode(guard_id, DIGEST_LEN, inputs_tmp, HEX_DIGEST_LEN)) {
-    log_warn(LD_CONFIG, "Guardfraction: bad digest '%s'", inputs_tmp);
+    tor_asprintf(err_msg, "bad digest '%s'", inputs_tmp);
     goto done;
   }
 
@@ -2238,7 +2242,7 @@ guardfraction_file_parse_guard_line(const char *guard_line,
   guardfraction =
     (uint32_t) tor_parse_long(inputs_tmp, 10, 0, 100, &num_ok, NULL);
   if (!num_ok) {
-    log_warn(LD_CONFIG,"Guardfraction: wrong percentage '%s'", inputs_tmp);
+    tor_asprintf(err_msg, "wrong percentage '%s'", inputs_tmp);
     goto done;
   }
 
@@ -2292,6 +2296,7 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
   int num_ok = 1;
   int ret_tmp;
   int retval = -1;
+  int current_line_n = 1; /* line counter for better log messages */
   smartlist_t *sl = smartlist_new();
 
   /* Guardfraction info to be parsed */
@@ -2338,6 +2343,8 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
   }
 
   line = line->next; /* move to next line */
+  current_line_n++;
+
   if (!line) {
     log_warn(LD_CONFIG, "Guardfraction: cut short before %s",
              GUARDFRACTION_INPUTS);
@@ -2383,20 +2390,27 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
     smartlist_sort(vote_routerstatuses, compare_vote_routerstatus_entries);
 
   line = line->next; /* move to next line */
+  current_line_n++;
 
   /* Now loop over all the guard lines and calculate their guardfraction.
    * Guard lines look like this:
    *  guard-seen <hex digest> <guardfraction> <appearances>               */
   for (; line; line=line->next) {
+    char *err_msg = NULL;
+
     if (strcmp(line->key, GUARDFRACTION_GUARD)) {
-      log_warn(LD_CONFIG, "Guardfraction: got '%s' instead of '%s'",
-               line->key, GUARDFRACTION_GUARD);
+      log_warn(LD_CONFIG, "Guardfraction (line %d): got '%s' instead of '%s'",
+               current_line_n, line->key, GUARDFRACTION_GUARD);
       goto done;
     }
 
     ret_tmp = guardfraction_file_parse_guard_line(line->value,
-                                                  vote_routerstatuses);
+                                                  vote_routerstatuses,
+                                                  &err_msg);
     if (ret_tmp < 0) { /* failed while parsing the guard line */
+      log_warn(LD_CONFIG, "Guardfraction (line %d): %s",
+               current_line_n, err_msg);
+      tor_free(err_msg);
       goto done;
     }
 
@@ -2405,6 +2419,7 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
     if (ret_tmp > 0) {
       guards_applied_n++;
     }
+    current_line_n++;
   }
 
   retval = 0;
