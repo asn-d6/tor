@@ -1721,17 +1721,10 @@ guard_get_guardfraction_bandwidth(guardfraction_bandwidth_t *guardfraction_bw,
   tor_assert(guardfraction_percentage <= 100);
   guardfraction_fraction = guardfraction_percentage / 100.0;
 
-  /* XXX Should we cast to int or ceil/floor this? */
   guardfraction_bw->guard_bw = (int) (guardfraction_fraction * orig_bandwidth);
 
   guardfraction_bw->non_guard_bw =
     (int) ((1 - guardfraction_fraction) * orig_bandwidth);
-
-  /* XXX There is also an invariant here, namely:
-   *       guard_bw + non_guard_bw = orig_bandwidth
-   *     but I'm not smart enough to assert and guarantee that the
-   *     floating point division and integer casting will always work
-   *     properly.  */
 }
 
 /** A list of configured bridges. Whenever we actually get a descriptor
