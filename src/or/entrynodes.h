@@ -169,8 +169,9 @@ typedef struct guardfraction_bandwidth_t {
   int non_guard_bw;
 } guardfraction_bandwidth_t;
 
-guardfraction_bandwidth_t *
-guard_get_guardfraction_bandwidth(int orig_bandwidth,
+void
+guard_get_guardfraction_bandwidth(guardfraction_bandwidth_t *guardfraction_bw,
+                                  int orig_bandwidth,
                                   uint32_t guardfraction_percentage);
 
 #endif
