@@ -2382,12 +2382,12 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
       if (parse_iso_time(line->value, &file_written_at) < 0) {
         log_warn(LD_CONFIG, "Guardfraction:%d: Bad date '%s'. Ignoring",
                  current_line_n, line->value);
-        continue;
+        goto done; /* don't tolerate failure here. */
       }
       if (file_written_at < now - MAX_GUARDFRACTION_FILE_AGE) {
         log_warn(LD_CONFIG, "Guardfraction:%d: was written very long ago '%s'",
                  current_line_n, line->value);
-        goto done; /* XXX */
+        goto done; /* don't tolerate failure here. */
       }
     } else if (!strcmp(line->key, GUARDFRACTION_INPUTS)) {
       char *err_msg = NULL;
@@ -2437,7 +2437,11 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
  done:
   config_free_lines(front);
 
-  return retval;
+  if (retval < 0) {
+    return retval;
+  } else {
+    return guards_read_n;
+  }
 }
 
 /** Read a guardfraction file at <b>fname</b> and load all its

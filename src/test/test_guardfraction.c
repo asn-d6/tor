@@ -76,7 +76,7 @@ test_parse_guardfraction_file_bad(void *arg)
 
   /* Start parsing all those corrupted guardfraction files! */
 
-  /* This one does not have a date! */
+  /* This one does not have a date! Parsing should fail. */
   tor_asprintf(&guardfraction_bad,
                "written-at not_date\n"
                "n-inputs 420 3\n"
@@ -87,37 +87,17 @@ test_parse_guardfraction_file_bad(void *arg)
   tt_int_op(retval, ==, -1);
   tor_free(guardfraction_bad);
 
-  /* This one has an incomplete n-inputs line! */
+  /* This one has an incomplete n-inputs line, but parsing should
+     still continue. */
   tor_asprintf(&guardfraction_bad,
                "written-at %s\n"
-               "n-inputs 420\n"
+               "n-inputs biggie\n"
                "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 100 420\n"
                "guard-seen 07B5547026DF3E229806E135CFA8552D56AFBABC 5 420\n",
                yesterday_date_str);
 
   retval = dirserv_read_guardfraction_file_from_str(guardfraction_bad, NULL);
-  tt_int_op(retval, ==, -1);
-  tor_free(guardfraction_bad);
-
-  /* This one has a corrupted n-inputs line. */
-  tor_asprintf(&guardfraction_bad,
-               "written-at %s\n"
-               "n-inputs 420 biggie\n"
-               "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 100 420\n"
-               "guard-seen 07B5547026DF3E229806E135CFA8552D56AFBABC 5 420\n",
-               yesterday_date_str);
-
-  retval = dirserv_read_guardfraction_file_from_str(guardfraction_bad, NULL);
-  tt_int_op(retval, ==, -1);
-  tor_free(guardfraction_bad);
-
-  /* And this one is terribly incomplete. */
-  tor_asprintf(&guardfraction_bad,
-               "written-at %s\n",
-               yesterday_date_str);
-
-  retval = dirserv_read_guardfraction_file_from_str(guardfraction_bad, NULL);
-  tt_int_op(retval, ==, -1);
+  tt_int_op(retval, ==, 2);
   tor_free(guardfraction_bad);
 
   /* This one does not have a fingerprint in the guard line! */
@@ -127,19 +107,18 @@ test_parse_guardfraction_file_bad(void *arg)
                yesterday_date_str);
 
   retval = dirserv_read_guardfraction_file_from_str(guardfraction_bad, NULL);
-  tt_int_op(retval, ==, -1);
+  tt_int_op(retval, ==, 0);
   tor_free(guardfraction_bad);
 
   /* This one does not even have an integer guardfraction value. */
   tor_asprintf(&guardfraction_bad, "written-at %s\n"
-               "written-at 2014-09-01 22:26:43.116692\n"
                "n-inputs 420 3\n"
                "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 NaN 420\n"
                "guard-seen 07B5547026DF3E229806E135CFA8552D56AFBABC 5 420\n",
                yesterday_date_str);
 
   retval = dirserv_read_guardfraction_file_from_str(guardfraction_bad, NULL);
-  tt_int_op(retval, ==, -1);
+  tt_int_op(retval, ==, 1);
   tor_free(guardfraction_bad);
 
   /* This one is not a percentage (not in [0, 100]) */
@@ -150,18 +129,17 @@ test_parse_guardfraction_file_bad(void *arg)
                yesterday_date_str);
 
   retval = dirserv_read_guardfraction_file_from_str(guardfraction_bad, NULL);
-  tt_int_op(retval, ==, -1);
+  tt_int_op(retval, ==, 1);
   tor_free(guardfraction_bad);
 
   /* This one is not a percentage either (not in [0, 100]) */
   tor_asprintf(&guardfraction_bad, "written-at %s\n"
                "n-inputs 420 3\n"
-               "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 -3 420\n"
-               "guard-seen 07B5547026DF3E229806E135CFA8552D56AFBABC 5 420\n",
+               "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 -3 420\n",
                yesterday_date_str);
 
   retval = dirserv_read_guardfraction_file_from_str(guardfraction_bad, NULL);
-  tt_int_op(retval, ==, -1);
+  tt_int_op(retval, ==, 0);
 
  done:
   tor_free(guardfraction_bad);
@@ -220,7 +198,7 @@ test_parse_guardfraction_file_good(void *arg)
   /* Read the guardfraction file */
   retval = dirserv_read_guardfraction_file_from_str(guardfraction_good,
                                                     routerstatuses);
-  tt_int_op(retval, ==, 0);
+  tt_int_op(retval, ==, 2);
 
   { /* Test that routerstatus fields got filled properly */
 
