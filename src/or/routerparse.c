@@ -1827,14 +1827,19 @@ routerstatus_parse_guardfraction(const char *guardfraction_str,
                                  vote_routerstatus_t *vote_rs,
                                  routerstatus_t *rs)
 {
-  /* Here we parse guardfraction from votes or consensuses. */
   int should_apply_guardfraction = 1;
   int ok;
+  const char *end_of_header = NULL;
   uint32_t guardfraction;
 
   tor_assert(bool_eq(vote, vote_rs));
 
-  guardfraction = (uint32_t)tor_parse_ulong(strchr(guardfraction_str, '=')+1,
+  end_of_header = strchr(guardfraction_str, '=');
+  if (!end_of_header) {
+    return -1;
+  }
+
+  guardfraction = (uint32_t)tor_parse_ulong(end_of_header+1,
                                          10, 0, 100, &ok, NULL);
   if (!ok) {
     log_warn(LD_DIR, "Invalid GuardFraction %s", escaped(guardfraction_str));
