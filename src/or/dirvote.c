@@ -1042,19 +1042,16 @@ update_total_bandwidth_weights(const routerstatus_t *rs,
    * In this block of code, we set default_bandwidth to F*B and
    * guardfraction_bandwidth to (1-F)*B. */
   if (rs->has_guardfraction) {
-    guardfraction_bandwidth_t *guardfraction_bw;
+    guardfraction_bandwidth_t guardfraction_bw;
 
     tor_assert(is_guard);
 
-    guardfraction_bw =
-      guard_get_guardfraction_bandwidth(rs->bandwidth_kb,
-                                        rs->guardfraction_percentage);
-    tor_assert(guardfraction_bw);
+    guard_get_guardfraction_bandwidth(&guardfraction_bw,
+                                      rs->bandwidth_kb,
+                                      rs->guardfraction_percentage);
 
-    default_bandwidth = guardfraction_bw->guard_bw;
-    guardfraction_bandwidth = guardfraction_bw->non_guard_bw;
-
-    tor_free(guardfraction_bw);
+    default_bandwidth = guardfraction_bw.guard_bw;
+    guardfraction_bandwidth = guardfraction_bw.non_guard_bw;
   }
 
   /* Now calculate the total bandwidth weights with or without guardfraction.*/

@@ -2003,6 +2003,7 @@ compute_weighted_bandwidths(const smartlist_t *sl,
   double Wg = -1, Wm = -1, We = -1, Wd = -1;
   double Wgb = -1, Wmb = -1, Web = -1, Wdb = -1;
   uint64_t weighted_bw = 0;
+  guardfraction_bandwidth_t guardfraction_bw;
   u64_dbl_t *bandwidths;
 
   /* Can't choose exit and guard at same time */
@@ -2154,27 +2155,23 @@ compute_weighted_bandwidths(const smartlist_t *sl,
      */
     if (node->rs && node->rs->has_guardfraction &&
         (rule == WEIGHT_FOR_MID || rule == WEIGHT_FOR_EXIT)) {
-      guardfraction_bandwidth_t *guardfraction_bw;
-
       /* XXX The assert should actually check for is_guard. However,
        * that crashes dirauths because of #13297. This should be
        * equivalent: */
       tor_assert(node->rs->is_possible_guard);
 
-      guardfraction_bw = guard_get_guardfraction_bandwidth(this_bw,
-                                           node->rs->guardfraction_percentage);
-      tor_assert(guardfraction_bw);
+      guard_get_guardfraction_bandwidth(&guardfraction_bw,
+                                        this_bw,
+                                        node->rs->guardfraction_percentage);
 
       /* Calculate final_weight = F*Wpf*B + (1-F)*Wpn*B */
       final_weight =
-        guardfraction_bw->guard_bw * weight +
-        guardfraction_bw->non_guard_bw * weight_without_guard_flag;
+        guardfraction_bw.guard_bw * weight +
+        guardfraction_bw.non_guard_bw * weight_without_guard_flag;
 
       log_warn(LD_GENERAL, "%s: Guardfraction weight %f instead of %f (%s)",
                node->rs->nickname, final_weight, weight*this_bw,
                bandwidth_weight_rule_to_string(rule));
-
-      tor_free(guardfraction_bw);
     } else { /* no guardfraction information. calculate the weight normally. */
       final_weight = weight*this_bw;
     }

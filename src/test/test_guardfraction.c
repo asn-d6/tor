@@ -248,24 +248,25 @@ test_parse_guardfraction_file_good(void *arg)
 static void
 test_get_guardfraction_bandwidth(void *arg)
 {
+  guardfraction_bandwidth_t gf_bw;
   const int orig_bw = 1000;
-
-  /* A guard with bandwidth 1000 and GuardFraction 0.25, should have
-     bandwidth 250 as a guard and bandwidth 750 as a non-guard.  */
-  guardfraction_bandwidth_t *gf_bw = guard_get_guardfraction_bandwidth(orig_bw,
-                                                                       25);
 
   (void) arg;
 
-  tt_int_op(gf_bw->guard_bw, ==, 250);
-  tt_int_op(gf_bw->non_guard_bw, ==, 750);
+  /* A guard with bandwidth 1000 and GuardFraction 0.25, should have
+     bandwidth 250 as a guard and bandwidth 750 as a non-guard.  */
+  guard_get_guardfraction_bandwidth(&gf_bw,
+                                    orig_bw, 25);
+
+  tt_int_op(gf_bw.guard_bw, ==, 250);
+  tt_int_op(gf_bw.non_guard_bw, ==, 750);
 
   /* Also check the 'guard_bw + non_guard_bw == original_bw'
    * invariant. */
-  tt_int_op(gf_bw->non_guard_bw + gf_bw->guard_bw, ==, orig_bw);
+  tt_int_op(gf_bw.non_guard_bw + gf_bw.guard_bw, ==, orig_bw);
 
  done:
-  tor_free(gf_bw);
+  ;
 }
 
 /** Parse the GuardFraction element of the consensus, and make sure it
