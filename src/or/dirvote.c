@@ -1529,9 +1529,9 @@ networkstatus_compute_consensus(smartlist_t *votes,
         }
 
         /* Count guardfraction votes and note down the values. */
-        if (rs->has_measured_guardfraction) {
+        if (rs->status.has_guardfraction) {
           measured_guardfraction[num_guardfraction_inputs++] =
-            rs->guardfraction_percentage;
+            rs->status.guardfraction_percentage;
         }
 
         /* count bandwidths */

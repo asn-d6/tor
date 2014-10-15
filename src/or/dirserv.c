@@ -1923,11 +1923,11 @@ routerstatus_format_entry(const routerstatus_t *rs, const char *version,
                        " Measured=%d", vrs->measured_bw_kb);
     }
     /* Write down guardfraction information if we have it. */
-    if (format == NS_V3_VOTE && vrs && vrs->has_measured_guardfraction) {
+    if (format == NS_V3_VOTE && vrs && vrs->status.has_guardfraction) {
       tor_assert(vrs->status.is_possible_guard);
       smartlist_add_asprintf(chunks,
                              " GuardFraction=%d",
-                             vrs->guardfraction_percentage);
+                             vrs->status.guardfraction_percentage);
     }
 
     smartlist_add(chunks, tor_strdup("\n"));
@@ -2190,8 +2190,8 @@ guardfraction_line_apply(const char *guard_id,
     return 0;
   }
 
-  vrs->has_measured_guardfraction = 1;
-  vrs->guardfraction_percentage = guardfraction_percentage;
+  vrs->status.has_guardfraction = 1;
+  vrs->status.guardfraction_percentage = guardfraction_percentage;
 
   return 1;
 }

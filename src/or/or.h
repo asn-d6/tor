@@ -2344,11 +2344,6 @@ typedef struct vote_routerstatus_t {
   unsigned int has_measured_bw:1; /**< The vote had a measured bw */
   uint32_t measured_bw_kb; /**< Measured bandwidth (capacity) of the router */
 
-  /** The vote has guardfraction information for this router. */
-  unsigned int has_measured_guardfraction:1;
-  /** The guardfraction value of this router. */
-  uint32_t guardfraction_percentage;
-
   /** The hash or hashes that the authority claims this microdesc has. */
   vote_microdesc_hash_t *microdesc;
 } vote_routerstatus_t;

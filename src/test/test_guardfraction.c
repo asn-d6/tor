@@ -203,15 +203,15 @@ test_parse_guardfraction_file_good(void *arg)
   { /* Test that routerstatus fields got filled properly */
 
     /* The guardfraction fields of the guard should be filled. */
-    tt_assert(vrs_guard->has_measured_guardfraction);
-    tt_int_op(vrs_guard->guardfraction_percentage, ==, guardfraction_value);
+    tt_assert(vrs_guard->status.has_guardfraction);
+    tt_int_op(vrs_guard->status.guardfraction_percentage, ==, guardfraction_value);
 
     /* The non-guard should not have been touched. */
-    tt_assert(!vrs_non_guard->has_measured_guardfraction);
+    tt_assert(!vrs_non_guard->status.has_guardfraction);
 
     /* The guard that was not in the guardfraction file should not have
        been touched either. */
-    tt_assert(!vrs_dummy->has_measured_guardfraction);
+    tt_assert(!vrs_dummy->status.has_guardfraction);
   }
 
  done:

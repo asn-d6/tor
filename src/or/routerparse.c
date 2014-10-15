@@ -1866,8 +1866,8 @@ routerstatus_parse_guardfraction(const char *guardfraction_str,
 
   if (should_apply_guardfraction) {
     if (vote_rs) { /* We are parsing a vote */
-      vote_rs->guardfraction_percentage = guardfraction;
-      vote_rs->has_measured_guardfraction = 1;
+      vote_rs->status.guardfraction_percentage = guardfraction;
+      vote_rs->status.has_guardfraction = 1;
     } else { /* we are parsing a consensus */
       rs->guardfraction_percentage = guardfraction;
       rs->has_guardfraction = 1;
