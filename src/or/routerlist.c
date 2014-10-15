@@ -2140,8 +2140,6 @@ compute_weighted_bandwidths(const smartlist_t *sl,
     if (weight_without_guard_flag < 0.0)
       weight_without_guard_flag = 0.0;
 
-    /* XXX Don't apply guardfraction to WEIGHT_FOR_DIR, right? */
-
     /* If guardfraction information is available in the consensus, we
      * want to calculate this router's bandwidth according to its
      * guardfraction. Quoting from proposal236:
@@ -2153,8 +2151,7 @@ compute_weighted_bandwidths(const smartlist_t *sl,
      *    N for position p proportionally to Wpf*B or Wpn*B, clients should
      *    choose N proportionally to F*Wpf*B + (1-F)*Wpn*B.
      */
-    if (node->rs && node->rs->has_guardfraction &&
-        (rule == WEIGHT_FOR_MID || rule == WEIGHT_FOR_EXIT)) {
+    if (node->rs && node->rs->has_guardfraction && rule != WEIGHT_FOR_GUARD) {
       /* XXX The assert should actually check for is_guard. However,
        * that crashes dirauths because of #13297. This should be
        * equivalent: */
