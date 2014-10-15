@@ -1794,28 +1794,6 @@ find_start_of_next_routerstatus(const char *s)
     return eos;
 }
 
-/* Return 1 if the vote_routerstatus_t represents a guard
- * node. Otherwise, return 0. */
-static int
-vote_routerstatus_is_a_guard(const vote_routerstatus_t *vote_rs,
-                             networkstatus_t *vote)
-{
-  int guard_idx;
-
-  tor_assert(vote_rs);
-  tor_assert(vote);
-
-  /* find the guard flag index in the known flags bitmap */
-  guard_idx = smartlist_string_pos(vote->known_flags, "Guard");
-  if (guard_idx < 0) {
-    log_warn(LD_BUG, "Guard flag not found in known flags.");
-    return 0;
-  }
-
-  /* peek into the bitmap and check for the correct index */
-  return (vote_rs->flags & (U64_LITERAL(1) << guard_idx)) != 0;
-}
-
 /** Parse the GuardFraction string from a consensus or vote.
  *
  *  If <b>vote</b> or <b>vote_rs</b> are set the document getting
@@ -1827,7 +1805,6 @@ routerstatus_parse_guardfraction(const char *guardfraction_str,
                                  vote_routerstatus_t *vote_rs,
                                  routerstatus_t *rs)
 {
-  int should_apply_guardfraction = 1;
   int ok;
   const char *end_of_header = NULL;
   uint32_t guardfraction;
@@ -1850,27 +1827,17 @@ routerstatus_parse_guardfraction(const char *guardfraction_str,
            vote_rs ? "vote" : "consensus",
            guardfraction_str, rs->nickname);
 
-  /* Only apply GuardFraction to guard nodes. */
-  if  (vote && !vote_routerstatus_is_a_guard(vote_rs, vote)) {
-    should_apply_guardfraction = 0;
-  }
-  if (!vote && !rs->is_possible_guard) {
-    should_apply_guardfraction = 0;
-  }
-
-  if (!should_apply_guardfraction) {
-    log_warn(LD_BUG, "Found GuardFraction for non-guard %s in %s. "
-             "This is not supposed to happen. Not applying. ",
-             rs->nickname, vote ? "vote" : "consensus");
-  }
-
-  if (should_apply_guardfraction) {
-    if (vote_rs) { /* We are parsing a vote */
-      vote_rs->status.guardfraction_percentage = guardfraction;
-      vote_rs->status.has_guardfraction = 1;
-    } else { /* we are parsing a consensus */
+  if (vote_rs) { /* We are parsing a vote */
+    vote_rs->status.guardfraction_percentage = guardfraction;
+    vote_rs->status.has_guardfraction = 1;
+  } else {
+    /* We are parsing a consensus. Only apply guardfraction to guards. */
+    if (rs->is_possible_guard) {
       rs->guardfraction_percentage = guardfraction;
       rs->has_guardfraction = 1;
+    } else {
+      log_warn(LD_BUG, "Got GuardFraction for non-guard %s. "
+               "This is not supposed to happen. Not applying. ", rs->nickname);
     }
   }
 

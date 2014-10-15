@@ -1924,7 +1924,6 @@ routerstatus_format_entry(const routerstatus_t *rs, const char *version,
     }
     /* Write down guardfraction information if we have it. */
     if (format == NS_V3_VOTE && vrs && vrs->status.has_guardfraction) {
-      tor_assert(vrs->status.is_possible_guard);
       smartlist_add_asprintf(chunks,
                              " GuardFraction=%d",
                              vrs->status.guardfraction_percentage);
@@ -2180,13 +2179,6 @@ guardfraction_line_apply(const char *guard_id,
                          compare_digest_to_vote_routerstatus_entry);
 
   if (!vrs) {
-    return 0;
-  }
-
-  /* Authorities should only apply guardfraction to guard nodes. */
-  if (!vrs->status.is_possible_guard) {
-    log_warn(LD_GENERAL, "Will not apply guardfraction to the non-guard %s.",
-             vrs->status.nickname);
     return 0;
   }
 
