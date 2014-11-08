@@ -1720,7 +1720,7 @@ choose_good_exit_server_general(int need_uptime, int need_capacity)
 }
 
 /* The config option HSRendezvousMiddleNodes has been set and we need to
- * pick a middle node out of that set. Make sure that the RP we choose
+ * pick a middle node out of that set. Make sure that the node we chose
  * is alive, and return it. Return NULL if no usable nodes could be
  * found. */
 static const node_t *
