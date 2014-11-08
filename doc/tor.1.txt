@@ -1329,6 +1329,23 @@ The following options are useful only for clients (that is, if
     To enable this option the compile time flag --enable-tor2webmode must be
     specified. (Default: 0)
 
+[[HSRendezvousMiddleNodes]]] **HSRendezvousMiddleNodes** __node__,__node__,__...__::
+    A list of identity fingerprints, nicknames, country codes and
+    address patterns of nodes that are allowed to be used as middle
+    nodes in Hidden Service rendezvous circuits.
+
+    (Example:
+    HSRendezvousMiddleNodes safe_relay  +
+ +
+    ExcludeNodes have higher priority than HSRendezvousMiddleNodes,
+    which means that nodes specified in ExcludeNodes will not be
+    picked.
+ +
+    This option only has effect when Tor is configured as a Hidden Service.
+ +
+    If no nodes in HSRendezvousMiddleNodes are currently available for
+    use, the Hidden Service will not work.
+
 [[UseMicrodescriptors]] **UseMicrodescriptors** **0**|**1**|**auto**::
     Microdescriptors are a smaller version of the information that Tor needs
     in order to build its circuits.  Using microdescriptors makes Tor clients

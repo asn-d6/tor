@@ -66,6 +66,7 @@ static config_abbrev_t option_abbrevs_[] = {
   PLURAL(ExitNode),
   PLURAL(EntryNode),
   PLURAL(ExcludeNode),
+  PLURAL(HSRendezvousMiddleNode),
   PLURAL(FirewallPort),
   PLURAL(LongLivedPort),
   PLURAL(HiddenServiceNode),
@@ -381,6 +382,7 @@ static config_var_t option_vars_[] = {
   V(TestSocks,                   BOOL,     "0"),
   V(TokenBucketRefillInterval,   MSEC_INTERVAL, "100 msec"),
   V(Tor2webMode,                 BOOL,     "0"),
+  V(HSRendezvousMiddleNodes,      ROUTERSET, NULL),
   V(TLSECGroup,                  STRING,   NULL),
   V(TrackHostExits,              CSV,      NULL),
   V(TrackHostExitsExpire,        INTERVAL, "30 minutes"),
@@ -1219,7 +1221,8 @@ options_need_geoip_info(const or_options_t *options, const char **reason_out)
     routerset_needs_geoip(options->EntryNodes) ||
     routerset_needs_geoip(options->ExitNodes) ||
     routerset_needs_geoip(options->ExcludeExitNodes) ||
-    routerset_needs_geoip(options->ExcludeNodes);
+    routerset_needs_geoip(options->ExcludeNodes) ||
+    routerset_needs_geoip(options->HSRendezvousMiddleNodes);
 
   if (routerset_usage && reason_out) {
     *reason_out = "We've been configured to use (or avoid) nodes in certain "
@@ -1602,6 +1605,8 @@ options_act(const or_options_t *old_options)
                          options->ExcludeExitNodes) ||
         !routerset_equal(old_options->EntryNodes, options->EntryNodes) ||
         !routerset_equal(old_options->ExitNodes, options->ExitNodes) ||
+        !routerset_equal(old_options->HSRendezvousMiddleNodes,
+                         options->HSRendezvousMiddleNodes) ||
         options->StrictNodes != old_options->StrictNodes) {
       log_info(LD_CIRC,
                "Changed to using entry guards or bridges, or changed "

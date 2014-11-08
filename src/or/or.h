@@ -3597,6 +3597,10 @@ typedef struct {
    * circuits.) */
   int Tor2webMode;
 
+  /** A routerset that should be used when picking middle nodes for HS
+   *  circuits. */
+  routerset_t *HSRendezvousMiddleNodes;
+
   /** Close hidden service client circuits immediately when they reach
    * the normal circuit-build timeout, even if they have already sent
    * an INTRODUCE1 cell on its way to the service. */
