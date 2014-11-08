@@ -1646,6 +1646,7 @@ circuit_launch_by_extend_info(uint8_t purpose,
 {
   origin_circuit_t *circ;
   int onehop_tunnel = (flags & CIRCLAUNCH_ONEHOP_TUNNEL) != 0;
+  int need_specific_middle = 0;
 
   if (!onehop_tunnel && !router_have_minimum_dir_info()) {
     log_debug(LD_CIRC,"Haven't fetched enough directory info yet; canceling "
@@ -1653,8 +1654,17 @@ circuit_launch_by_extend_info(uint8_t purpose,
     return NULL;
   }
 
+  /* If HSRendezvousMiddleNodes is enabled and we are dealing with a
+     HS rendezvous circuit, we want a specific middle node so we
+     shouldn't canibalize an already existing circuit. */
+  if (get_options()->HSRendezvousMiddleNodes &&
+      purpose == CIRCUIT_PURPOSE_S_CONNECT_REND) {
+    need_specific_middle = 1;
+  }
+
   if ((extend_info || purpose != CIRCUIT_PURPOSE_C_GENERAL) &&
-      purpose != CIRCUIT_PURPOSE_TESTING && !onehop_tunnel) {
+      purpose != CIRCUIT_PURPOSE_TESTING &&
+      !onehop_tunnel && !need_specific_middle) {
     /* see if there are appropriate circs available to cannibalize. */
     /* XXX if we're planning to add a hop, perhaps we want to look for
      * internal circs rather than exit circs? -RD */
