@@ -1719,6 +1719,58 @@ choose_good_exit_server_general(int need_uptime, int need_capacity)
   return NULL;
 }
 
+/* The config option HSRendezvousMiddleNodes has been set and we need to
+ * pick a middle node out of that set. Make sure that the RP we choose
+ * is alive, and return it. Return NULL if no usable nodes could be
+ * found. */
+static const node_t *
+pick_hs_rendezvous_middle_node(router_crn_flags_t flags,
+                               const or_options_t *options)
+{
+  const node_t *middle_node = NULL;
+  const int allow_invalid = (flags & CRN_ALLOW_INVALID) != 0;
+  const int need_desc = (flags & CRN_NEED_DESC) != 0;
+
+  smartlist_t *whitelisted_live_middles = smartlist_new();
+  smartlist_t *all_live_nodes = smartlist_new();
+
+  tor_assert(options->HSRendezvousMiddleNodes);
+
+  /* Add all running nodes to all_live_nodes */
+  router_add_running_nodes_to_smartlist(all_live_nodes,
+                                        allow_invalid,
+                                        0, 0, 0,
+                                        need_desc);
+
+  /* Filter all_live_nodes to only add live *and* whitelisted middles
+   * to the list whitelisted_live_middles. */
+  SMARTLIST_FOREACH_BEGIN(all_live_nodes, node_t *, live_node) {
+    if (routerset_contains_node(options->HSRendezvousMiddleNodes, live_node)) {
+      smartlist_add(whitelisted_live_middles, live_node);
+    }
+  } SMARTLIST_FOREACH_END(live_node);
+
+  /* Honor ExcludeNodes */
+  if (options->ExcludeNodes) {
+    routerset_subtract_nodes(whitelisted_live_middles, options->ExcludeNodes);
+  }
+
+  /* Now pick randomly amongst the whitelisted nodes. No need to waste
+     time doing bandwidth load balancing, for most use cases
+     'whitelisted_live_middles' contains a single OR anyway. */
+  middle_node = smartlist_choose(whitelisted_live_middles);
+
+  if (!middle_node) {
+    log_warn(LD_REND, "Could not find a middle node that suits "
+             "the purposes of HSRendezvousMiddleNodes!");
+  }
+
+  smartlist_free(whitelisted_live_middles);
+  smartlist_free(all_live_nodes);
+
+  return middle_node;
+}
+
 /** Return a pointer to a suitable router to be the exit node for the
  * circuit of purpose <b>purpose</b> that we're about to build (or NULL
  * if no router is suitable).
@@ -2005,6 +2057,13 @@ choose_good_middle_server(uint8_t purpose,
     flags |= CRN_NEED_CAPACITY;
   if (options->AllowInvalid_ & ALLOW_INVALID_MIDDLE)
     flags |= CRN_ALLOW_INVALID;
+
+  if (options->HSRendezvousMiddleNodes &&
+      purpose == CIRCUIT_PURPOSE_S_CONNECT_REND) {
+    log_debug(LD_GENERAL, "Picking a sticky middle node");
+    return pick_hs_rendezvous_middle_node(flags, options);
+  }
+
   choice = router_choose_random_node(excluded, options->ExcludeNodes, flags);
   smartlist_free(excluded);
   return choice;
