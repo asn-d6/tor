@@ -152,7 +152,6 @@ test_parse_guardfraction_file_good(void *arg)
 {
   int retval;
   vote_routerstatus_t *vrs_guard = NULL;
-  vote_routerstatus_t *vrs_non_guard = NULL;
   vote_routerstatus_t *vrs_dummy = NULL;
   char *guardfraction_good = NULL;
   const char *yesterday_date_str = get_yesterday_date_str();
@@ -160,7 +159,6 @@ test_parse_guardfraction_file_good(void *arg)
 
   /* Some test values that we need to validate later */
   const char fpr_guard[] = "D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777";
-  const char fpr_non_guard[] = "07B5547026DF3E229806E135CFA8552D56AFBABC";
   const char fpr_unlisted[] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
   const int guardfraction_value = 42;
 
@@ -176,11 +174,6 @@ test_parse_guardfraction_file_good(void *arg)
     tt_assert(vrs_guard);
     smartlist_add(routerstatuses, vrs_guard);
 
-    /* This one is not a guard. Guardfraction should not get applied to it. */
-    vrs_non_guard = gen_vote_routerstatus_for_tests(fpr_non_guard, 0);
-    tt_assert(vrs_non_guard);
-    smartlist_add(routerstatuses, vrs_non_guard);
-
     /* This one is a guard but it's not in the guardfraction file */
     vrs_dummy = gen_vote_routerstatus_for_tests(fpr_unlisted, 1);
     tt_assert(vrs_dummy);
@@ -189,25 +182,20 @@ test_parse_guardfraction_file_good(void *arg)
 
   tor_asprintf(&guardfraction_good, "written-at %s\n"
                "n-inputs 420 3\n"
-               "guard-seen %s %d 420\n"
-               "guard-seen %s 0 420\n",
+               "guard-seen %s %d 420\n",
                yesterday_date_str,
-               fpr_guard, guardfraction_value,
-               fpr_non_guard);
+               fpr_guard, guardfraction_value);
 
   /* Read the guardfraction file */
   retval = dirserv_read_guardfraction_file_from_str(guardfraction_good,
                                                     routerstatuses);
-  tt_int_op(retval, ==, 2);
+  tt_int_op(retval, ==, 1);
 
   { /* Test that routerstatus fields got filled properly */
 
     /* The guardfraction fields of the guard should be filled. */
     tt_assert(vrs_guard->status.has_guardfraction);
     tt_int_op(vrs_guard->status.guardfraction_percentage, ==, guardfraction_value);
-
-    /* The non-guard should not have been touched. */
-    tt_assert(!vrs_non_guard->status.has_guardfraction);
 
     /* The guard that was not in the guardfraction file should not have
        been touched either. */
@@ -216,7 +204,6 @@ test_parse_guardfraction_file_good(void *arg)
 
  done:
   vote_routerstatus_free(vrs_guard);
-  vote_routerstatus_free(vrs_non_guard);
   vote_routerstatus_free(vrs_dummy);
   smartlist_free(routerstatuses);
   tor_free(guardfraction_good);
