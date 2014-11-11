@@ -169,6 +169,8 @@ typedef struct guardfraction_bandwidth_t {
   int non_guard_bw;
 } guardfraction_bandwidth_t;
 
+int should_apply_guardfraction(const networkstatus_t *ns);
+
 void
 guard_get_guardfraction_bandwidth(guardfraction_bandwidth_t *guardfraction_bw,
                                   int orig_bandwidth,

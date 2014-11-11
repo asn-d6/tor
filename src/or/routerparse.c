@@ -25,6 +25,7 @@
 #include "networkstatus.h"
 #include "rephist.h"
 #include "routerparse.h"
+#include "entrynodes.h"
 #undef log
 #include <math.h>
 
@@ -1807,9 +1808,16 @@ routerstatus_parse_guardfraction(const char *guardfraction_str,
 {
   int ok;
   const char *end_of_header = NULL;
+  int is_consensus = !vote_rs;
   uint32_t guardfraction;
 
   tor_assert(bool_eq(vote, vote_rs));
+
+  /* If this info comes from a consensus, but we should't apply
+     guardfraction, just exit. */
+  if (is_consensus && !should_apply_guardfraction(NULL)) {
+    return 0;
+  }
 
   end_of_header = strchr(guardfraction_str, '=');
   if (!end_of_header) {
@@ -1824,10 +1832,10 @@ routerstatus_parse_guardfraction(const char *guardfraction_str,
   }
 
   log_warn(LD_GENERAL, "[*] Parsed %s guardfraction '%s' for '%s'.",
-           vote_rs ? "vote" : "consensus",
+           is_consensus ? "consensus" : "vote",
            guardfraction_str, rs->nickname);
 
-  if (vote_rs) { /* We are parsing a vote */
+  if (!is_consensus) { /* We are parsing a vote */
     vote_rs->status.guardfraction_percentage = guardfraction;
     vote_rs->status.has_guardfraction = 1;
   } else {

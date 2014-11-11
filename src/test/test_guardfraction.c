@@ -7,6 +7,7 @@
 
 #include "orconfig.h"
 #include "or.h"
+#include "config.h"
 #include "dirserv.h"
 #include "container.h"
 #include "entrynodes.h"
@@ -240,6 +241,7 @@ static void
 test_parse_guardfraction_consensus(void *arg)
 {
   int retval;
+  or_options_t *options = get_options_mutable();
 
   const char *guardfraction_str_good = "GuardFraction=66";
   routerstatus_t rs_good;
@@ -252,6 +254,10 @@ test_parse_guardfraction_consensus(void *arg)
   routerstatus_t rs_bad2;
 
   (void) arg;
+
+  /* GuardFraction use is currently disabled by default. So we need to
+     manually enable it. */
+  options->UseGuardFraction = 1;
 
   { /* Properly formatted GuardFraction. Check that it gets applied
        correctly. */
@@ -304,6 +310,70 @@ test_parse_guardfraction_consensus(void *arg)
   ;
 }
 
+/* Make sure that we use GuardFraction information when we should,
+   according to the torrc option and consensus parameter. */
+static void
+test_should_apply_guardfraction(void *arg)
+{
+  networkstatus_t vote_enabled, vote_disabled, vote_missing;
+  or_options_t *options = get_options_mutable();
+
+  (void) arg;
+
+  { /* Fill the votes for later */
+    /* This one suggests enabled GuardFraction. */
+    memset(&vote_enabled, 0, sizeof(vote_enabled));
+    vote_enabled.net_params = smartlist_new();
+    smartlist_split_string(vote_enabled.net_params,
+                           "UseGuardFraction=1", NULL, 0, 0);
+
+    /* This one suggests disabled GuardFraction. */
+    memset(&vote_disabled, 0, sizeof(vote_disabled));
+    vote_disabled.net_params = smartlist_new();
+    smartlist_split_string(vote_disabled.net_params,
+                           "UseGuardFraction=0", NULL, 0, 0);
+
+    /* This one doesn't have GuardFraction at all. */
+    memset(&vote_missing, 0, sizeof(vote_missing));
+    vote_missing.net_params = smartlist_new();
+    smartlist_split_string(vote_missing.net_params,
+                           "leon=trout", NULL, 0, 0);
+  }
+
+  /* If torrc option is set to yes, we should always use
+   * guardfraction.*/
+  options->UseGuardFraction = 1;
+  tt_int_op(should_apply_guardfraction(&vote_disabled), ==, 1);
+
+  /* If torrc option is set to no, we should never use
+   * guardfraction.*/
+  options->UseGuardFraction = 0;
+  tt_int_op(should_apply_guardfraction(&vote_enabled), ==, 0);
+
+  /* Now let's test torrc option set to auto. */
+  options->UseGuardFraction = -1;
+
+  /* If torrc option is set to auto, and consensus parameter is set to
+   * yes, we should use guardfraction. */
+  tt_int_op(should_apply_guardfraction(&vote_enabled), ==, 1);
+
+  /* If torrc option is set to auto, and consensus parameter is set to
+   * no, we should use guardfraction. */
+  tt_int_op(should_apply_guardfraction(&vote_disabled), ==, 0);
+
+  /* If torrc option is set to auto, and consensus parameter is not
+   * set, we should fallback to "no". */
+  tt_int_op(should_apply_guardfraction(&vote_missing), ==, 0);
+
+ done:
+  SMARTLIST_FOREACH(vote_enabled.net_params, char *, cp, tor_free(cp));
+  SMARTLIST_FOREACH(vote_disabled.net_params, char *, cp, tor_free(cp));
+  SMARTLIST_FOREACH(vote_missing.net_params, char *, cp, tor_free(cp));
+  smartlist_free(vote_enabled.net_params);
+  smartlist_free(vote_disabled.net_params);
+  smartlist_free(vote_missing.net_params);
+}
+
 struct testcase_t guardfraction_tests[] = {
   { "parse_guardfraction_file_bad", test_parse_guardfraction_file_bad,
     TT_FORK, NULL, NULL },
@@ -313,6 +383,9 @@ struct testcase_t guardfraction_tests[] = {
     TT_FORK, NULL, NULL },
   { "get_guardfraction_bandwidth", test_get_guardfraction_bandwidth,
     TT_FORK, NULL, NULL },
+  { "should_apply_guardfraction", test_should_apply_guardfraction,
+    TT_FORK, NULL, NULL },
+
   END_OF_TESTCASES
 };
 
