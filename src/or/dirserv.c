@@ -2256,7 +2256,7 @@ guardfraction_file_parse_guard_line(const char *guard_line,
 
 /** Given an inputs line from a guardfraction file, parse it and
  *  register its information to <b>total_consensuses</b> and
- *  <b>total_months</b>.
+ *  <b>total_days</b>.
  *
  *  Return 0 if it parsed well. Return -1 if there was an error, and
  *  set <b>err_msg</b> to a newly allocated string containing the
@@ -2265,7 +2265,7 @@ guardfraction_file_parse_guard_line(const char *guard_line,
 static int
 guardfraction_file_parse_inputs_line(const char *inputs_line,
                                      int *total_consensuses,
-                                     int *total_months,
+                                     int *total_days,
                                      char **err_msg)
 {
   int retval = -1;
@@ -2276,7 +2276,7 @@ guardfraction_file_parse_inputs_line(const char *inputs_line,
   tor_assert(err_msg);
 
   /* Second line is inputs information:
-   *   n-inputs <total_consensuses> <total_months>. */
+   *   n-inputs <total_consensuses> <total_days>. */
   smartlist_split_string(sl, inputs_line, " ",
                          SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 3);
   if (smartlist_len(sl) < 2) {
@@ -2293,10 +2293,10 @@ guardfraction_file_parse_inputs_line(const char *inputs_line,
   }
 
   inputs_tmp = smartlist_get(sl, 1);
-  *total_months =
+  *total_days =
     (int) tor_parse_long(inputs_tmp, 10, 0, INT_MAX, &num_ok, NULL);
   if (!num_ok) {
-    tor_asprintf(err_msg, "unparseable months '%s'", inputs_tmp);
+    tor_asprintf(err_msg, "unparseable days '%s'", inputs_tmp); /* XXX change to days */
     goto done;
   }
 
@@ -2323,7 +2323,7 @@ guardfraction_file_parse_inputs_line(const char *inputs_line,
  *  This is the rough format of the guardfraction file:
  *
  *      written-at <date and time>
- *      n-inputs <number of consesuses parsed> <number of months considered>
+ *      n-inputs <number of consesuses parsed> <number of days considered>
  *
  *      guard-seen <fpr 1> <guardfraction percentage> <consensus appearances>
  *      guard-seen <fpr 2> <guardfraction percentage> <consensus appearances>
@@ -2346,7 +2346,7 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
 
   /* Guardfraction info to be parsed */
   int total_consensuses = 0;
-  int total_months = 0;
+  int total_days = 0;
 
   /* Stats */
   int guards_read_n = 0;
@@ -2386,7 +2386,7 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
 
       if (guardfraction_file_parse_inputs_line(line->value,
                                                &total_consensuses,
-                                               &total_months,
+                                               &total_days,
                                                &err_msg) < 0) {
         log_warn(LD_CONFIG, "Guardfraction:%d: %s",
                  current_line_n, err_msg);
@@ -2422,8 +2422,8 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
 
   log_warn(LD_CONFIG,
            "Successfully parsed guardfraction file with %d consensuses over "
-           "%d months. Parsed %d nodes and applied %d of them%s.",
-           total_consensuses, total_months, guards_read_n, guards_applied_n,
+           "%d days. Parsed %d nodes and applied %d of them%s.",
+           total_consensuses, total_days, guards_read_n, guards_applied_n,
            vote_routerstatuses ? "" : " (no routerstatus provided)" );
 
  done:
