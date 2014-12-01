@@ -33,6 +33,7 @@
 #include "relay.h"
 #include "router.h"
 #include "routerlist.h"
+#include "status.h"
 
 /** How many CELL_CREATE cells have we received, ever? */
 uint64_t stats_n_create_cells_processed = 0;
@@ -510,6 +511,12 @@ command_process_relay_cell(cell_t *cell, channel_t *chan)
            "(%s) failed. Closing.",
            direction==CELL_DIRECTION_OUT?"forward":"backward");
     circuit_mark_for_close(circ, -reason);
+  }
+
+  if (!CIRCUIT_IS_ORIGIN(circ) &&
+      TO_OR_CIRCUIT(circ)->circuit_carries_hs_traffic_stats) { /* XXX is this TO_OR_CIRCUIT correct? */
+    log_warn(LD_GENERAL, "Saw new RP cell in %u.\n", (unsigned)cell->circ_id);
+    rep_hist_seen_new_rp_cell();
   }
 }
 

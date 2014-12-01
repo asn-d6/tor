@@ -316,6 +316,11 @@ rend_mid_rendezvous(or_circuit_t *circ, const uint8_t *request,
     goto err;
   }
 
+  /* Statistics: Mark this circuit as an RP circuit so that we collect
+     stats from it. */
+  log_warn(LD_GENERAL, "New RP circuit %u.\n", (unsigned)circ->p_circ_id);
+  circ->circuit_carries_hs_traffic_stats = 1;
+
   /* Send the RENDEZVOUS2 cell to Alice. */
   if (relay_send_command_from_edge(0, TO_CIRCUIT(rend_circ),
                                    RELAY_COMMAND_RENDEZVOUS2,

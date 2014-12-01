@@ -1003,6 +1003,10 @@ rend_cache_store_v2_desc_as_dir(const char *desc)
     log_info(LD_REND, "Successfully stored service descriptor with desc ID "
                       "'%s' and len %d.",
              safe_str(desc_id_base32), (int)encoded_size);
+
+    /* Statistics: Note down this potentially new HS. */
+    rep_hist_seen_maybe_new_hs(e->parsed->pk);
+
     number_stored++;
     goto advance;
   skip:
