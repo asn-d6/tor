@@ -2654,6 +2654,13 @@ extrainfo_dump_to_string(char **s_out, extrainfo_t *extrainfo,
                         "dirreq-stats-end", now, &contents) > 0) {
       smartlist_add(chunks, contents);
     }
+    /* XXX enable this to start publishing hs statistics. Please do so
+       after obfuscation has been implemented */
+    /* if (options->HiddenServiceStatistics && */
+    /*     load_stats_file("stats"PATH_SEPARATOR"hs-stats", */
+    /*                     "hs-stats-end", now, &contents) > 0) { */
+    /*   smartlist_add(chunks, contents); */
+    /* } */
     if (options->EntryStatistics &&
         load_stats_file("stats"PATH_SEPARATOR"entry-stats",
                         "entry-stats-end", now, &contents) > 0) {

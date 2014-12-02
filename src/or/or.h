@@ -3218,6 +3218,10 @@ typedef struct or_circuit_t {
    * to zero, it is initialized to the default value.
    */
   uint32_t max_middle_cells;
+
+  /** If set, this circuit carries HS traffic. Consider it in any HS
+   *  statistics. */
+  unsigned int circuit_carries_hs_traffic_stats : 1;
 } or_circuit_t;
 
 typedef struct or_circuit_rendinfo_s {
@@ -3963,6 +3967,9 @@ typedef struct {
 
   /** If true, include statistics file contents in extra-info documents. */
   int ExtraInfoStatistics;
+
+  /** XXX If true, include statistics file contents in extra-info documents. */
+  int HiddenServiceStatistics;
 
   /** If true, do not believe anybody who tells us that a domain resolves
    * to an internal address, or that an internal address has a PTR mapping.
