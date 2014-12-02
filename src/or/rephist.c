@@ -3041,6 +3041,64 @@ rep_hist_seen_maybe_new_hs(const crypto_pk_t *pubkey)
   }
 }
 
+/** Allocate and return a string containing hidden service stats that
+ *  are meant to be placed in the extra-info descriptor. */
+static char *
+rep_hist_format_hs_stats(time_t now)
+{
+  char t[ISO_TIME_LEN+1];
+  char *hs_stats_string;
+  unsigned long obfuscated_cells_seen;
+  unsigned long obfuscated_onions_seen;
+
+  /* XXX actually obfuscate these numbers! */
+  obfuscated_cells_seen = hs_stats->rp_relay_cells_seen;
+  obfuscated_onions_seen = hs_stats->hs_seen_as_hsdir;
+
+  format_iso_time(t, now);
+  tor_asprintf(&hs_stats_string, "hidserv-stats-end %s (%d s)\n"
+               "hidserv-rend-relayed-cells=%lu\n"
+               "hidserv-dir-onions-seen=%lu\n", /* XXX rename this in the spec */
+               t, (unsigned) (now - start_of_hs_stats_interval),
+               obfuscated_cells_seen, obfuscated_onions_seen);
+
+  return hs_stats_string;
+}
+
+/** If 24 hours have passed since the beginning of the current HS
+ * stats period, write buffer stats to $DATADIR/stats/hs-stats
+ * (possibly overwriting an existing file) and reset counters.  Return
+ * when we would next want to write buffer stats or 0 if we never want to
+ * write. */
+time_t
+rep_hist_hs_stats_write(time_t now)
+{
+  char *str = NULL;
+
+  if (!start_of_hs_stats_interval) {
+    return 0; /* Not initialized. */
+  }
+
+  if (start_of_hs_stats_interval + WRITE_STATS_INTERVAL > now) {
+    goto done; /* Not ready to write */
+  }
+
+  /* Generate history string. */
+  str = rep_hist_format_hs_stats(now);
+
+  /* Reset HS history. */
+  rep_hist_reset_hs_stats(now);
+
+  /* Try to write to disk. */
+  if (!check_or_create_data_subdir("stats")) {
+    write_to_data_subdir("stats", "hs-stats", str, "hidden service stats");
+  }
+
+ done:
+  tor_free(str);
+  return start_of_hs_stats_interval + WRITE_STATS_INTERVAL;
+}
+
 /** Free all storage held by the OR/link history caches, by the
  * bandwidth history arrays, by the port history, or by statistics . */
 void
