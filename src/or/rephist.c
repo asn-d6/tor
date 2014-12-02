@@ -2908,11 +2908,107 @@ rep_hist_log_circuit_handshake_stats(time_t now)
   memset(onion_handshakes_requested, 0, sizeof(onion_handshakes_requested));
 }
 
+/* Hidden service statistics section */
+
+/** Start of the current hidden service stats interval or 0 if we're
+ * not collecting hidden service statistics. */
+static time_t start_of_hs_stats_interval;
+
+/** Carries the various hidden service statistics, and any other
+ *  information needed. */
+typedef struct hs_stats_t {
+  /** How many relay cells have we seen as rendezvous points? */
+  unsigned long rp_relay_cells_seen;
+
+  /** How many hidden services have we seen as HSDirs? */
+  unsigned long hs_seen_as_hsdir; /* XXX rename to 'onions_seen_as_hsdir'? */
+  /** List of pubkeys we've seen this stat period. It's used to avoid
+   *  double counting already encountered hidden services. */
+  smartlist_t *onions_seen_this_period; /* XXX should this be a hashtable? */
+} hs_stats_t;
+
+/** Our statistics structure singleton. */
+static hs_stats_t *hs_stats = NULL;
+
+/** Allocate, initialize and return an hs_stats_t structure. */
+static hs_stats_t *
+hs_stats_new(void)
+{
+  hs_stats_t * hs_stats = tor_malloc_zero(sizeof(hs_stats_t));
+  hs_stats->onions_seen_this_period = smartlist_new();
+
+  return hs_stats;
+}
+
+/** Free an hs_stats_t structure. */
+static void
+hs_stats_free(hs_stats_t *hs_stats)
+{
+  if (!hs_stats) {
+    return;
+  }
+
+  SMARTLIST_FOREACH(hs_stats->onions_seen_this_period, char *, cp,
+                    tor_free(cp));
+  smartlist_free(hs_stats->onions_seen_this_period);
+  tor_free(hs_stats);
+}
+
+
+/** Initialize hidden service statistics. */
+void
+rep_hist_hs_stats_init(time_t now)
+{
+  if  (!hs_stats) {
+    hs_stats = hs_stats_new();
+  }
+
+  start_of_hs_stats_interval = now;
+}
+
+/** Clear history of hidden service statistics and set the measurement
+ * interval start to <b>now</b>. */
+static void
+rep_hist_reset_hs_stats(time_t now)
+{
+  if (!hs_stats) {
+    hs_stats = hs_stats_new();
+  }
+
+  hs_stats->rp_relay_cells_seen = 0;
+  hs_stats->hs_seen_as_hsdir = 0;
+
+  SMARTLIST_FOREACH(hs_stats->onions_seen_this_period, char *, cp,
+                    tor_free(cp));
+  smartlist_clear(hs_stats->onions_seen_this_period);
+
+  start_of_hs_stats_interval = now;
+}
+
+/** Stop collecting hidden service stats in a way that we can re-start
+ * doing so in rep_hist_buffer_stats_init(). */
+void
+rep_hist_hs_stats_term(void)
+{
+  rep_hist_reset_hs_stats(0);
+}
+
+/** We saw a new HS relay cell, Count it! */
+void
+rep_hist_seen_new_rp_cell(void)
+{
+  if (!hs_stats) {
+    hs_stats = hs_stats_new();
+  }
+
+  hs_stats->rp_relay_cells_seen++;
+}
 /** Free all storage held by the OR/link history caches, by the
  * bandwidth history arrays, by the port history, or by statistics . */
 void
 rep_hist_free_all(void)
 {
+  hs_stats_free(hs_stats);
   digestmap_free(history_map, free_or_history);
   tor_free(read_array);
   tor_free(write_array);
