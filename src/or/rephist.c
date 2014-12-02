@@ -3003,6 +3003,44 @@ rep_hist_seen_new_rp_cell(void)
 
   hs_stats->rp_relay_cells_seen++;
 }
+
+/** As HSDirs, we saw another hidden service with public key
+ *  <b>pubkey</b>. Check whether we have counted it before, if not
+ *  count it now! */
+void
+rep_hist_seen_maybe_new_hs(const crypto_pk_t *pubkey)
+{
+  char pubkey_hash[DIGEST_LEN];
+
+  if (!hs_stats) {
+    hs_stats = hs_stats_new();
+  }
+
+  /* Get the digest of the pubkey which will be used to detect whether
+     we've seen this hidden service before or not.  */
+  if (crypto_pk_get_digest(pubkey, pubkey_hash) < 0) {
+    /*  This fail should not happen; key has been validated by
+        descriptor parsing code first. */
+    return;
+  }
+
+  /* Check if this is the first time we've seen this hidden
+     service. If it is, count it as new. */
+  if (!smartlist_contains_digest(hs_stats->onions_seen_this_period,
+                                 pubkey_hash)) {
+    hs_stats->hs_seen_as_hsdir++;
+    /* Add it to our cache to avoid double counting. */
+    smartlist_add(hs_stats->onions_seen_this_period,
+                  tor_memdup(pubkey_hash, DIGEST_LEN));
+
+    log_warn(LD_GENERAL, "Saw new HS %s (now %lu)",
+             hex_str(pubkey_hash, DIGEST_LEN), hs_stats->hs_seen_as_hsdir);
+  } else {
+    log_warn(LD_GENERAL, "Not double counting %s (still %lu)",
+             hex_str(pubkey_hash, DIGEST_LEN), hs_stats->hs_seen_as_hsdir);
+  }
+}
+
 /** Free all storage held by the OR/link history caches, by the
  * bandwidth history arrays, by the port history, or by statistics . */
 void
