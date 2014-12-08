@@ -77,8 +77,22 @@ test_parse_guardfraction_file_bad(void *arg)
 
   /* Start parsing all those corrupted guardfraction files! */
 
+  /* Guardfraction file version is not a number! */
+  tor_asprintf(&guardfraction_bad,
+               "guardfraction-file-version nan\n"
+               "written-at %s\n"
+               "n-inputs 420 3\n"
+               "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 100 420\n"
+               "guard-seen 07B5547026DF3E229806E135CFA8552D56AFBABC 5 420\n",
+               yesterday_date_str);
+
+  retval = dirserv_read_guardfraction_file_from_str(guardfraction_bad, NULL);
+  tt_int_op(retval, ==, -1);
+  tor_free(guardfraction_bad);
+
   /* This one does not have a date! Parsing should fail. */
   tor_asprintf(&guardfraction_bad,
+               "guardfraction-file-version 1\n"
                "written-at not_date\n"
                "n-inputs 420 3\n"
                "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 100 420\n"
@@ -91,6 +105,7 @@ test_parse_guardfraction_file_bad(void *arg)
   /* This one has an incomplete n-inputs line, but parsing should
      still continue. */
   tor_asprintf(&guardfraction_bad,
+               "guardfraction-file-version 1\n"
                "written-at %s\n"
                "n-inputs biggie\n"
                "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 100 420\n"
@@ -102,7 +117,9 @@ test_parse_guardfraction_file_bad(void *arg)
   tor_free(guardfraction_bad);
 
   /* This one does not have a fingerprint in the guard line! */
-  tor_asprintf(&guardfraction_bad, "written-at %s\n"
+  tor_asprintf(&guardfraction_bad,
+               "guardfraction-file-version 1\n"
+               "written-at %s\n"
                "n-inputs 420 3\n"
                "guard-seen not_a_fingerprint 100 420\n",
                yesterday_date_str);
@@ -112,7 +129,9 @@ test_parse_guardfraction_file_bad(void *arg)
   tor_free(guardfraction_bad);
 
   /* This one does not even have an integer guardfraction value. */
-  tor_asprintf(&guardfraction_bad, "written-at %s\n"
+  tor_asprintf(&guardfraction_bad,
+               "guardfraction-file-version 1\n"
+               "written-at %s\n"
                "n-inputs 420 3\n"
                "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 NaN 420\n"
                "guard-seen 07B5547026DF3E229806E135CFA8552D56AFBABC 5 420\n",
@@ -123,7 +142,9 @@ test_parse_guardfraction_file_bad(void *arg)
   tor_free(guardfraction_bad);
 
   /* This one is not a percentage (not in [0, 100]) */
-  tor_asprintf(&guardfraction_bad, "written-at %s\n"
+  tor_asprintf(&guardfraction_bad,
+               "guardfraction-file-version 1\n"
+               "written-at %s\n"
                "n-inputs 420 3\n"
                "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 666 420\n"
                "guard-seen 07B5547026DF3E229806E135CFA8552D56AFBABC 5 420\n",
@@ -134,7 +155,9 @@ test_parse_guardfraction_file_bad(void *arg)
   tor_free(guardfraction_bad);
 
   /* This one is not a percentage either (not in [0, 100]) */
-  tor_asprintf(&guardfraction_bad, "written-at %s\n"
+  tor_asprintf(&guardfraction_bad,
+               "guardfraction-file-version 1\n"
+               "written-at %s\n"
                "n-inputs 420 3\n"
                "guard-seen D0EDB47BEAD32D26D0A837F7D5357EC3AD3B8777 -3 420\n",
                yesterday_date_str);
@@ -181,7 +204,9 @@ test_parse_guardfraction_file_good(void *arg)
     smartlist_add(routerstatuses, vrs_dummy);
   }
 
-  tor_asprintf(&guardfraction_good, "written-at %s\n"
+  tor_asprintf(&guardfraction_good,
+               "guardfraction-file-version 1\n"
+               "written-at %s\n"
                "n-inputs 420 3\n"
                "guard-seen %s %d 420\n",
                yesterday_date_str,

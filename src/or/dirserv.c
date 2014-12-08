@@ -2316,6 +2316,7 @@ guardfraction_file_parse_inputs_line(const char *inputs_line,
 #define GUARDFRACTION_DATE_STR "written-at"
 #define GUARDFRACTION_INPUTS "n-inputs"
 #define GUARDFRACTION_GUARD "guard-seen"
+#define GUARDFRACTION_VERSION "guardfraction-file-version"
 
 /** Given a guardfraction file in a string, parse it and register the
  *  guardfraction information to the provided vote routerstatuses.
@@ -2366,7 +2367,18 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
   for (line = front; line; line=line->next) {
     current_line_n++;
 
-    if (!strcmp(line->key, GUARDFRACTION_DATE_STR)) {
+    if (!strcmp(line->key, GUARDFRACTION_VERSION)) {
+      int num_ok = 1;
+      unsigned int version;
+
+      version =
+        (unsigned int) tor_parse_long(line->value, 10, 0, UINT_MAX, &num_ok, NULL);
+
+      if (!num_ok || version != 1) {
+        log_warn(LD_GENERAL, "Got unknown guardfraction version %d.", version);
+        goto done;
+      }
+    } else if (!strcmp(line->key, GUARDFRACTION_DATE_STR)) {
       time_t file_written_at;
       time_t now = time(NULL);
 
