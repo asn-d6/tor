@@ -3075,9 +3075,9 @@ rep_hist_format_hs_stats(time_t now)
   format_iso_time(t, now);
   tor_asprintf(&hs_stats_string, "hidserv-stats-end %s (%d s)\n"
                "hidserv-rend-relayed-cells "I64_FORMAT" delta_f=%d "
-                                           "epsilon=%.2f binsize=%d\n"
+                                           "epsilon=%.2f bin_size=%d\n"
                "hidserv-dir-onions-seen "I64_FORMAT" delta_f=%d "
-                                        "epsilon=%.2f binsize=%d\n",
+                                        "epsilon=%.2f bin_size=%d\n",
                t, (unsigned) (now - start_of_hs_stats_interval),
                I64_PRINTF_ARG(obfuscated_cells_seen), REND_CELLS_DELTA_F,
                REND_CELLS_EPSILON, REND_CELLS_BIN_SIZE,
