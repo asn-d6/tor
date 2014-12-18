@@ -1007,7 +1007,7 @@ rend_cache_store_v2_desc_as_dir(const char *desc)
 
     /* Statistics: Note down this potentially new HS. */
     if (options->HiddenServiceStatistics) {
-      rep_hist_seen_maybe_new_hs(e->parsed->pk);
+      rep_hist_stored_maybe_new_hs(e->parsed->pk);
     }
 
     number_stored++;

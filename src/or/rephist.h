@@ -104,7 +104,7 @@ void rep_hist_hs_stats_term(void);
 time_t rep_hist_hs_stats_write(time_t now);
 char *rep_hist_get_hs_stats_string(void);
 void rep_hist_seen_new_rp_cell(void);
-void rep_hist_seen_maybe_new_hs(const crypto_pk_t *pubkey);
+void rep_hist_stored_maybe_new_hs(const crypto_pk_t *pubkey);
 
 void rep_hist_free_all(void);
 
