@@ -1772,6 +1772,7 @@ options_act(const or_options_t *old_options)
     }
     if ((!old_options || !old_options->HiddenServiceStatistics) &&
         options->HiddenServiceStatistics) {
+      log_info(LD_CONFIG, "Configured to measure hidden service statistics.");
       rep_hist_hs_stats_init(now);
     }
     if ((!old_options || !old_options->BridgeAuthoritativeDir) &&
