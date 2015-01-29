@@ -1631,7 +1631,7 @@ networkstatus_compute_consensus(smartlist_t *votes,
         rs_out.guardfraction_percentage = median_uint32(measured_guardfraction,
                                                      num_guardfraction_inputs);
         /* final value should be an integer percentage! */
-        assert(rs_out.guardfraction_percentage <= 100);
+        tor_assert(rs_out.guardfraction_percentage <= 100);
       }
 
       /* Pick a bandwidth */

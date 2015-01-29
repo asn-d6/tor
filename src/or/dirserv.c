@@ -2372,7 +2372,7 @@ dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
       unsigned int version;
 
       version =
-        (unsigned int) tor_parse_long(line->value, 10, 0, UINT_MAX, &num_ok, NULL);
+        (unsigned int) tor_parse_long(line->value, 10, 0, INT_MAX, &num_ok, NULL);
 
       if (!num_ok || version != 1) {
         log_warn(LD_GENERAL, "Got unknown guardfraction version %d.", version);
