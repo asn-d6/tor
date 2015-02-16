@@ -1743,10 +1743,12 @@ guard_get_guardfraction_bandwidth(guardfraction_bandwidth_t *guardfraction_bw,
   tor_assert(guardfraction_percentage <= 100);
   guardfraction_fraction = guardfraction_percentage / 100.0;
 
-  guardfraction_bw->guard_bw = (int) (guardfraction_fraction * orig_bandwidth);
+  long guard_bw = tor_lround(guardfraction_fraction * orig_bandwidth);
+  tor_assert(guard_bw <= INT_MAX);
 
-  guardfraction_bw->non_guard_bw =
-    (int) ((1 - guardfraction_fraction) * orig_bandwidth);
+  guardfraction_bw->guard_bw = (int) guard_bw;
+
+  guardfraction_bw->non_guard_bw = orig_bandwidth - guard_bw;
 }
 
 /** A list of configured bridges. Whenever we actually get a descriptor
