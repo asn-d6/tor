@@ -2791,13 +2791,7 @@ options_validate(or_options_t *old_options, or_options_t *options,
     }
     /* same for guardfraction file */
     if (options->GuardfractionFile && !old_options) {
-      file_status_t fs = file_status(options->GuardfractionFile);
-      if (fs == FN_FILE) {
-        dirserv_read_guardfraction_file(options->GuardfractionFile, NULL);
-      } else { /* path is not a file. or it's an empty file. */
-        COMPLAIN("GuardfractionFile is not a proper file. Disabling.");
-        options->GuardfractionFile = NULL;
-      }
+      dirserv_read_guardfraction_file(options->GuardfractionFile, NULL);
     }
   }
 
