@@ -2158,13 +2158,15 @@ clear_status_flags_on_sybil(routerstatus_t *rs)
    * forget to add it to this clause. */
 }
 
-/** The guardfraction of the guard with identity fingerprint
- *  <b>guard_id</b> is <b>guardfraction_percentage</b>. See if we have a
- *  vote routerstatus for this guard, and if we do, register the
+/** The guardfraction of the guard with identity fingerprint <b>guard_id</b>
+ *  is <b>guardfraction_percentage</b>. See if we have a vote routerstatus for
+ *  this guard in <b>vote_routerstatuses</b>, and if we do, register the
  *  information to it.
  *
  *  Return 1 if we applied the information and 0 if we couldn't find a
  *  matching guard.
+ *
+ * Requires that <b>vote_routerstatuses</b> be sorted.
  */
 static int
 guardfraction_line_apply(const char *guard_id,
