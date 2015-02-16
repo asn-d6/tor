@@ -1623,7 +1623,7 @@ networkstatus_compute_consensus(smartlist_t *votes,
         chosen_version = NULL;
       }
 
-      /* If it's a guard and we have enougn guardfraction votes,
+      /* If it's a guard and we have enough guardfraction votes,
          calculate its consensus guardfraction value. */
       if (is_guard && num_guardfraction_inputs > 2 &&
           consensus_method >= MIN_METHOD_FOR_GUARDFRACTION) {
