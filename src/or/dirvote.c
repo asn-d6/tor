@@ -1025,8 +1025,9 @@ update_total_bandwidth_weights(const routerstatus_t *rs,
     return;
   }
 
-  /* If this routerstatus has guardfraction information, use it to
-   * calculate its actual bandwidth. Quoting from proposal236:
+  /* If this routerstatus represents a guard that we have
+   * guardfraction information on, use it to calculate its actual
+   * bandwidth. From proposal236:
    *
    *    Similarly, when calculating the bandwidth-weights line as in
    *    section 3.8.3 of dir-spec.txt, directory authorities should treat N
@@ -1036,11 +1037,14 @@ update_total_bandwidth_weights(const routerstatus_t *rs,
    *
    *    G' = G + F*B, if N does not have the exit flag
    *    M' = M + (1-F)*B, if N does not have the exit flag
+   *
+   *    or
+   *
    *    D' = D + F*B, if N has the exit flag
    *    E' = E + (1-F)*B, if N has the exit flag
    *
-   * In this block of code, we set default_bandwidth to F*B and
-   * guardfraction_bandwidth to (1-F)*B. */
+   * In this block of code, we prepare the bandwidth values by setting
+   * the default_bandwidth to F*B and guardfraction_bandwidth to (1-F)*B. */
   if (rs->has_guardfraction) {
     guardfraction_bandwidth_t guardfraction_bw;
 
@@ -1054,7 +1058,11 @@ update_total_bandwidth_weights(const routerstatus_t *rs,
     guardfraction_bandwidth = guardfraction_bw.non_guard_bw;
   }
 
-  /* Now calculate the total bandwidth weights with or without guardfraction.*/
+  /* Now calculate the total bandwidth weights with or without
+     guardfraction. Depending on the flags of the relay, add its
+     bandwidth to the appropriate weight pool. If it's a guard and
+     guardfraction is enabled, add its bandwidth to both pools as
+     indicated by the previous comment. */
   *T += default_bandwidth;
   if (is_exit && is_guard) {
 
