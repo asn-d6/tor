@@ -3181,6 +3181,11 @@ typedef struct or_circuit_t {
    * to the specification? */
   unsigned int remaining_relay_early_cells : 4;
 
+  /* We have already peformed an introduction on this circuit. We have
+     already received an INTRODUCE1 cell and sent back an
+     INTRODUCE_ACK cell. */
+  unsigned int already_done_introduction : 1;
+
   /** True iff this circuit was made with a CREATE_FAST cell. */
   unsigned int is_first_hop : 1;
 
