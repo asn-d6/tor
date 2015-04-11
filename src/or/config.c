@@ -382,6 +382,9 @@ static config_var_t option_vars_[] = {
   V(TestSocks,                   BOOL,     "0"),
   V(TokenBucketRefillInterval,   MSEC_INTERVAL, "100 msec"),
   V(Tor2webMode,                 BOOL,     "0"),
+  /* XXX We should probably rename the torrc option, since rend
+     circuits have two middle hops. We probably want to say "second
+     hop". */
   V(HSRendezvousMiddleNodes,      ROUTERSET, NULL),
   V(TLSECGroup,                  STRING,   NULL),
   V(TrackHostExits,              CSV,      NULL),

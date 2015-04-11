@@ -2058,8 +2058,11 @@ choose_good_middle_server(uint8_t purpose,
   if (options->AllowInvalid_ & ALLOW_INVALID_MIDDLE)
     flags |= CRN_ALLOW_INVALID;
 
+  /** If a hidden service wants a specific middle node for the second
+      hop, pin this node now. */
   if (options->HSRendezvousMiddleNodes &&
-      purpose == CIRCUIT_PURPOSE_S_CONNECT_REND) {
+      purpose == CIRCUIT_PURPOSE_S_CONNECT_REND &&
+      cur_len == 1) {
     log_debug(LD_GENERAL, "Picking a sticky middle node");
     return pick_hs_rendezvous_middle_node(flags, options);
   }
