@@ -3227,6 +3227,12 @@ rend_services_introduce(void)
       node = node_get_by_id(intro->extend_info->identity_digest);
       if (!node || !intro_circ) {
         int removing_this_intro_point_changes_the_intro_point_set = 1;
+
+        if (!node) {
+          circuit_mark_for_close(TO_CIRCUIT(intro_circ),
+                                 END_CIRC_REASON_FINISHED);
+        }
+
         log_info(LD_REND, "Giving up on %s as intro point for %s"
                  " (circuit disappeared).",
                  safe_str_client(extend_info_describe(intro->extend_info)),

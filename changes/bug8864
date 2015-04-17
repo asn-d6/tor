@@ -1,0 +1,4 @@
+  o Minor bugfixes (hidden services):
+    - Hidden services now tear down introduction circuits when the
+      introduction point is not present on the consensus anymore.
+      Fixes bug 8864; bugfix on 0.2.3.10-alpha.
