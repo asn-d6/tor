@@ -3225,9 +3225,16 @@ rend_services_introduce(void)
       }
 
       node = node_get_by_id(intro->extend_info->identity_digest);
+
+      /* Check whether the intro circuit or the intro point has
+         disappeared. If so, we need to free this intro point and get
+         a new one. */
       if (!node || !intro_circ) {
         int removing_this_intro_point_changes_the_intro_point_set = 1;
 
+        /* If the intro node has disappeared completely, then it
+           probably got removed from the consensus and we should also
+           tear down the circuit. */
         if (!node) {
           circuit_mark_for_close(TO_CIRCUIT(intro_circ),
                                  END_CIRC_REASON_FINISHED);
@@ -3237,7 +3244,13 @@ rend_services_introduce(void)
                  " (circuit disappeared).",
                  safe_str_client(extend_info_describe(intro->extend_info)),
                  safe_str_client(service->service_id));
+
+        /* Note down that we are removing this intro point so that we
+           get a new one soon. */
         rend_service_note_removing_intro_point(service, intro);
+
+        /* Figure out whether we need a new descriptor after removing
+           this intro point. */
         if (intro->time_expiring != -1) {
           log_info(LD_REND, "We were already expiring the intro point; "
                    "no need to mark the HS descriptor as dirty over this.");
@@ -3248,6 +3261,8 @@ rend_services_introduce(void)
                    "Marking current descriptor as dirty.");
           service->desc_is_dirty = now;
         }
+
+        /* Forget about this intro point now. */
         rend_intro_point_free(intro);
         intro = NULL; /* SMARTLIST_DEL_CURRENT takes a name, not a value. */
         SMARTLIST_DEL_CURRENT(service->intro_nodes, intro);
