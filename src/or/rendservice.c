@@ -3241,9 +3241,10 @@ rend_services_introduce(void)
         }
 
         log_info(LD_REND, "Giving up on %s as intro point for %s"
-                 " (circuit disappeared).",
+                 " (%s).",
                  safe_str_client(extend_info_describe(intro->extend_info)),
-                 safe_str_client(service->service_id));
+                 safe_str_client(service->service_id),
+                 node ? "circuit disappeared" : "node disappeared");
 
         /* Note down that we are removing this intro point so that we
            get a new one soon. */
