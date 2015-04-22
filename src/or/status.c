@@ -117,6 +117,14 @@ log_heartbeat(time_t now)
     log_accounting(now, options);
   }
 
+  /* Log the intro hidden service statistics */
+  if (server_mode(options) && options->HiddenServiceStatistics) {
+      rep_hist_log_intro_hs_stats();
+  } else {
+    log_warn(LD_GENERAL, "Please enable HiddenServiceStatistics if you want to see intro stats. "
+             "If you don't want intro stats, you are probably using the wrong branch.");
+  }
+
   double fullness_pct = 100;
   if (stats_n_data_cells_packaged && !hibernating) {
     fullness_pct =

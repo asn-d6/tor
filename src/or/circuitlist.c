@@ -1760,6 +1760,11 @@ circuit_mark_for_close_, (circuit_t *circ, int reason, int line,
                                               INTRO_POINT_FAILURE_UNREACHABLE);
       }
     }
+  } else if(circ->purpose == CIRCUIT_PURPOSE_INTRO_POINT) {
+    /* If we are closing an intro circuit, note down how many
+       introductions were performed in it. */
+    or_circuit_t *or_circ = TO_OR_CIRCUIT(circ);
+    rep_hist_note_introductions_on_dead_circuit(or_circ);
   }
 
   if (circ->n_chan) {

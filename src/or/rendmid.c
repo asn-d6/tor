@@ -112,6 +112,8 @@ rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request,
   /* Now, set up this circuit. */
   circuit_change_purpose(TO_CIRCUIT(circ), CIRCUIT_PURPOSE_INTRO_POINT);
   circuit_set_intro_point_digest(circ, (uint8_t *)pk_digest);
+  /* Note down this introduction circuit in the stats */
+  rep_hist_seen_new_intro_circuit();
 
   log_info(LD_REND,
            "Established introduction point on circuit %u for service %s",
@@ -193,6 +195,9 @@ rend_mid_introduce(or_circuit_t *circ, const uint8_t *request,
            "from circ %u to circ %u",
            safe_str(serviceid), (unsigned)circ->p_circ_id,
            (unsigned)intro_circ->p_circ_id);
+
+  /* Another introduction request received for this intro circuit. */
+  intro_circ->total_introductions++;
 
   /* Great.  Now we just relay the cell down the circuit. */
   if (relay_send_command_from_edge(0, TO_CIRCUIT(intro_circ),

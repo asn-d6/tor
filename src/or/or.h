@@ -3202,6 +3202,9 @@ typedef struct or_circuit_t {
    * to zero, it is initialized to the default value.
    */
   uint32_t max_middle_cells;
+
+  /** Number of INTRODUCE1 cells received for this intro circ. */
+  unsigned int total_introductions;
 } or_circuit_t;
 
 typedef struct or_circuit_rendinfo_s {
