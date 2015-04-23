@@ -3025,15 +3025,15 @@ rep_hist_seen_new_intro_circuit(void)
 /* Given the number of introductions on this closed circuit, bin it
  * and place it in the histogram:
 
- *  Zero bin: number of circuits with 1-50 introductions
- *  First bin: number of circuits with 50-200 introductions
- *  Second bin: number of circuits with 200-500 introductions
- *  Third bin: number of circuits with 500-1000 introductions
- *  Fourth bin: number of circuits with 1000-10000 introductions
- *  Fifth bin: number of circuits with 10000-16384 introductions
- *  Sixth bin: number of circuits with 16384-34000 introductions
- *  Seventh bin: number of circuits with 34000+ introductions
- *  Eigth bin: number of circuits with 0 introductions
+ *  Zero bin: number of circuits with 0 introductions
+ *  First bin: number of circuits with 1-50 introductions
+ *  Second bin: number of circuits with 50-200 introductions
+ *  Third bin: number of circuits with 200-500 introductions
+ *  Fourth bin: number of circuits with 500-1000 introductions
+ *  Fifth bin: number of circuits with 1000-10000 introductions
+ *  Sixth bin: number of circuits with 10000-16384 introductions
+ *  Seventh bin: number of circuits with 16384-34000 introductions
+ *  Eigth bin: number of circuits with 34000+ introductions
 */
 void
 rep_hist_note_introductions_on_dead_circuit(or_circuit_t *or_circ)
@@ -3050,23 +3050,23 @@ rep_hist_note_introductions_on_dead_circuit(or_circuit_t *or_circ)
   /* Bin the value and place it in the histogram */
   if (n_intros == 0) {
     /* Only 0 into last bin so we can identify it from the old logs. */
-    hs_stats->introductions_per_circuit_histogram[8]++;
-  } else if (n_intros < 50) {
     hs_stats->introductions_per_circuit_histogram[0]++;
-  } else if (n_intros < 200) {
+  } else if (n_intros < 50) {
     hs_stats->introductions_per_circuit_histogram[1]++;
-  } else if (n_intros < 500) {
+  } else if (n_intros < 200) {
     hs_stats->introductions_per_circuit_histogram[2]++;
-  } else if (n_intros < 1000) {
+  } else if (n_intros < 500) {
     hs_stats->introductions_per_circuit_histogram[3]++;
-  } else if (n_intros < 10000) {
+  } else if (n_intros < 1000) {
     hs_stats->introductions_per_circuit_histogram[4]++;
-  } else if (n_intros < 16384) {
+  } else if (n_intros < 10000) {
     hs_stats->introductions_per_circuit_histogram[5]++;
-  } else if (n_intros < 34000) {
+  } else if (n_intros < 16384) {
     hs_stats->introductions_per_circuit_histogram[6]++;
-  } else {
+  } else if (n_intros < 34000) {
     hs_stats->introductions_per_circuit_histogram[7]++;
+  } else {
+    hs_stats->introductions_per_circuit_histogram[8]++;
   }
 }
 
@@ -3090,7 +3090,7 @@ rep_hist_log_intro_hs_stats(void)
            hs_stats->introductions_per_circuit_histogram[6],
            hs_stats->introductions_per_circuit_histogram[7],
            hs_stats->introductions_per_circuit_histogram[8]);
-  log_warn(LD_GENERAL, "Histogram cells explanation: (1-50, 50-200, 200-500, 500-1000, 1000-10000, 10000-16384, 16384-34000, 34000+, 0)");
+  log_warn(LD_GENERAL, "Histogram cells explanation: (0, 1-50, 50-200, 200-500, 500-1000, 1000-10000, 10000-16384, 16384-34000, 34000+)");
 }
 
 /** As HSDirs, we saw another hidden service with public key
