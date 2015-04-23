@@ -2926,7 +2926,7 @@ typedef struct hs_stats_t {
   int introduction_circuits_established_here;
 
   /* Binned histogram of number of introductions per intro circuit. */
-  int introductions_per_circuit_histogram[8];
+  int introductions_per_circuit_histogram[9];
 } hs_stats_t;
 
 /** Our statistics structure singleton. */
@@ -2980,7 +2980,9 @@ rep_hist_reset_hs_stats(time_t now)
 
   { /* Clean up the intro histogram */
     int i;
-    for (i = 0 ; i < 8 ; i++) {
+    size_t histo_len =
+      ARRAY_LENGTH(hs_stats->introductions_per_circuit_histogram);
+    for (i = 0; i < histo_len; i++) {
       hs_stats->introductions_per_circuit_histogram[i] = 0;
     }
   }
@@ -3031,6 +3033,7 @@ rep_hist_seen_new_intro_circuit(void)
  *  Fifth bin: number of circuits with 10000-16384 introductions
  *  Sixth bin: number of circuits with 16384-34000 introductions
  *  Seventh bin: number of circuits with 34000+ introductions
+ *  Eigth bin: number of circuits with 0 introductions
 */
 void
 rep_hist_note_introductions_on_dead_circuit(or_circuit_t *or_circ)
@@ -3045,7 +3048,10 @@ rep_hist_note_introductions_on_dead_circuit(or_circuit_t *or_circ)
            n_intros);
 
   /* Bin the value and place it in the histogram */
-  if (n_intros < 50) {
+  if (n_intros == 0) {
+    /* Only 0 into last bin so we can identify it from the old logs. */
+    hs_stats->introductions_per_circuit_histogram[8]++;
+  } else if (n_intros < 50) {
     hs_stats->introductions_per_circuit_histogram[0]++;
   } else if (n_intros < 200) {
     hs_stats->introductions_per_circuit_histogram[1]++;
@@ -3074,7 +3080,7 @@ rep_hist_log_intro_hs_stats(void)
   log_warn(LD_GENERAL, "Intro HS stats: %d introduction circuits were established in this relay.",
            hs_stats->introduction_circuits_established_here);
 
-  log_warn(LD_GENERAL, "Intro HS stats: Histogram: (%d, %d, %d, %d, %d, %d, %d, %d)",
+  log_warn(LD_GENERAL, "Intro HS stats: Histogram: (%d, %d, %d, %d, %d, %d, %d, %d, %d)",
            hs_stats->introductions_per_circuit_histogram[0],
            hs_stats->introductions_per_circuit_histogram[1],
            hs_stats->introductions_per_circuit_histogram[2],
@@ -3082,8 +3088,9 @@ rep_hist_log_intro_hs_stats(void)
            hs_stats->introductions_per_circuit_histogram[4],
            hs_stats->introductions_per_circuit_histogram[5],
            hs_stats->introductions_per_circuit_histogram[6],
-           hs_stats->introductions_per_circuit_histogram[7]);
-  log_warn(LD_GENERAL, "Histogram cells explanation: (1-50, 50-200, 200-500, 500-1000, 1000-10000, 10000-16384, 16384-34000, 34000+)");
+           hs_stats->introductions_per_circuit_histogram[7],
+           hs_stats->introductions_per_circuit_histogram[8]);
+  log_warn(LD_GENERAL, "Histogram cells explanation: (1-50, 50-200, 200-500, 500-1000, 1000-10000, 10000-16384, 16384-34000, 34000+, 0)");
 }
 
 /** As HSDirs, we saw another hidden service with public key
