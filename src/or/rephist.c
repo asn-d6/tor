@@ -2972,6 +2972,8 @@ rep_hist_reset_hs_stats(time_t now)
 {
   if (!hs_stats) {
     hs_stats = hs_stats_new();
+  } else {
+    rep_hist_log_intro_hs_stats();
   }
 
   hs_stats->rp_relay_cells_seen = 0;
