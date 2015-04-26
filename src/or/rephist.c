@@ -3038,14 +3038,15 @@ rep_hist_seen_new_intro_circuit(void)
 void
 rep_hist_note_introductions_on_dead_circuit(or_circuit_t *or_circ)
 {
+  time_t now = time(NULL);
   int n_intros = or_circ->total_introductions;
 
   if (!hs_stats) {
     return; // We're not collecting stats
   }
 
-  log_warn(LD_GENERAL, "Noting down dead intro circ with %d introductions.",
-           n_intros);
+  log_warn(LD_GENERAL, "Noting down dead intro circ with %d introductions (lifetime: %d seconds).",
+           n_intros, (int)(now - or_circ->base_.timestamp_created.tv_sec));
 
   /* Bin the value and place it in the histogram */
   if (n_intros == 0) {
