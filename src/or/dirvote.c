@@ -1081,7 +1081,11 @@ update_total_bandwidth_weights(const routerstatus_t *rs,
    * guardfraction is enabled, add its bandwidth to both pools as
    * indicated by the previous comment.
    */
-  *T += default_bandwidth;
+  *T += default_bandwidth; /* add normal bw to total bw */
+  if (rs->has_guardfraction) {
+    *T += guardfraction_bandwidth; /* also add guardfraction bw to total bw */
+  }
+
   if (is_exit && is_guard) {
 
     *D += default_bandwidth;
