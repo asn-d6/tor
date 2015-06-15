@@ -2446,6 +2446,7 @@ networkstatus_verify_bw_weights(networkstatus_t *ns, int consensus_method)
   double Gtotal=0, Mtotal=0, Etotal=0;
   const char *casename = NULL;
   int valid = 1;
+  total_bws_t *total_bws = tor_malloc_zero(sizeof(total_bws_t));
   (void) consensus_method;
 
   weight_scale = networkstatus_get_weight_scale_param(ns);
@@ -2464,6 +2465,7 @@ networkstatus_verify_bw_weights(networkstatus_t *ns, int consensus_method)
   if (Wgg<0 || Wgm<0 || Wgd<0 || Wmg<0 || Wmm<0 || Wme<0 || Wmd<0 || Weg<0
           || Wem<0 || Wee<0 || Wed<0) {
     log_warn(LD_BUG, "No bandwidth weights produced in consensus!");
+    tor_free(total_bws);
     return 0;
   }
 
@@ -2523,34 +2525,38 @@ networkstatus_verify_bw_weights(networkstatus_t *ns, int consensus_method)
   Wee /= weight_scale;
   Wed /= weight_scale;
 
+  { /* Prepare the total_bws structure */
+    total_bws->G = &G;
+    total_bws->M = &M;
+    total_bws->E = &E;
+    total_bws->D = &D;
+    total_bws->T = &T;
+
+    total_bws->with_bw_weights = 1;
+
+    total_bws->Gtotal = &Gtotal;
+    total_bws->Mtotal = &Mtotal;
+    total_bws->Etotal = &Etotal;
+
+    total_bws->Wgg = Wgg;
+    total_bws->Wgm = Wgm;
+    total_bws->Wgd = Wgd;
+    total_bws->Wmg = Wmg;
+    total_bws->Wmm = Wmm;
+    total_bws->Wme = Wme;
+    total_bws->Wmd = Wmd;
+    total_bws->Weg = Weg;
+    total_bws->Wem = Wem;
+    total_bws->Wee = Wee;
+    total_bws->Wed = Wed;
+  }
+
   // Then, gather G, M, E, D, T to determine case
   SMARTLIST_FOREACH_BEGIN(ns->routerstatus_list, routerstatus_t *, rs) {
-    int is_exit = 0;
-    /* Bug #2203: Don't count bad exits as exits for balancing */
-    is_exit = rs->is_exit && !rs->is_bad_exit;
-    if (rs->has_bandwidth) {
-      T += rs->bandwidth_kb;
-      if (is_exit && rs->is_possible_guard) {
-        D += rs->bandwidth_kb;
-        Gtotal += Wgd*rs->bandwidth_kb;
-        Mtotal += Wmd*rs->bandwidth_kb;
-        Etotal += Wed*rs->bandwidth_kb;
-      } else if (is_exit) {
-        E += rs->bandwidth_kb;
-        Mtotal += Wme*rs->bandwidth_kb;
-        Etotal += Wee*rs->bandwidth_kb;
-      } else if (rs->is_possible_guard) {
-        G += rs->bandwidth_kb;
-        Gtotal += Wgg*rs->bandwidth_kb;
-        Mtotal += Wmg*rs->bandwidth_kb;
-      } else {
-        M += rs->bandwidth_kb;
-        Mtotal += Wmm*rs->bandwidth_kb;
-      }
-    } else {
-      log_warn(LD_BUG, "Missing consensus bandwidth for router %s",
-               routerstatus_describe(rs));
-    }
+    update_total_bandwidth_weights(rs,
+                                   rs->is_exit && !rs->is_bad_exit,
+                                   rs->is_possible_guard,
+                                   total_bws);
   } SMARTLIST_FOREACH_END(rs);
 
   // Finally, check equality conditions depending upon case 1, 2 or 3
@@ -2825,6 +2831,8 @@ networkstatus_verify_bw_weights(networkstatus_t *ns, int consensus_method)
   if (valid)
     log_notice(LD_DIR, "Bandwidth-weight %s is verified and valid.",
                casename);
+
+  tor_free(total_bws);
 
   return valid;
 }

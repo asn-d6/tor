@@ -176,7 +176,23 @@ typedef struct total_bws_t {
   /* These are the G,M,E,D,T values used when calculating bandwidth
      weights. */
   int64_t *G, *M, *E, *D, *T;
+
+  int with_bw_weights : 1;
+
+  /* These are the load-balancing bandwidth weights that are necessary
+     for the calculation of Gtotal/Mtotal/Etotal. */
+  double Wgg, Wgm, Wgd, Wmg, Wmm, Wme, Wmd, Weg, Wem, Wee, Wed;
+
+  /* These are the total Guard/Middle/Exit bandwidths after
+     considering the bandwidth weights. They are used by
+     networkstatus_verify_bw_weights() toverify the correctness of
+     bandwidth weights. */
+  double *Gtotal, *Mtotal, *Etotal;
 } total_bws_t;
+
+void update_total_bandwidth_weights(const routerstatus_t *rs,
+                                    int is_exit, int is_guard,
+                                    const total_bws_t *total_bws);
 
 #ifdef DIRVOTE_PRIVATE
 STATIC char *format_networkstatus_vote(crypto_pk_t *private_key,

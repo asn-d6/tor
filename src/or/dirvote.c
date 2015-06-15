@@ -1027,8 +1027,12 @@ networkstatus_compute_bw_weights_v10(smartlist_t *chunks, int64_t G,
 }
 
 /** Update total bandwidth weights (G/M/E/D/T) with the bandwidth of
- *  the router in <b>rs</b>. */
-static void
+ *  the router in <b>rs</b>.
+ *
+ *  If total_bws_t.with_bw_weights is set, then also calculate the
+ *  Gtotal/Mtotal/Etotal weights that should be used during weight
+ *  verification by dirauths. */
+void
 update_total_bandwidth_weights(const routerstatus_t *rs,
                                int is_exit, int is_guard,
                                const total_bws_t *total_bws)
@@ -1081,6 +1085,10 @@ update_total_bandwidth_weights(const routerstatus_t *rs,
    * bandwidth to the appropriate weight pool. If it's a guard and
    * guardfraction is enabled, add its bandwidth to both pools as
    * indicated by the previous comment.
+   *
+   * If bandwidth weights (Wgd/Wmd/etc.) are provided, then also set
+   * Gtotal/Mtotal/etc. to the correct bandwidth fraction of each
+   * router.
    */
   *(total_bws->T) += default_bandwidth;
   if (rs->has_guardfraction) {
@@ -1090,27 +1098,48 @@ update_total_bandwidth_weights(const routerstatus_t *rs,
   if (is_exit && is_guard) {
 
     *(total_bws->D) += default_bandwidth;
+    if (total_bws->with_bw_weights) {
+      *(total_bws->Gtotal) += total_bws->Wgd * default_bandwidth;
+      *(total_bws->Mtotal) += total_bws->Wmd * default_bandwidth;
+      *(total_bws->Etotal) += total_bws->Wed * default_bandwidth;
+    }
 
     if (rs->has_guardfraction) {
       *(total_bws->E) += guardfraction_bandwidth;
+      if (total_bws->with_bw_weights) {
+        *(total_bws->Mtotal) += total_bws->Wme * guardfraction_bandwidth;
+        *(total_bws->Etotal) += total_bws->Wee * guardfraction_bandwidth;
+      }
     }
 
   } else if (is_exit) {
 
     *(total_bws->E) += default_bandwidth;
-
+    if (total_bws->with_bw_weights) {
+      *(total_bws->Mtotal) += total_bws->Wme * default_bandwidth;
+      *(total_bws->Etotal) += total_bws->Wee * default_bandwidth;
+    }
   } else if (is_guard) {
 
     *(total_bws->G) += default_bandwidth;
+    if (total_bws->with_bw_weights) {
+      *(total_bws->Gtotal) += total_bws->Wgg * default_bandwidth;
+      *(total_bws->Mtotal) += total_bws->Wmg * default_bandwidth;
+    }
 
     if (rs->has_guardfraction) {
       *(total_bws->M) += guardfraction_bandwidth;
+      if (total_bws->with_bw_weights) {
+        *(total_bws->Mtotal) += total_bws->Wmm * guardfraction_bandwidth;
+      }
     }
 
   } else {
 
     *(total_bws->M) += default_bandwidth;
-
+    if (total_bws->with_bw_weights) {
+      *(total_bws->Mtotal) += total_bws->Wmm * default_bandwidth;
+    }
   }
 }
 
@@ -1522,6 +1551,7 @@ networkstatus_compute_consensus(smartlist_t *votes,
       total_bws->E = &E;
       total_bws->D = &D;
       total_bws->T = &T;
+      total_bws->with_bw_weights = 0;
     }
 
     for (i = 0; i < num_routers; ++i) {
