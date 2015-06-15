@@ -1031,8 +1031,7 @@ networkstatus_compute_bw_weights_v10(smartlist_t *chunks, int64_t G,
 static void
 update_total_bandwidth_weights(const routerstatus_t *rs,
                                int is_exit, int is_guard,
-                               int64_t *G, int64_t *M, int64_t *E, int64_t *D,
-                               int64_t *T)
+                               const total_bws_t *total_bws)
 {
   int default_bandwidth = rs->bandwidth_kb;
   int guardfraction_bandwidth = 0;
@@ -1083,32 +1082,35 @@ update_total_bandwidth_weights(const routerstatus_t *rs,
    * guardfraction is enabled, add its bandwidth to both pools as
    * indicated by the previous comment.
    */
-  *T += default_bandwidth; /* add normal bw to total bw */
+  *(total_bws->T) += default_bandwidth;
   if (rs->has_guardfraction) {
-    *T += guardfraction_bandwidth; /* also add guardfraction bw to total bw */
+    *(total_bws->T) += guardfraction_bandwidth;
   }
 
   if (is_exit && is_guard) {
 
-    *D += default_bandwidth;
+    *(total_bws->D) += default_bandwidth;
+
     if (rs->has_guardfraction) {
-      *E += guardfraction_bandwidth;
+      *(total_bws->E) += guardfraction_bandwidth;
     }
 
   } else if (is_exit) {
 
-    *E += default_bandwidth;
+    *(total_bws->E) += default_bandwidth;
 
   } else if (is_guard) {
 
-    *G += default_bandwidth;
+    *(total_bws->G) += default_bandwidth;
+
     if (rs->has_guardfraction) {
-      *M += guardfraction_bandwidth;
+      *(total_bws->M) += guardfraction_bandwidth;
     }
 
   } else {
 
-    *M += default_bandwidth;
+    *(total_bws->M) += default_bandwidth;
+
   }
 }
 
@@ -1384,6 +1386,7 @@ networkstatus_compute_consensus(smartlist_t *votes,
                                            sizeof(uint32_t));
     uint32_t *measured_guardfraction = tor_calloc(smartlist_len(votes),
                                                   sizeof(uint32_t));
+    total_bws_t *total_bws = tor_malloc_zero(sizeof(total_bws_t));
     int num_bandwidths;
     int num_mbws;
     int num_guardfraction_inputs;
@@ -1512,6 +1515,15 @@ networkstatus_compute_consensus(smartlist_t *votes,
     /* Now go through all the votes */
     flag_counts = tor_calloc(smartlist_len(flags), sizeof(int));
     const int num_routers = dircollator_n_routers(collator);
+
+    { /* Set up the total bandwidths structure */
+      total_bws->G = &G;
+      total_bws->M = &M;
+      total_bws->E = &E;
+      total_bws->D = &D;
+      total_bws->T = &T;
+    }
+
     for (i = 0; i < num_routers; ++i) {
       vote_routerstatus_t **vrs_lst =
         dircollator_get_votes_for_router(collator, i);
@@ -1701,7 +1713,7 @@ networkstatus_compute_consensus(smartlist_t *votes,
       {
         update_total_bandwidth_weights(&rs_out,
                                        is_exit, is_guard,
-                                       &G, &M, &E, &D, &T);
+                                       total_bws);
       }
 
       /* Ok, we already picked a descriptor digest we want to list
@@ -1863,6 +1875,7 @@ networkstatus_compute_consensus(smartlist_t *votes,
     tor_free(bandwidths_kb);
     tor_free(measured_bws_kb);
     tor_free(measured_guardfraction);
+    tor_free(total_bws);
   }
 
   /* Mark the directory footer region */

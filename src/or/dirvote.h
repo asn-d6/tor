@@ -170,6 +170,14 @@ document_signature_t *voter_get_sig_by_algorithm(
                            const networkstatus_voter_info_t *voter,
                            digest_algorithm_t alg);
 
+/** Contain information for calculating total bandwidths during
+    consensus creation. */
+typedef struct total_bws_t {
+  /* These are the G,M,E,D,T values used when calculating bandwidth
+     weights. */
+  int64_t *G, *M, *E, *D, *T;
+} total_bws_t;
+
 #ifdef DIRVOTE_PRIVATE
 STATIC char *format_networkstatus_vote(crypto_pk_t *private_key,
                                  networkstatus_t *v3_ns);
