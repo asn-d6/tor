@@ -2098,12 +2098,15 @@ routerstatus_parse_guardfraction(const char *guardfraction_str,
   const char *end_of_header = NULL;
   int is_consensus = !vote_rs;
   uint32_t guardfraction;
+  const or_options_t *options = get_options();
 
   tor_assert(bool_eq(vote, vote_rs));
 
-  /* If this info comes from a consensus, but we should't apply
-     guardfraction, just exit. */
-  if (is_consensus && !should_apply_guardfraction(NULL)) {
+  /* As clients/relays, we only use guardfraction if we are supposed to.
+   * As dirauths, we always parse guardfraction if we can. */
+  if (!authdir_mode(options) && !should_apply_guardfraction(NULL)) {
+    log_warn(LD_GENERAL," Not applying guardfraction for %s (%d / %p)",
+             rs->nickname, options->AuthoritativeDir, options->GuardfractionFile);
     return 0;
   }
 
