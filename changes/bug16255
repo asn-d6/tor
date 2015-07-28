@@ -1,0 +1,6 @@
+  o Major bugfixes (guards):
+    - Fix issues when authorities are voting on guardfraction.
+      Authorities now generate consensus weights normally when voting
+      guardfraction, and also properly verify the generated weights.
+      Fixes bug 16255; bugfix on tor-0.2.6.3-alpha.
+
