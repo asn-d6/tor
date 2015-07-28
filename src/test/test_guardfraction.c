@@ -9,6 +9,7 @@
 #include "or.h"
 #include "config.h"
 #include "dirserv.h"
+#include "dirvote.h"
 #include "container.h"
 #include "entrynodes.h"
 #include "util.h"
@@ -401,6 +402,147 @@ test_should_apply_guardfraction(void *arg)
   smartlist_free(vote_missing.net_params);
 }
 
+/** This test checks that total bandwidth values and bandwidth weights
+ *  are calculated properly during consensus generation/verification. */
+static void
+test_update_total_bandwidth_weights(void *arg)
+{
+  /** For this test, we are going to create a total_bws_t structure
+   *  that holds the total bandwidth values and bandwidth weights of
+   *  the network.
+   *
+   *  Then we are going to create a few dummy relays and inject them
+   *  in our dummy network using update_total_bandwidth_weights().
+   *
+   *  Finally we will check that the total_bws_t structure got filled
+   *  as we expected.
+  */
+  (void) arg;
+
+  /* This is the dummy relay we will be using during this test. */
+  routerstatus_t rs;
+
+  /* This is our total_bws structure. */
+  total_bws_t *total_bws = tor_malloc_zero(sizeof(total_bws_t));
+  /* These are the total bw values. */
+  int64_t G=0, M=0, E=0, D=0, T=0;
+  /* These are total bw values after considering bandwidth weights. */
+  double Gtotal=0, Mtotal=0, Etotal=0;
+
+  { /* Start by setting up the total bandwidths structure */
+    total_bws->with_bw_weights = 1;
+
+    /* Just link those up to the local vars */
+    total_bws->G = &G;
+    total_bws->M = &M;
+    total_bws->E = &E;
+    total_bws->D = &D;
+    total_bws->T = &T;
+
+    total_bws->Gtotal = &Gtotal;
+    total_bws->Mtotal = &Mtotal;
+    total_bws->Etotal = &Etotal;
+
+    /* and initialize the bandwidth weights for this unittest */
+    /* XXX init them to something actual to check Gtotal */
+    /* Wgg - Weight for Guard-flagged nodes in the guard position */
+    total_bws->Wgg = 5000;
+    /* Wgm - Weight for non-flagged nodes in the guard Position */
+    total_bws->Wgm = 5000;
+    total_bws->Wgd = 0;
+    total_bws->Wmg = 5000;
+    total_bws->Wmm = 10000;
+    total_bws->Wme = 0;
+    total_bws->Wmd = 0;
+    total_bws->Weg = 0;
+    total_bws->Wem = 10000;
+    total_bws->Wee = 10000;
+    total_bws->Wed = 10000;
+  }
+
+  /* Now let's prepare the first relay we are going to inject to the
+     network */
+  memset(&rs, 0, sizeof(routerstatus_t));
+  rs.is_possible_guard = 1;
+
+  /* Here goes first relay. It's a guard but not an exit, It has been
+   * a guard for ages (hence guardfraction 100%), and has bandwidth
+   * 1000. Make sure that bandwidth gets assigned only on the G total
+   * weight. */
+  rs.is_exit = 0;
+  rs.has_bandwidth = 1;
+  rs.has_guardfraction = 1;
+  rs.bandwidth_kb = 1000;
+  rs.guardfraction_percentage = 100;
+
+  update_total_bandwidth_weights(&rs,
+                                 rs.is_exit && !rs.is_bad_exit,
+                                 rs.is_possible_guard,
+                                 total_bws);
+
+  tt_i64_op(T, OP_EQ, 1000);
+  tt_i64_op(G, OP_EQ, 1000);
+  tt_i64_op(M, OP_EQ, 0);
+  tt_i64_op(E, OP_EQ, 0);
+  tt_i64_op(D, OP_EQ, 0);
+
+  tt_int_op((int)Gtotal, OP_EQ, 1000*5000);
+  tt_int_op((int)Mtotal, OP_EQ, 1000*5000);
+  tt_int_op((int)Etotal, OP_EQ, 0);
+
+  /* Here goes second relay. It's a 75% guard and an exit. It has
+   * bandwidth 4000; make sure that bandwidth gets assigned
+   * properly */
+  rs.is_exit = 1;
+  rs.has_bandwidth = 1;
+  rs.has_guardfraction = 1;
+  rs.bandwidth_kb = 4000;
+  rs.guardfraction_percentage = 75;
+
+  update_total_bandwidth_weights(&rs,
+                                 rs.is_exit && !rs.is_bad_exit,
+                                 rs.is_possible_guard,
+                                 total_bws);
+
+  tt_i64_op(T, OP_EQ, 5000);
+  tt_i64_op(G, OP_EQ, 1000);
+  tt_i64_op(M, OP_EQ, 0);
+  tt_i64_op(E, OP_EQ, 1000);
+  tt_i64_op(D, OP_EQ, 3000);
+
+  tt_int_op((int)Gtotal, OP_EQ, 1000*5000);
+  tt_int_op((int)Mtotal, OP_EQ, 1000*5000);
+  tt_int_op((int)Etotal, OP_EQ, 10000*4000);
+
+  /* Here goes third relay. It's a new 0% guard but not exit. It has
+   * bandwidth 5000; make sure that bandwidth gets assigned
+   * properly */
+  rs.is_exit = 0;
+  rs.has_bandwidth = 1;
+  rs.has_guardfraction = 1;
+  rs.bandwidth_kb = 5000;
+  rs.guardfraction_percentage = 0;
+
+  update_total_bandwidth_weights(&rs,
+                                 rs.is_exit && !rs.is_bad_exit,
+                                 rs.is_possible_guard,
+                                 total_bws);
+
+  tt_i64_op(T, OP_EQ, 10000);
+  tt_i64_op(G, OP_EQ, 1000);
+  tt_i64_op(M, OP_EQ, 5000);
+  tt_i64_op(E, OP_EQ, 1000);
+  tt_i64_op(D, OP_EQ, 3000);
+
+  tt_int_op((int)Gtotal, OP_EQ, 1000*5000);
+  tt_int_op((int)Mtotal, OP_EQ, 1000*5000 + 5000*10000);
+  tt_int_op((int)Etotal, OP_EQ, 10000*4000);
+
+ done:
+  tor_free(total_bws);
+}
+
+
 struct testcase_t guardfraction_tests[] = {
   { "parse_guardfraction_file_bad", test_parse_guardfraction_file_bad,
     TT_FORK, NULL, NULL },
@@ -412,6 +554,9 @@ struct testcase_t guardfraction_tests[] = {
     TT_FORK, NULL, NULL },
   { "should_apply_guardfraction", test_should_apply_guardfraction,
     TT_FORK, NULL, NULL },
+  { "update_total_bandwidth_weights", test_update_total_bandwidth_weights,
+    TT_FORK, NULL, NULL },
+
 
   END_OF_TESTCASES
 };
