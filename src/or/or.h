@@ -2431,10 +2431,11 @@ typedef enum {
 typedef enum {
   FLAV_NS = 0,
   FLAV_MICRODESC = 1,
+  FLAV_SHARED_RANDOM = 2,
 } consensus_flavor_t;
 
 /** How many different consensus flavors are there? */
-#define N_CONSENSUS_FLAVORS ((int)(FLAV_MICRODESC)+1)
+#define N_CONSENSUS_FLAVORS ((int)(FLAV_SHARED_RANDOM)+1)
 
 /** A common structure to hold a v3 network status vote, or a v3 network
  * status consensus. */

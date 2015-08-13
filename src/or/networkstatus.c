@@ -56,6 +56,8 @@ static networkstatus_t *current_ns_consensus = NULL;
  * network status. */
 static networkstatus_t *current_md_consensus = NULL;
 
+static networkstatus_t *current_sr_consensus = NULL;
+
 /** A v3 consensus networkstatus that we've received, but which we don't
  * have enough certificates to be happy about. */
 typedef struct consensus_waiting_for_certs_t {
@@ -85,6 +87,7 @@ static time_t time_to_download_next_consensus[N_CONSENSUS_FLAVORS];
 /** Download status for the current consensus networkstatus. */
 static download_status_t consensus_dl_status[N_CONSENSUS_FLAVORS] =
   {
+    { 0, 0, DL_SCHED_CONSENSUS },
     { 0, 0, DL_SCHED_CONSENSUS },
     { 0, 0, DL_SCHED_CONSENSUS },
   };
@@ -1019,6 +1022,8 @@ networkstatus_get_latest_consensus_by_flavor,(consensus_flavor_t f))
     return current_ns_consensus;
   else if (f == FLAV_MICRODESC)
     return current_md_consensus;
+  else if (f == FLAV_SHARED_RANDOM)
+    return current_sr_consensus;
   else {
     tor_assert(0);
     return NULL;
@@ -1826,6 +1831,8 @@ networkstatus_get_flavor_name(consensus_flavor_t flav)
       return "ns";
     case FLAV_MICRODESC:
       return "microdesc";
+    case FLAV_SHARED_RANDOM:
+      return "shared-random";
     default:
       tor_fragile_assert();
       return "??";
@@ -1841,6 +1848,8 @@ networkstatus_parse_flavor_name(const char *flavname)
     return FLAV_NS;
   else if (!strcmp(flavname, "microdesc"))
     return FLAV_MICRODESC;
+  else if (!strcmp(flavname, "shared-random"))
+    return FLAV_SHARED_RANDOM;
   else
     return -1;
 }

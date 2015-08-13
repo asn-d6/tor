@@ -3070,24 +3070,40 @@ dirvote_compute_consensuses(void)
 
     for (flav = 0; flav < N_CONSENSUS_FLAVORS; ++flav) {
       const char *flavor_name = networkstatus_get_flavor_name(flav);
-      consensus_body = networkstatus_compute_consensus(
-        votes, n_voters,
-        my_cert->identity_key,
-        get_my_v3_authority_signing_key(), legacy_id_digest, legacy_sign,
-        flav);
+      switch (flav) {
+      case FLAV_SHARED_RANDOM:
+        consensus_body = shared_random_compute_consensus(
+          votes, n_voters, my_cert->identity_key,
+          get_my_v3_authority_signing_key(), legacy_id_digest,
+          legacy_sign);
+        break;
+      default:
+        consensus_body = networkstatus_compute_consensus(
+          votes, n_voters,
+          my_cert->identity_key,
+          get_my_v3_authority_signing_key(), legacy_id_digest, legacy_sign,
+          flav);
+        break;
+      }
 
       if (!consensus_body) {
         log_warn(LD_DIR, "Couldn't generate a %s consensus at all!",
                  flavor_name);
         continue;
       }
-      consensus = networkstatus_parse_vote_from_string(consensus_body, NULL,
-                                                       NS_TYPE_CONSENSUS);
-      if (!consensus) {
-        log_warn(LD_DIR, "Couldn't parse %s consensus we generated!",
-                 flavor_name);
-        tor_free(consensus_body);
-        continue;
+      switch (flav) {
+      case FLAV_SHARED_RANDOM:
+        break;
+      default:
+        consensus = networkstatus_parse_vote_from_string(consensus_body, NULL,
+                                                         NS_TYPE_CONSENSUS);
+        if (!consensus) {
+          log_warn(LD_DIR, "Couldn't parse %s consensus we generated!",
+                   flavor_name);
+          tor_free(consensus_body);
+          continue;
+        }
+        break;
       }
 
       /* 'Check' our own signature, to mark it valid. */
@@ -3142,6 +3158,8 @@ dirvote_compute_consensuses(void)
   }
 
   log_notice(LD_DIR, "Consensus computed; uploading signature(s)");
+
+  log_warn(LD_DIR, "Paylod\n%s\n", pending_consensus_signatures);
 
   directory_post_to_dirservers(DIR_PURPOSE_UPLOAD_SIGNATURES,
                                ROUTER_PURPOSE_GENERAL,
