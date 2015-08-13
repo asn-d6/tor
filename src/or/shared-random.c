@@ -17,5 +17,5 @@ shared_random_compute_consensus(smartlist_t *votes,
   tor_assert(n_voters >= smartlist_len(votes));
   tor_assert(n_voters > 0);
 
-  return "This is a test";
+  return tor_strdup("This is a test");
 }

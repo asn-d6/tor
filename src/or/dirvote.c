@@ -19,6 +19,7 @@
 #include "routerparse.h"
 #include "entrynodes.h" /* needed for guardfraction methods */
 #include "torcert.h"
+#include "shared-random.h"
 
 /**
  * \file dirvote.c
