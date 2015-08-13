@@ -11,11 +11,25 @@ compute_shared_random_consensus(smartlist_t *votes,
                                 const char *legacy_id_key_digest,
                                 crypto_pk_t *legacy_signing_key)
 {
-  smartlist_t *chunks;
   int n_votes = smartlist_len(votes);
+  smartlist_t *chunks = smartlist_new();
+  char *output = NULL;
 
   tor_assert(n_voters >= smartlist_len(votes));
   tor_assert(n_voters > 0);
 
-  return tor_strdup("This is a test");
+  smartlist_add_asprintf(chunks, "shared-random-version 1 shared-random");
+  //  smartlist_add_asprintfcreated, "created %s");
+  smartlist_add_asprintf(chunks, "valid-until %s %s", "2420-11-09", "00:00:00");
+  smartlist_add_asprintf(chunks, "protocol-phase %s", "night");
+
+  /*
+    "shared-rand-commitment" SP algname SP identity SP commitment-value
+    "shared-rand-previous-value" SP status SP value NL
+    "shared-rand-current-value" SP status SP value NL
+  */
+
+  output = smartlist_join_strings(chunks, "\n", 0, NULL);
+
+  return output;
 }
