@@ -4,7 +4,7 @@
 #include "or.h"
 
 char *
-shared_random_compute_consensus(smartlist_t *votes,
+compute_shared_random_consensus(smartlist_t *votes,
                                 int n_voters,
                                 crypto_pk_t *identity_key,
                                 crypto_pk_t *signing_key,

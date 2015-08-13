@@ -3073,12 +3073,13 @@ dirvote_compute_consensuses(void)
       const char *flavor_name = networkstatus_get_flavor_name(flav);
       switch (flav) {
       case FLAV_SHARED_RANDOM:
-        consensus_body = shared_random_compute_consensus(
+        consensus_body = compute_shared_random_consensus(
           votes, n_voters, my_cert->identity_key,
           get_my_v3_authority_signing_key(), legacy_id_digest,
           legacy_sign);
         break;
       default:
+        break; /* XXX this crashes.  */
         consensus_body = networkstatus_compute_consensus(
           votes, n_voters,
           my_cert->identity_key,
