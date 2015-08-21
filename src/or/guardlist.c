@@ -37,13 +37,13 @@
    It would be smarter if this logic was done based on bandwidth and not on the
    number of relays, but that would be harder to implement and might lead to
    weird attacks. Think more! */
-GUARDS_ATTEMPTED_THRESHOLD = 80;
+GUARDS_ATTEMPTED_THRESHOLD = 80; /* This should be a consensus parameter. */
 
 /* We consider the first active PRIMARY_GUARDS on our list as "primary". We will
    go to extra lengths to ensure that we connect to one of our primary guards,
    before we fall back to a lower priority guard. By "active" we mean that we
    only consider guards that are present in the latest consensus as primary. */
-PRIMARY_GUARDS = 3;
+PRIMARY_GUARDS = 3; /* This should be a consensus parameter.
 
 struct guard_list_t {
   /* An ordered list of guards. */
