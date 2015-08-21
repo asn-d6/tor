@@ -56,8 +56,8 @@ struct guard_list_t {
      ensure that only unique entry guards are counted here. */
   int n_guards_attempted_lately = 0;
 
-  /* Whether we have probed unreachable primary guards lately. This is
-     tied to a 20 minutes reset timer. (XXX smaller reset timer?) */
+  /* Whether we have probed unreachable primary guards lately. This is tied to a
+     5 minutes reset timer. (XXX maybe random exponential backoff instead?) */
   bool retried_primary_guards = False;
 } guard_list_t;
 
@@ -67,8 +67,8 @@ def guard_is_primary(entry_guard_t) {
 }
 
 def primary_guards_are_unreachable(guard_list_t) {
-  /* Returns True if the top PRIMARY_GUARDS on the guard list are unreachable
-     but still present as a guard on the latest consensus. */
+  /* Returns True if all the top PRIMARY_GUARDS on the guard list are
+     unreachable but still present as a guard on the latest consensus. */
 }
 
 def guards_mark_all_for_retry() {
@@ -90,6 +90,14 @@ def guard_is_down() {
   /* The big question here is when should this be called? Is dropping
      a single CREATE cell sufficient reason to mark the top primary
      guard as offline? */
+}
+
+def should_retry_primary_guards(guard_list_t) {
+  if (primary_guards_are_unreachable(guard_list) && !guard_list.retried_primary_guards) {
+    return True;
+  } else {
+    return False;
+  }
 }
 
 def connected_to_guard() {
@@ -129,8 +137,7 @@ int get_entry_guard(circuit_t) {
   }
 
   if (smartlist_len(guard_list) &&
-      primary_guards_are_unreachable(guard_list) &&
-      !guard_list.retried_primary_guards) {
+      should_retry_primary_guards(guard_list) {
     /* If our primary guards are unreachable, make sure we retry them at least
        once a while before using any lower priority guards. By doing this we try
        to avoid edge cases where the network was down but came back up before
