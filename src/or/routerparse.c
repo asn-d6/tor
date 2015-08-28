@@ -2826,6 +2826,17 @@ networkstatus_verify_bw_weights(networkstatus_t *ns, int consensus_method)
   return valid;
 }
 
+shared_random_doc_t *
+networkstatus_parse_sr_doc_from_string(const char *s, const char **eos_out,
+                                       networkstatus_type_t ns_type)
+{
+  shared_random_doc_t sr_doc;
+
+  tor_assert(s);
+
+  
+}
+
 /** Parse a v3 networkstatus vote, opinion, or consensus (depending on
  * ns_type), from <b>s</b>, and return the result.  Return NULL on failure. */
 networkstatus_t *

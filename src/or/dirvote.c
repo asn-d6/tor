@@ -3069,6 +3069,7 @@ dirvote_compute_consensuses(void)
       }
     }
 
+    /** Get the body for every consensus flavors. */
     for (flav = 0; flav < N_CONSENSUS_FLAVORS; ++flav) {
       const char *flavor_name = networkstatus_get_flavor_name(flav);
       switch (flav) {
@@ -3093,8 +3094,20 @@ dirvote_compute_consensuses(void)
                  flavor_name);
         continue;
       }
+
+      log_warn(LD_GENERAL, "OK  created consensus body:\n%s\n", consensus_body);
+
+      /* Parse the document we made, and fill out the respective data structure */
       switch (flav) {
       case FLAV_SHARED_RANDOM:
+        consensus = networkstatus_parse_sr_doc_from_string(consensus_body, NULL,
+                                                         NS_TYPE_CONSENSUS);
+        if (!consensus) {
+          log_warn(LD_DIR, "Couldn't parse %s consensus we generated!",
+                   flavor_name);
+          tor_free(consensus_body);
+          continue;
+        }
         break;
       default:
         consensus = networkstatus_parse_vote_from_string(consensus_body, NULL,
@@ -3123,6 +3136,7 @@ dirvote_compute_consensuses(void)
     }
   }
 
+  /* Get signatures for all pending consensus flavors */
   signatures = get_detached_signatures_from_pending_consensuses(
        pending, N_CONSENSUS_FLAVORS);
 

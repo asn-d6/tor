@@ -2437,6 +2437,10 @@ typedef enum {
 /** How many different consensus flavors are there? */
 #define N_CONSENSUS_FLAVORS ((int)(FLAV_SHARED_RANDOM)+1)
 
+typedef struct shared_random_doc_t {
+  time_t valid_until;
+}
+
 /** A common structure to hold a v3 network status vote, or a v3 network
  * status consensus. */
 typedef struct networkstatus_t {
