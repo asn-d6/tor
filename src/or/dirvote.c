@@ -2985,10 +2985,26 @@ dirvote_add_vote(const char *vote_body, const char **msg_out, int *status_out)
   return any_failed ? NULL : pending_vote;
 }
 
+typedef struct consensus_creation_helper_t {
+  bool votes;
+  bool n_voters;
+  bool identity_key;
+  bool legacy_id_digest;
+  bool legacy_sign;
+
+  bool pending_consensuses;
+} consensus_creation_helper_t;
+
+static int
+dirvote_compute_consensuses_helper(void) {
+  /* XXX */
+}
+
 /** Try to compute a v3 networkstatus consensus from the currently pending
  * votes.  Return 0 on success, -1 on failure.  Store the consensus in
  * pending_consensus: it won't be ready to be published until we have
  * everybody else's signatures collected too. (V3 Authority only) */
+/* We need to generate SR doc here */
 static int
 dirvote_compute_consensuses(void)
 {
@@ -2999,8 +3015,11 @@ dirvote_compute_consensuses(void)
   networkstatus_t *consensus = NULL;
   authority_cert_t *my_cert;
   pending_consensus_t pending[N_CONSENSUS_FLAVORS];
+  consensus_creation_helper_t *consensus_data;
   int flav;
 
+
+  /* Prepare logistics */
   memset(pending, 0, sizeof(pending));
 
   if (!pending_vote_list)
@@ -3067,6 +3086,10 @@ dirvote_compute_consensuses(void)
         }
       }
     }
+
+    /* ******************************************************************************* */
+
+    /* Compute documents */
 
     for (flav = 0; flav < N_CONSENSUS_FLAVORS; ++flav) {
       const char *flavor_name = networkstatus_get_flavor_name(flav);
