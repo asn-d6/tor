@@ -3069,42 +3069,6 @@ dirvote_compute_consensuses_helper(void) {
 static smartlist_t *
 dirvote_compute_all_networkstatus(consensus_creation_info_t *consensus_data)
 {
-  /* XXX */
-}
-
-
-/** Try to compute a v3 networkstatus consensus from the currently pending
- * votes.  Return 0 on success, -1 on failure.  Store the consensus in
- * pending_consensus: it won't be ready to be published until we have
- * everybody else's signatures collected too. (V3 Authority only) */
-/* We need to generate SR doc here */
-static int
-dirvote_compute_consensuses(void)
-{
-  /* Have we got enough votes to try? */
-  int n_votes, n_voters, n_vote_running = 0;
-  smartlist_t *votes = NULL, *votestrings = NULL;
-  char *consensus_body = NULL, *signatures = NULL, *votefile;
-  networkstatus_t *consensus = NULL;
-  authority_cert_t *my_cert;
-  pending_consensus_t pending[N_CONSENSUS_FLAVORS];
-  consensus_creation_helper_t *consensus_data;
-  int flav;
-
-
-  /* Prepare logistics */
-  consensus_data = dirvote_compute_consensuses_helper();
-  if (!consensus_data) {
-    log_warn(LD_DIR, "Couldn't do all the logistics.");
-    goto err;
-  }
-
-    /* ******************************************************************************* */
-
-    /* Compute documents */
-  dirvote_compute_all_networkstatus(consensus_data);
-
-
     for (flav = 0; flav < N_CONSENSUS_FLAVORS; ++flav) {
       const char *flavor_name = networkstatus_get_flavor_name(flav);
       consensus_body = networkstatus_compute_consensus(
@@ -3140,7 +3104,39 @@ dirvote_compute_consensuses(void)
       log_warn(LD_DIR, "Couldn't generate any consensus flavors at all.");
       goto err;
     }
+}
+
+
+/** Try to compute a v3 networkstatus consensus from the currently pending
+ * votes.  Return 0 on success, -1 on failure.  Store the consensus in
+ * pending_consensus: it won't be ready to be published until we have
+ * everybody else's signatures collected too. (V3 Authority only) */
+/* We need to generate SR doc here */
+static int
+dirvote_compute_consensuses(void)
+{
+  /* Have we got enough votes to try? */
+  int n_votes, n_voters, n_vote_running = 0;
+  smartlist_t *votes = NULL, *votestrings = NULL;
+  char *consensus_body = NULL, *signatures = NULL, *votefile;
+  networkstatus_t *consensus = NULL;
+  authority_cert_t *my_cert;
+  pending_consensus_t pending[N_CONSENSUS_FLAVORS];
+  consensus_creation_helper_t *consensus_data;
+  int flav;
+
+
+  /* Prepare logistics */
+  consensus_data = dirvote_compute_consensuses_helper();
+  if (!consensus_data) {
+    log_warn(LD_DIR, "Couldn't do all the logistics.");
+    goto err;
   }
+
+    /* ******************************************************************************* */
+
+    /* Compute documents */
+  dirvote_compute_all_networkstatus(consensus_data);
 
   signatures = get_detached_signatures_from_pending_consensuses(
        pending, N_CONSENSUS_FLAVORS);
