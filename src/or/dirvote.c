@@ -2985,6 +2985,56 @@ dirvote_add_vote(const char *vote_body, const char **msg_out, int *status_out)
   return any_failed ? NULL : pending_vote;
 }
 
+/** This structure includes useful information that we need when generating the
+ *  various consensus flavors. */
+typedef struct consensus_creation_helper_t {
+  /* This list includes all the votes from this voting session. */
+  smartlist_t *votes;
+  /* Number of authorities participating in this voting session */
+  int n_voters;
+
+  /* Our long-term identity signing key. */
+  crypto_pk_t *identity_key;
+  /* Our legacy signing key */
+  crypto_pk_t *legacy_sign;
+  /* The digest of our legacy key */
+  char *legacy_id_digest;
+
+  /* In this array we append the various consensus flavors as we make them. */
+  pending_consensus_t pending[N_CONSENSUS_FLAVORS];
+} consensus_creation_helper_t;
+
+/** Deallocate memory used by consensus_info */
+static void
+consensus_creation_helper_free(consensus_creation_helper_t *consensus_info)
+{
+  if (!consensus_info) {
+    return;
+  }
+
+  smartlist_free(consensus_info->votes);
+
+  tor_free(consensus_info);
+}
+
+static consensus_creation_helper_t *
+dirvote_compute_consensuses_info(void)
+{
+  ;
+}
+
+static int
+dirvote_compute_all_networkstatus(consensus_creation_helper_t *consensus_info)
+{
+  ;
+}
+
+static void
+compute_consensus_signatures(consensus_creation_helper_t *consensus_info)
+{
+  ;
+}
+
 /** Try to compute a v3 networkstatus consensus from the currently pending
  * votes.  Return 0 on success, -1 on failure.  Store the consensus in
  * pending_consensus: it won't be ready to be published until we have
