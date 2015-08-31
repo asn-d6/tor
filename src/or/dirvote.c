@@ -3020,38 +3020,9 @@ consensus_creation_helper_free(consensus_creation_helper_t *consensus_info)
 static consensus_creation_helper_t *
 dirvote_compute_consensuses_info(void)
 {
-  ;
-}
-
-static int
-dirvote_compute_all_networkstatus(consensus_creation_helper_t *consensus_info)
-{
-  ;
-}
-
-static void
-compute_consensus_signatures(consensus_creation_helper_t *consensus_info)
-{
-  ;
-}
-
-/** Try to compute a v3 networkstatus consensus from the currently pending
- * votes.  Return 0 on success, -1 on failure.  Store the consensus in
- * pending_consensus: it won't be ready to be published until we have
- * everybody else's signatures collected too. (V3 Authority only) */
-static int
-dirvote_compute_consensuses(void)
-{
   /* Have we got enough votes to try? */
   int n_votes, n_voters, n_vote_running = 0;
-  smartlist_t *votes = NULL, *votestrings = NULL;
-  char *consensus_body = NULL, *signatures = NULL, *votefile;
-  networkstatus_t *consensus = NULL;
   authority_cert_t *my_cert;
-  pending_consensus_t pending[N_CONSENSUS_FLAVORS];
-  int flav;
-
-  memset(pending, 0, sizeof(pending));
 
   if (!pending_vote_list)
     pending_vote_list = smartlist_new();
@@ -3118,6 +3089,14 @@ dirvote_compute_consensuses(void)
       }
     }
 
+}
+
+static int
+dirvote_compute_all_networkstatus(consensus_creation_helper_t *consensus_info)
+{
+  int flav;
+  networkstatus_t *consensus = NULL;
+
     for (flav = 0; flav < N_CONSENSUS_FLAVORS; ++flav) {
       const char *flavor_name = networkstatus_get_flavor_name(flav);
       consensus_body = networkstatus_compute_consensus(
@@ -3154,7 +3133,11 @@ dirvote_compute_consensuses(void)
       goto err;
     }
   }
+}
 
+static void
+compute_consensus_signatures(consensus_creation_helper_t *consensus_info)
+{
   signatures = get_detached_signatures_from_pending_consensuses(
        pending, N_CONSENSUS_FLAVORS);
 
@@ -3190,6 +3173,20 @@ dirvote_compute_consensuses(void)
                  "consensus.", n_sigs);
     smartlist_clear(pending_consensus_signature_list);
   }
+}
+
+/** Try to compute a v3 networkstatus consensus from the currently pending
+ * votes.  Return 0 on success, -1 on failure.  Store the consensus in
+ * pending_consensus: it won't be ready to be published until we have
+ * everybody else's signatures collected too. (V3 Authority only) */
+static int
+dirvote_compute_consensuses(void)
+{
+  smartlist_t *votes = NULL, *votestrings = NULL;
+  char *consensus_body = NULL, *signatures = NULL, *votefile;
+  pending_consensus_t pending[N_CONSENSUS_FLAVORS];
+
+  memset(pending, 0, sizeof(pending));
 
   log_notice(LD_DIR, "Consensus computed; uploading signature(s)");
 
