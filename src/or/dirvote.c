@@ -3017,12 +3017,19 @@ consensus_creation_helper_free(consensus_creation_helper_t *consensus_info)
   tor_free(consensus_info);
 }
 
+/** Retrieve the various information and logistics we require to build the
+ *  various consensuses. Put them in a freshly allocated
+ *  consensus_creation_helper_t data structure and return it. Return NULL if
+ *  something went wrong. */
 static consensus_creation_helper_t *
 dirvote_compute_consensuses_info(void)
 {
-  /* Have we got enough votes to try? */
   int n_votes, n_voters, n_vote_running = 0;
+  char *votefile;
+  smartlist_t *votestrings = NULL;
   authority_cert_t *my_cert;
+  consensus_creation_helper_t *consensus_info =
+    tor_malloc_zero(sizeof(consensus_creation_helper_t));
 
   if (!pending_vote_list)
     pending_vote_list = smartlist_new();
@@ -3052,8 +3059,9 @@ dirvote_compute_consensuses_info(void)
     log_warn(LD_DIR, "Can't generate consensus without a certificate.");
     goto err;
   }
+  consensus_info->identity_key = my_cert->identity_key;
 
-  votes = smartlist_new();
+  consensus_info->votes = smartlist_new();
   votestrings = smartlist_new();
   SMARTLIST_FOREACH(pending_vote_list, pending_vote_t *, v,
     {
@@ -3062,7 +3070,7 @@ dirvote_compute_consensuses_info(void)
       c->len = v->vote_body->dir_len;
       smartlist_add(votestrings, c); /* collect strings to write to disk */
 
-      smartlist_add(votes, v->vote); /* collect votes to compute consensus */
+      smartlist_add(consensus_info->votes, v->vote); /* collect votes to compute consensus */
     });
 
   votefile = get_datadir_fname("v3-status-votes");
@@ -3071,91 +3079,104 @@ dirvote_compute_consensuses_info(void)
   SMARTLIST_FOREACH(votestrings, sized_chunk_t *, c, tor_free(c));
   smartlist_free(votestrings);
 
-  {
+  { /* Get legacy signing key and its digest */
     char legacy_dbuf[DIGEST_LEN];
-    crypto_pk_t *legacy_sign=NULL;
-    char *legacy_id_digest = NULL;
-    int n_generated = 0;
     if (get_options()->V3AuthUseLegacyKey) {
       authority_cert_t *cert = get_my_v3_legacy_cert();
-      legacy_sign = get_my_v3_legacy_signing_key();
+      consensus_info->legacy_sign = get_my_v3_legacy_signing_key();
       if (cert) {
         if (crypto_pk_get_digest(cert->identity_key, legacy_dbuf)) {
           log_warn(LD_BUG,
                    "Unable to compute digest of legacy v3 identity key");
         } else {
-          legacy_id_digest = legacy_dbuf;
+          consensus_info->legacy_id_digest = legacy_dbuf;
         }
       }
     }
+  }
 
+  consensus_info->n_voters = n_voters;
+
+  return consensus_info;
+
+ err:
+  consensus_creation_helper_free(consensus_info);
+
+  return NULL;
 }
 
+/** Compute the networkstatus consensuses and place them in consensus_info.
+ *  Return the number of consensuses generated. */
 static int
 dirvote_compute_all_networkstatus(consensus_creation_helper_t *consensus_info)
 {
   int flav;
+  int n_generated = 0;
   networkstatus_t *consensus = NULL;
+  char *consensus_body = NULL;
 
-    for (flav = 0; flav < N_CONSENSUS_FLAVORS; ++flav) {
-      const char *flavor_name = networkstatus_get_flavor_name(flav);
-      consensus_body = networkstatus_compute_consensus(
-        votes, n_voters,
-        my_cert->identity_key,
-        get_my_v3_authority_signing_key(), legacy_id_digest, legacy_sign,
-        flav);
+  for (flav = 0; flav < N_CONSENSUS_FLAVORS; ++flav) {
+    const char *flavor_name = networkstatus_get_flavor_name(flav);
+    consensus_body = networkstatus_compute_consensus(
+              consensus_info->votes, consensus_info->n_voters,
+              consensus_info->identity_key,
+              get_my_v3_authority_signing_key(),
+              consensus_info->legacy_id_digest, consensus_info->legacy_sign,
+              flav);
 
-      if (!consensus_body) {
-        log_warn(LD_DIR, "Couldn't generate a %s consensus at all!",
-                 flavor_name);
-        continue;
-      }
-      consensus = networkstatus_parse_vote_from_string(consensus_body, NULL,
-                                                       NS_TYPE_CONSENSUS);
-      if (!consensus) {
-        log_warn(LD_DIR, "Couldn't parse %s consensus we generated!",
-                 flavor_name);
-        tor_free(consensus_body);
-        continue;
-      }
-
-      /* 'Check' our own signature, to mark it valid. */
-      networkstatus_check_consensus_signature(consensus, -1);
-
-      pending[flav].body = consensus_body;
-      pending[flav].consensus = consensus;
-      n_generated++;
-      consensus_body = NULL;
-      consensus = NULL;
+    if (!consensus_body) {
+      log_warn(LD_DIR, "Couldn't generate a %s consensus at all!",
+               flavor_name);
+      continue;
     }
-    if (!n_generated) {
-      log_warn(LD_DIR, "Couldn't generate any consensus flavors at all.");
-      goto err;
+
+    consensus = networkstatus_parse_vote_from_string(consensus_body, NULL,
+                                                     NS_TYPE_CONSENSUS);
+    if (!consensus) {
+      log_warn(LD_DIR, "Couldn't parse %s consensus we generated!",
+               flavor_name);
+      tor_free(consensus_body);
+      continue;
     }
+
+    /* 'Check' our own signature, to mark it valid. */
+    networkstatus_check_consensus_signature(consensus, -1);
+
+    consensus_info->pending[flav].body = consensus_body;
+    consensus_info->pending[flav].consensus = consensus;
+    n_generated++;
+    consensus_body = NULL;
+    consensus = NULL;
   }
+
+  return n_generated;
 }
 
 static void
 compute_consensus_signatures(consensus_creation_helper_t *consensus_info)
 {
+  char *signatures = NULL;
+
+  /* Get signatures for all consensuses */
   signatures = get_detached_signatures_from_pending_consensuses(
-       pending, N_CONSENSUS_FLAVORS);
+                      consensus_info->pending, N_CONSENSUS_FLAVORS);
 
   if (!signatures) {
-    log_warn(LD_DIR, "Couldn't extract signatures.");
-    goto err;
+    return -1;
   }
 
+  /* Populate the global data structures. */
   dirvote_clear_pending_consensuses();
-  memcpy(pending_consensuses, pending, sizeof(pending));
+  memcpy(pending_consensuses,
+         consensus_info->pending, sizeof(consensus_info->pending));
 
   tor_free(pending_consensus_signatures);
   pending_consensus_signatures = signatures;
 
+  /* We may have gotten signatures for this consensus before we built it
+   * ourself.  Add them now. */
   if (pending_consensus_signature_list) {
     int n_sigs = 0;
-    /* we may have gotten signatures for this consensus before we built
-     * it ourself.  Add them now. */
     SMARTLIST_FOREACH_BEGIN(pending_consensus_signature_list, char *, sig) {
         const char *msg = NULL;
         int r = dirvote_add_signatures_to_all_pending_consensuses(sig,
@@ -3173,23 +3194,41 @@ compute_consensus_signatures(consensus_creation_helper_t *consensus_info)
                  "consensus.", n_sigs);
     smartlist_clear(pending_consensus_signature_list);
   }
+
+  return 0;
 }
 
-/** Try to compute a v3 networkstatus consensus from the currently pending
+/** Try to compute the various consensus flavors from the currently pending
  * votes.  Return 0 on success, -1 on failure.  Store the consensus in
- * pending_consensus: it won't be ready to be published until we have
- * everybody else's signatures collected too. (V3 Authority only) */
+ * pending_consensus: it won't be ready to be published until we have everybody
+ * else's signatures collected too. (V3 Authority only) */
 static int
 dirvote_compute_consensuses(void)
 {
-  smartlist_t *votes = NULL, *votestrings = NULL;
-  char *consensus_body = NULL, *signatures = NULL, *votefile;
-  pending_consensus_t pending[N_CONSENSUS_FLAVORS];
+  consensus_creation_helper_t *consensus_info = NULL;
+  int n_generated;
 
-  memset(pending, 0, sizeof(pending));
+  /* Prepare logistics */
+  consensus_info = dirvote_compute_consensuses_info();
+  if (!consensus_info) {
+    log_warn(LD_DIR, "Couldn't do all the logistics.");
+    goto err;
+  }
 
-  log_notice(LD_DIR, "Consensus computed; uploading signature(s)");
+  /* Compute networkstatus */
+  n_generated = dirvote_compute_all_networkstatus(consensus_info);
+  if (!n_generated) {
+    log_warn(LD_DIR, "Couldn't generate any consensus flavors at all.");
+    goto err;
+  }
 
+  /* Compute consensus signatures */
+  if (compute_consensus_signatures(consensus_info) < 0) {
+    log_warn(LD_DIR, "Couldn't extract signatures.");
+    goto err;
+  }
+
+  /* Post signatures to the other dirauths */
   directory_post_to_dirservers(DIR_PURPOSE_UPLOAD_SIGNATURES,
                                ROUTER_PURPOSE_GENERAL,
                                V3_DIRINFO,
@@ -3197,13 +3236,10 @@ dirvote_compute_consensuses(void)
                                strlen(pending_consensus_signatures), 0);
   log_notice(LD_DIR, "Signature(s) posted.");
 
-  smartlist_free(votes);
   return 0;
+
  err:
-  smartlist_free(votes);
-  tor_free(consensus_body);
-  tor_free(signatures);
-  networkstatus_vote_free(consensus);
+  consensus_creation_helper_free(consensus_info);
 
   return -1;
 }
