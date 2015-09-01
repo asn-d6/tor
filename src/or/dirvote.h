@@ -169,6 +169,42 @@ document_signature_t *voter_get_sig_by_algorithm(
                            const networkstatus_voter_info_t *voter,
                            digest_algorithm_t alg);
 
+/** A consensus that we have built and are appending signatures to.  Once it's
+ * time to publish it, it will become an active consensus if it accumulates
+ * enough signatures. */
+typedef struct pending_consensus_t {
+  /** The body of the consensus that we're currently building.  Once we
+   * have it built, it goes into dirserv.c */
+  char *body;
+
+  union {
+    /** The parsed in-progress consensus document. */
+    networkstatus_t *consensus;
+
+    /** The parsed in-progress SR doc */
+    struct shared_random_doc_t *sr_doc;
+  } u;
+} pending_consensus_t;
+
+/** This structure includes useful information that we need when generating the
+ *  various consensus flavors. */
+typedef struct consensus_creation_helper_t {
+  /* This list includes all the votes from this voting session. */
+  smartlist_t *votes;
+  /* Number of authorities participating in this voting session */
+  int n_voters;
+
+  /* Our long-term identity signing key. */
+  crypto_pk_t *identity_key;
+  /* Our legacy signing key */
+  crypto_pk_t *legacy_sign;
+  /* The digest of our legacy key */
+  char *legacy_id_digest;
+
+  /* In this array we append the various consensus flavors as we make them. */
+  pending_consensus_t pending[N_CONSENSUS_FLAVORS];
+} consensus_creation_helper_t;
+
 #ifdef DIRVOTE_PRIVATE
 STATIC char *format_networkstatus_vote(crypto_pk_t *private_key,
                                  networkstatus_t *v3_ns);

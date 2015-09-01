@@ -1826,6 +1826,8 @@ networkstatus_get_flavor_name(consensus_flavor_t flav)
       return "ns";
     case FLAV_MICRODESC:
       return "microdesc";
+    case FLAV_SHARED_RANDOM:
+      return "shared-random";
     default:
       tor_fragile_assert();
       return "??";
@@ -1841,6 +1843,8 @@ networkstatus_parse_flavor_name(const char *flavname)
     return FLAV_NS;
   else if (!strcmp(flavname, "microdesc"))
     return FLAV_MICRODESC;
+  else if (!strcmp(flavname, "shared-random"))
+    return FLAV_SHARED_RANDOM;
   else
     return -1;
 }

@@ -3662,6 +3662,44 @@ networkstatus_parse_detached_signatures(const char *s, const char *eos)
   return sigs;
 }
 
+static int
+get_sr_doc_digests(const char *s, digests_t *digests)
+{
+  return router_get_hashes_impl(s,strlen(s),digests,
+                                "shared-random-version",
+                                "\ndirectory-signature",
+                                ' ');
+}
+
+shared_random_doc_t *
+parse_sr_doc_from_string(const char *s, const char **eos_out)
+{
+  digests_t sr_digests;
+  shared_random_doc_t sr_doc = NULL;
+
+  tor_assert(s);
+  (void) eos_out;
+
+  if (get_sr_doc_digest(s, &sr_digests)) {
+    log_warn(LD_DIR, "Unable to compute digest of SR doc");
+    goto err;
+  }
+
+  sr_doc = tor_malloc_zero(sizeof(networkstatus_t));
+  sr_doc->valid_until = 1;
+  memcpy(&sr_doc->digests, &sr_digests, sizeof(sr_digests));
+
+  log_warn(LD_GENERAL, "Parsed SR document. Digest: %s",
+           hex_str(sr_digests.d[1], DIGEST256_LEN));
+
+  return sr_doc;
+
+ err:
+  tor_free(sr_doc);
+
+  return NULL;
+}
+
 /** Parse the addr policy in the string <b>s</b> and return it.  If
  * assume_action is nonnegative, then insert its action (ADDR_POLICY_ACCEPT or
  * ADDR_POLICY_REJECT) for items that specify no action.

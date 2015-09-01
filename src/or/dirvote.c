@@ -19,22 +19,12 @@
 #include "routerparse.h"
 #include "entrynodes.h" /* needed for guardfraction methods */
 #include "torcert.h"
+#include "shared-random.h"
 
 /**
  * \file dirvote.c
  * \brief Functions to compute directory consensus, and schedule voting.
  **/
-
-/** A consensus that we have built and are appending signatures to.  Once it's
- * time to publish it, it will become an active consensus if it accumulates
- * enough signatures. */
-typedef struct pending_consensus_t {
-  /** The body of the consensus that we're currently building.  Once we
-   * have it built, it goes into dirserv.c */
-  char *body;
-  /** The parsed in-progress consensus document. */
-  networkstatus_t *consensus;
-} pending_consensus_t;
 
 /* DOCDOC dirvote_add_signatures_to_all_pending_consensuses */
 static int dirvote_add_signatures_to_all_pending_consensuses(
@@ -2364,6 +2354,10 @@ get_detached_signatures_from_pending_consensuses(pending_consensus_t *pending,
   char *signatures;
   smartlist_t *c = smartlist_new();
   for (flav = 0; flav < n_flavors; ++flav) {
+    if (flav == FLAV_SHARED_RANDOM) { /* SR doc will be handled specially */
+      continue;
+    }
+
     if (pending[flav].consensus)
       smartlist_add(c, pending[flav].consensus);
   }
@@ -2985,25 +2979,6 @@ dirvote_add_vote(const char *vote_body, const char **msg_out, int *status_out)
   return any_failed ? NULL : pending_vote;
 }
 
-/** This structure includes useful information that we need when generating the
- *  various consensus flavors. */
-typedef struct consensus_creation_helper_t {
-  /* This list includes all the votes from this voting session. */
-  smartlist_t *votes;
-  /* Number of authorities participating in this voting session */
-  int n_voters;
-
-  /* Our long-term identity signing key. */
-  crypto_pk_t *identity_key;
-  /* Our legacy signing key */
-  crypto_pk_t *legacy_sign;
-  /* The digest of our legacy key */
-  char *legacy_id_digest;
-
-  /* In this array we append the various consensus flavors as we make them. */
-  pending_consensus_t pending[N_CONSENSUS_FLAVORS];
-} consensus_creation_helper_t;
-
 /** Deallocate memory used by consensus_info */
 static void
 consensus_creation_helper_free(consensus_creation_helper_t *consensus_info)
@@ -3117,6 +3092,12 @@ dirvote_compute_all_networkstatus(consensus_creation_helper_t *consensus_info)
 
   for (flav = 0; flav < N_CONSENSUS_FLAVORS; ++flav) {
     const char *flavor_name = networkstatus_get_flavor_name(flav);
+
+    if (flav == FLAV_SHARED_RANDOM) {
+      /* Skip SR doc. Only do networkstatus in this function. */
+      continue;
+    }
+
     consensus_body = networkstatus_compute_consensus(
               consensus_info->votes, consensus_info->n_voters,
               consensus_info->identity_key,
@@ -3143,7 +3124,7 @@ dirvote_compute_all_networkstatus(consensus_creation_helper_t *consensus_info)
     networkstatus_check_consensus_signature(consensus, -1);
 
     consensus_info->pending[flav].body = consensus_body;
-    consensus_info->pending[flav].consensus = consensus;
+    consensus_info->pending[flav].u.consensus = consensus;
     n_generated++;
     consensus_body = NULL;
     consensus = NULL;
@@ -3152,7 +3133,7 @@ dirvote_compute_all_networkstatus(consensus_creation_helper_t *consensus_info)
   return n_generated;
 }
 
-static void
+static int
 compute_consensus_signatures(consensus_creation_helper_t *consensus_info)
 {
   char *signatures = NULL;
@@ -3208,7 +3189,7 @@ dirvote_compute_consensuses(void)
   consensus_creation_helper_t *consensus_info = NULL;
   int n_generated;
 
-  /* Prepare logistics */
+  /* Do logistics */
   consensus_info = dirvote_compute_consensuses_info();
   if (!consensus_info) {
     log_warn(LD_DIR, "Couldn't do all the logistics.");
@@ -3218,6 +3199,12 @@ dirvote_compute_consensuses(void)
   /* Compute networkstatus */
   n_generated = dirvote_compute_all_networkstatus(consensus_info);
   if (!n_generated) {
+    log_warn(LD_DIR, "Couldn't generate any consensus flavors at all.");
+    goto err;
+  }
+
+  /* Compute SR doc */
+  if (shared_random_compute_sr_doc(consensus_info) < 0) {
     log_warn(LD_DIR, "Couldn't generate any consensus flavors at all.");
     goto err;
   }
