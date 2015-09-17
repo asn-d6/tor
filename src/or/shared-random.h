@@ -17,6 +17,25 @@
 /* Current digest algorithm. */
 #define SR_DIGEST_ALG DIGEST_SHA256
 
+/* Length of the random number (in bytes). */
+#define SR_RANDOM_NUMBER_LEN 32
+/* Size of a decoded commit value in a vote or state. It consist of a 64 bit
+ * timestamp, SHA256 hash digest and signature. */
+#define SR_COMMIT_LEN \
+  (sizeof(uint64_t) + DIGEST256_LEN + ED25519_SIG_LEN)
+/* Size of a decoded reveal value from a vote or state. It's a 64 bit
+ * timestamp and the random number. */
+#define SR_REVEAL_LEN \
+  (sizeof(uint64_t) + SR_RANDOM_NUMBER_LEN)
+/* Length of base64 encoded commit. Formula is taken from base64_encode.
+ * Currently, this adds up to 96 bytes. */
+#define SR_COMMIT_BASE64_LEN \
+  (((SR_COMMIT_LEN - 1) / 3) * 4 + 4)
+/* Length of base64 encoded reveal. Formula is taken from base64_encode.
+ * Currently, this adds up to 56 bytes. */
+#define SR_REVEAL_BASE64_LEN \
+  (((SR_REVEAL_LEN - 1) / 3) * 4 + 4)
+
 /* Protocol phase. */
 typedef enum {
   /* We just started we still don't know what phase we are in. */
@@ -32,6 +51,12 @@ typedef enum {
   SR_SRV_STATUS_FRESH =    0,
   SR_SRV_STATUS_NONFRESH = 1,
 } sr_srv_status_t;
+
+/* A shared random value object that contains its status and value. */
+typedef struct sr_srv_t {
+  sr_srv_status_t status;
+  uint8_t value[DIGEST256_LEN];
+} sr_srv_t;
 
 /* A commitment value that can be ours or from other authority. */
 typedef struct sr_commit_t {
@@ -82,8 +107,8 @@ typedef struct sr_state_t {
 
   /* Current and previous shared random value. See section [SRCALC] in
    * proposal 250 for details on how this is constructed. */
-  uint8_t previous_srv[DIGEST256_LEN];
-  uint8_t current_srv[DIGEST256_LEN];
+  sr_srv_t previous_srv;
+  sr_srv_t current_srv;
 
   /* List of commit conflicts seen by this authority. */
   digest256map_t *conflicts;
@@ -94,9 +119,29 @@ typedef struct sr_state_t {
   int n_reveal_rounds;
 } sr_state_t;
 
+/* Persistent state of the protocol, as saved to disk. */
+typedef struct sr_disk_state_t {
+  uint32_t magic_;
+  /* Version of the protocol. */
+  int Version;
+  /* State valid until? */
+  time_t ValidUntil;
+  /* Which protocol phase are we in? */
+  char *ProtocolPhase;
+  /* All commitments seen that are valid. */
+  config_line_t *Commitments;
+  /* All conflict seen. */
+  config_line_t *Conflicts;
+  /* Previous and current shared random value. */
+  config_line_t *SharedRandPreviousValue;
+  config_line_t *SharedRandCurrentValue;
+  /* Extra Lines for configuration we might not know. */
+  config_line_t *ExtraLines;
+} sr_disk_state_t;
+
 /* API */
 
 int sr_init(void);
-void sr_save(void);
+void sr_save_and_cleanup(void);
 
 #endif /* TOR_SHARED_RANDOM_H */
