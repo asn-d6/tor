@@ -179,7 +179,7 @@ get_testing_network_protocol_phase(sr_state_t *sr_state)
 }
 
 /* Given the consensus 'valid-after' time, return the protocol phase we should
- * be in.
+ * be in. */
 STATIC sr_phase_t
 get_sr_protocol_phase(sr_state_t *sr_state, time_t valid_after)
 {
@@ -244,7 +244,8 @@ generate_sr_commitment(time_t timestamp)
   char reveal_base64[5*REVEAL_LEN]; /* XXX is this enough space? */
 
   /* Data for the commit */
-  char hashed_reveal[DIGEST256_LEN]
+  char hashed_reveal[DIGEST256_LEN];
+  (void) hashed_reveal;
 
   /* We first need to create the reveal value */
 
