@@ -56,6 +56,7 @@
 #include "routerlist.h"
 #include "routerparse.h"
 #include "scheduler.h"
+#include "shared-random.h"
 #include "statefile.h"
 #include "status.h"
 #include "util_process.h"
@@ -2130,6 +2131,13 @@ do_main_loop(void)
     cpu_init();
   }
 
+  /* Setup shared random protocol subsystem. */
+  if (authdir_mode(get_options())) {
+    if (sr_init() < 0) {
+      return -1;
+    }
+  }
+
   /* set up once-a-second callback. */
   if (! second_timer) {
     struct timeval one_second;
@@ -2892,6 +2900,9 @@ tor_cleanup(void)
       accounting_record_bandwidth_usage(now, get_or_state());
     or_state_mark_dirty(get_or_state(), 0); /* force an immediate save. */
     or_state_save(now);
+    if (authdir_mode(options)) {
+      sr_save_and_cleanup();
+    }
     if (authdir_mode_tests_reachability(options))
       rep_hist_record_mtbf_data(now, 0);
     keypin_close_journal();
