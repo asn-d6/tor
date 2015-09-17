@@ -89,4 +89,9 @@ typedef struct sr_state_t {
   digest256map_t *conflicts;
 } sr_state_t;
 
+/* API */
+
+int sr_init(void);
+void sr_save(void);
+
 #endif /* TOR_SHARED_RANDOM_H */
