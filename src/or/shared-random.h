@@ -60,6 +60,8 @@ typedef struct sr_conflict_commit_t {
   sr_commit_t *commit1, *commit2;
 } sr_conflict_commit_t;
 
+
+
 /* State of the protocol. It's also saved on disk in fname. This data
  * structure MUST be synchronized at all time with the one on disk. */
 typedef struct sr_state_t {
@@ -83,6 +85,11 @@ typedef struct sr_state_t {
 
   /* List of commit conflicts seen by this authority. */
   digest256map_t *conflicts;
+
+  /* The number of commitment rounds we've performed in this protocol run. */
+  int n_commit_rounds;
+  /* The number of reveal rounds we've performed in this protocol run. */
+  int n_reveal_rounds;
 } sr_state_t;
 
 /* API */
@@ -93,7 +100,14 @@ sr_conflict_commit_t *sr_conflict_commit_new(const uint8_t *identity,
                                               sr_commit_t *c1,
                                               sr_commit_t *c2);
 void sr_conflict_commit_free(sr_conflict_commit_t *conflict);
-sr_state_t *sr_state_new(const char *fname);
 void sr_state_free(sr_state_t *state);
+
+const sr_state_t *sr_get_current_state(time_t valid_after);
+
+#ifdef SHARED_RANDOM_PRIVATE
+
+STATIC sr_phase_t get_sr_protocol_phase(sr_state_t *sr_state, time_t valid_after);
+
+#endif
 
 #endif /* TOR_SHARED_RANDOM_H */

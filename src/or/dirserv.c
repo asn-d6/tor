@@ -29,6 +29,7 @@
 #include "routerparse.h"
 #include "routerset.h"
 #include "torcert.h"
+#include "shared-random.h"
 
 /**
  * \file dirserv.c
@@ -2754,6 +2755,7 @@ dirserv_generate_networkstatus_vote_obj(crypto_pk_t *private_key,
   digestmap_t *omit_as_sybil = NULL;
   const int vote_on_reachability = running_long_enough_to_decide_unreachable();
   smartlist_t *microdescriptors = NULL;
+  const sr_state_t *sr_state = NULL;
 
   tor_assert(private_key);
   tor_assert(cert);
@@ -2973,6 +2975,10 @@ dirserv_generate_networkstatus_vote_obj(crypto_pk_t *private_key,
   v3_out->routerstatus_list = routerstatuses;
   /* Note: networkstatus_digest is unset; it won't get set until we actually
    * format the vote. */
+
+  /* And as the final part, let's calculate the shared randomness info */
+  sr_state = sr_get_current_state(v3_out->valid_after);
+  (void) sr_state;
 
   return v3_out;
 }

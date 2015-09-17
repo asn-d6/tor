@@ -2657,6 +2657,7 @@ dirvote_perform_vote(void)
     log_warn(LD_NET, "Can't generate v3 vote with expired certificate");
     return -1;
   }
+
   if (!(ns = dirserv_generate_networkstatus_vote_obj(key, cert)))
     return -1;
 
