@@ -46,7 +46,7 @@ typedef struct sr_commit_t {
    * identity and thus valid. */
   char *signature;
   /* 64 bit random number. Correspond to RN. */
-  uint64_t random_number;
+  uint8_t random_number[32];
   /* Is this commit has reached majority? */
   unsigned int has_majority:1;
 } sr_commit_t;

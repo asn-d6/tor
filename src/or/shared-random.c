@@ -228,14 +228,62 @@ is_new_protocol_run(sr_state_t *sr_state)
     sr_state->n_commit_rounds == SHARED_RANDOM_N_ROUNDS;
 }
 
-/** This is the first round of a new protocol run. We need to do a few things:
+#define RANDOM_VALUE_LEN 32
+
+  /* We need 4 bytes for timestamp and the rest for the random value */
+#define REVEAL_LEN 4 + RANDOM_VALUE_LEN
+
+/** Generate the commitment/reveal value for the protocol run starting at
+ *  <b>timestamp</b>. */
+static sr_commit_t *
+generate_sr_commitment(time_t timestamp)
+{
+  /* Data for the reveal */
+  uint8_t random_value[RANDOM_VALUE_LEN];
+  uint8_t reveal[REVEAL_LEN];
+  char reveal_base64[5*REVEAL_LEN]; /* XXX is this enough space? */
+
+  /* Data for the commit */
+  char hashed_reveal[DIGEST256_LEN]
+
+  /* We first need to create the reveal value */
+
+  /* Generate the random value */
+  if (crypto_rand((char*)random_value, RANDOM_VALUE_LEN) < 0) {
+    log_warn(LD_REND, "Unable to generate reveal random value!");
+    return NULL;
+  }
+
+  /* Now prepare the binary representation of reveal */
+  set_uint32(reveal, htonl((uint32_t)timestamp));
+  memcpy(reveal+4, random_value, RANDOM_VALUE_LEN);
+
+  /* And now base64 encode the reveal value */
+  if (base64_encode(reveal_base64, sizeof(reveal_base64),
+                    (const char *)reveal, REVEAL_LEN,
+                    0)<0) {
+    log_warn(LD_GENERAL, "Could not encode reveal to base64");
+    return NULL;
+  }
+
+  log_warn(LD_GENERAL, "Created reveal value: %s", reveal_base64);
+
+  /* And now we can create the reveal value */
+  ;
+
+  return NULL;
+}
+
+/** This is the first round of the new protocol run starting at <b>valid_after</b>.
+ *
+ *   In the beginning of each protocol run we need to do some things:
  *       - Reset all the counters and stuff of the old protocol run.
  *       - Compute the shared randomness value of the day.
  *       - Wipe all the now useless commitment/reveal values.
  *       - Generate new commitments
  */
 static int
-update_state_new_protocol_run(sr_state_t *sr_state)
+update_state_new_protocol_run(sr_state_t *sr_state, time_t valid_after)
 {
   /* Reset timers */
   sr_state->n_reveal_rounds = 0;
@@ -243,10 +291,13 @@ update_state_new_protocol_run(sr_state_t *sr_state)
 
   /* Compute the shared randomness value of the day. */
   ;
+
   /* Wipe old commit/reveal values */
   ;
+
   /* Generate new commitments */
-  ;
+  /* XXX This must also happen for the first run!!!!!1 */
+  generate_sr_commitment(valid_after);
 
   return 1;
 }
@@ -261,7 +312,7 @@ update_state(sr_state_t *sr_state, time_t valid_after)
   /* Check if we are now starting a new protocol run and if yes, do the necessary
      operations */
   if (is_new_protocol_run(sr_state)) {
-    update_state_new_protocol_run(sr_state);
+    update_state_new_protocol_run(sr_state, valid_after);
   }
 
   /* Count the current round */
@@ -301,6 +352,7 @@ sr_get_current_state(time_t valid_after)
     our_sr_state = sr_state_new(NULL);
   }
 
+  /* Update the old state with information about this new round */
   update_state(our_sr_state, valid_after);
 
   return our_sr_state;
