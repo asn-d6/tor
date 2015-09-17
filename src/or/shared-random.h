@@ -12,6 +12,11 @@
 
 #include "or.h"
 
+/* Protocol version */
+#define SR_PROTO_VERSION  1
+/* Current digest algorithm. */
+#define SR_DIGEST_ALG DIGEST_SHA256
+
 /* Protocol phase. */
 typedef enum {
   SR_PHASE_COMMIT = 0,
@@ -73,8 +78,8 @@ typedef struct sr_state_t {
 
   /* Current and previous shared random value. See section [SRCALC] in
    * proposal 250 for details on how this is constructed. */
-  uint8_t *previous_srv;
-  uint8_t *current_srv;
+  uint8_t previous_srv[DIGEST256_LEN];
+  uint8_t current_srv[DIGEST256_LEN];
 
   /* List of commit conflicts seen by this authority. */
   digest256map_t *conflicts;
