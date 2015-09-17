@@ -85,4 +85,15 @@ typedef struct sr_state_t {
   digest256map_t *conflicts;
 } sr_state_t;
 
+/* API */
+
+sr_commit_t *sr_commit_new(const uint8_t *identity);
+void sr_commit_free(sr_commit_t *commit);
+sr_conflict_commit_t *sr_conflict_commit_new(const uint8_t *identity,
+                                              sr_commit_t *c1,
+                                              sr_commit_t *c2);
+void sr_conflict_commit_free(sr_conflict_commit_t *conflict);
+sr_state_t *sr_state_new(const char *fname);
+void sr_state_free(sr_state_t *state);
+
 #endif /* TOR_SHARED_RANDOM_H */
