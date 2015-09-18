@@ -356,12 +356,55 @@ update_state(sr_state_t *sr_state, time_t valid_after)
   return;
 }
 
-/* Get the current shared random state we are going to be using for the
- * consensus at <b>valid_after</b>. This function should be called at each new
- * voting period. */
-const sr_state_t *
-sr_get_current_state(time_t valid_after)
+/** Return a heap-allocated string that should be put in the votes and contains
+ *  the shared randomness information for this phase. It's the responsibility of
+ *  the caller to free the string. */
+char *
+sr_get_string_for_vote(void)
 {
+  char *vote_str = NULL;
+  char ed_fp_base64[ED25519_BASE64_LEN+1];
+  const ed25519_public_key_t *our_ed25519_key = get_master_identity_key();
+
+  /* By now, a state must have been generated and updated for this upcoming
+   * voting session. */
+  tor_assert(our_sr_state);
+
+  /* XXX make sure this is the right thing to put here!!! */
+  if (ed25519_public_to_base64(ed_fp_base64, our_ed25519_key) < 0) {
+    log_err(LD_BUG,"SR Couldn't base64-encode identity key\n");
+    return NULL; /* XXX handle error better */
+  }
+
+  if (our_sr_state->phase == SR_PHASE_COMMIT) {
+    /* We are in commitment phase, we need to send out our commit */
+
+    /* XXX Change this to the actual commitment!!!! */
+    int commitment = crypto_rand_int(100);
+
+    tor_asprintf(&vote_str, "shared-rand-commitment %s %s %d\n",
+                 ed_fp_base64, "sha256", commitment);
+  } else {
+    tor_assert(our_sr_state->phase == SR_PHASE_REVEAL);
+
+    /* XXX Change this to the actual reveal!!! */
+    tor_asprintf(&vote_str, "shared-rand-commitment %s %s %d %d\n",
+                 ed_fp_base64, "sha256", 420, 840);
+  }
+
+  log_warn(LD_GENERAL, "[SR] Sending out vote string '%s'", vote_str);
+
+  return vote_str;
+}
+
+
+/* Prepare the shared random state we are going to be using for the upcoming
+ * voting period at <b>valid_after</b>. This function should be called once at
+ * the beginning of each new voting period. */
+void
+sr_prepare_state_for_new_voting_period(time_t valid_after)
+{
+  /* If there is no state (we just started up), generate one! */
   if (!our_sr_state) {
     /* TODO Replace NULL fname with a config parameter */
     our_sr_state = sr_state_new(NULL);
