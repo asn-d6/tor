@@ -28,6 +28,7 @@
 #include "routerparse.h"
 #include "entrynodes.h"
 #include "torcert.h"
+#include "shared-random.h"
 
 #undef log
 #include <math.h>
@@ -143,6 +144,7 @@ typedef enum {
   K_CONSENSUS_METHOD,
   K_LEGACY_DIR_KEY,
   K_DIRECTORY_FOOTER,
+  K_COMMITMENT,
   K_PACKAGE,
 
   A_PURPOSE,
@@ -443,6 +445,7 @@ static token_rule_t networkstatus_token_table[] = {
   T1("known-flags",            K_KNOWN_FLAGS,      ARGS,        NO_OBJ ),
   T01("params",                K_PARAMS,           ARGS,        NO_OBJ ),
   T( "fingerprint",            K_FINGERPRINT,      CONCAT_ARGS, NO_OBJ ),
+  T01("shared-rand-commitment",K_COMMITMENT,       GE(3),       NO_OBJ ),
   T0N("package",               K_PACKAGE,          CONCAT_ARGS, NO_OBJ ),
 
   CERTIFICATE_MEMBERS
@@ -2996,6 +2999,24 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
                     smartlist_add(ns->package_lines, tor_strdup(t->args[0])));
     }
     smartlist_free(package_lst);
+  }
+
+  if ((tok = find_opt_by_keyword(tokens, K_COMMITMENT))) {
+    const char *commit_pubkey = tok->args[0];
+    const char *hash_alg = tok->args[1];
+    const char *commitment = tok->args[2];
+    const char *reveal = NULL;
+
+    if (tok->n_args > 3) {
+      reveal = tok->args[3];
+    }
+
+    /* XXX Shouldn't this happen after vote signatures are validated? */
+    /* XXX Put the identity of the auth in NULL */
+    if (sr_handle_received_commitment(NULL, commit_pubkey, hash_alg, commitment, reveal) < 0) {
+      log_warn(LD_DIR, "Failed to handle received commitment");
+      goto err;
+    }
   }
 
   tok = find_by_keyword(tokens, K_KNOWN_FLAGS);

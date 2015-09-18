@@ -150,6 +150,18 @@ sr_state_free(sr_state_t *state)
   tor_free(state);
 }
 
+int
+sr_handle_received_commitment(const char *auth_pubkey,
+                              const char *commit_pubkey, const char *hash_alg, const char *commitment, const char *reveal)
+{
+  (void) auth_pubkey;
+  (void) commit_pubkey;
+  (void) hash_alg;
+  (void) commitment;
+  (void) reveal;
+  return 1;
+}
+
 /** Return the current protocol phase on a testing network. */
 static time_t
 get_testing_network_protocol_phase(sr_state_t *sr_state)
