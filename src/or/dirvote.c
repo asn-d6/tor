@@ -19,6 +19,7 @@
 #include "routerparse.h"
 #include "entrynodes.h" /* needed for guardfraction methods */
 #include "torcert.h"
+#include "shared-random.h"
 
 /**
  * \file dirvote.c
@@ -73,6 +74,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
   char digest[DIGEST_LEN];
   uint32_t addr;
   char *client_versions_line = NULL, *server_versions_line = NULL;
+  char *shared_random_vote_str = NULL;
   networkstatus_voter_info_t *voter;
   char *status = NULL;
 
@@ -113,6 +115,8 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
     packages = tor_strdup("");
   }
 
+  shared_random_vote_str = sr_get_string_for_vote();
+
   {
     char published[ISO_TIME_LEN+1];
     char va[ISO_TIME_LEN+1];
@@ -152,7 +156,8 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  "flag-thresholds %s\n"
                  "params %s\n"
                  "dir-source %s %s %s %s %d %d\n"
-                 "contact %s\n",
+                 "contact %s\n"
+                 "%s", /* shared randomness information */
                  v3_ns->type == NS_TYPE_VOTE ? "vote" : "opinion",
                  methods,
                  published, va, fu, vu,
@@ -165,12 +170,14 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  params,
                  voter->nickname, fingerprint, voter->address,
                  fmt_addr32(addr), voter->dir_port, voter->or_port,
-                 voter->contact);
+                 voter->contact,
+                 shared_random_vote_str);
 
     tor_free(params);
     tor_free(flags);
     tor_free(flag_thresholds);
     tor_free(methods);
+    tor_free(shared_random_vote_str);
 
     if (!tor_digest_is_zero(voter->legacy_id_digest)) {
       char fpbuf[HEX_DIGEST_LEN+1];
@@ -2658,6 +2665,10 @@ dirvote_perform_vote(void)
   }
   if (!(ns = dirserv_generate_networkstatus_vote_obj(key, cert)))
     return -1;
+
+  /* Update the shared randomness state for this upcoming voting period
+  XXX Is this REALLY the best place to do this? */
+  sr_prepare_state_for_new_voting_period(ns->valid_after);
 
   contents = format_networkstatus_vote(key, ns);
   networkstatus_vote_free(ns);
