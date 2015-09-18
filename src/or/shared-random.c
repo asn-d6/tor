@@ -11,9 +11,10 @@
 
 #include "shared-random.h"
 #include "config.h"
+#include "routerkeys.h"
 
 /* String representation of a protocol phase. */
-static const char *phase_str[] = { "commit", "reveal" };
+static const char *phase_str[] = { "unknown", "commit", "reveal" };
 /* Default filename of the shared random state on disk. */
 static const char *default_fname = "sr-state";
 
@@ -31,6 +32,7 @@ static const char *
 get_phase_str(sr_phase_t phase)
 {
   switch (phase) {
+  case SR_PHASE_UNKNOWN:
   case SR_PHASE_COMMIT:
   case SR_PHASE_REVEAL:
     return phase_str[phase];
@@ -152,13 +154,17 @@ sr_state_free(sr_state_t *state)
 static time_t
 get_testing_network_protocol_phase(sr_state_t *sr_state)
 {
-  /* On testing network, instead of messing with time, we simply count the
-   * number of rounds and switch phase when we reach the right amount of
-   * rounds */
-
   /* XXX In this function we assume that in a testing network all dirauths
      started together. Otherwise their phases will get desynched!!! */
 
+  /* If we just booted, always start with commitment phase. */
+  if (sr_state->phase == SR_PHASE_UNKNOWN) {
+    return SR_PHASE_COMMIT;
+  }
+
+  /* On testing network, instead of messing with time, we simply count the
+   * number of rounds and switch phase when we reach the right amount of
+   * rounds */
   if (sr_state->phase == SR_PHASE_COMMIT) {
     /* Check if we've done all commitment rounds and we are moving to reveal */
     if (sr_state->n_commit_rounds == SHARED_RANDOM_N_ROUNDS) {
@@ -212,22 +218,6 @@ get_sr_protocol_phase(sr_state_t *sr_state, time_t valid_after)
   return phase;
 }
 
-/** Return true if this is the very first round of the commitment phase. Relies
- *  on the counters to not be reset. */
-static int
-is_new_protocol_run(sr_state_t *sr_state)
-{
-  /* If we are currently in the commit phase, with all the commitment/reveal
-     rounds completed, it means we just entered the commit phase in a new
-     protocol run. */
-
-  /* XXX This does not work for the very first bootstrap run of the protoco!!!!! */
-
-  return sr_state->phase == SR_PHASE_COMMIT &&
-    sr_state->n_reveal_rounds == SHARED_RANDOM_N_ROUNDS &&
-    sr_state->n_commit_rounds == SHARED_RANDOM_N_ROUNDS;
-}
-
 #define RANDOM_VALUE_LEN 32
 
   /* We need 4 bytes for timestamp and the rest for the random value */
@@ -245,7 +235,7 @@ generate_sr_commitment(time_t timestamp)
 
   /* Data for the commit */
   char hashed_reveal[DIGEST256_LEN];
-  (void) hashed_reveal;
+  char commit_base64[400]; /* XXX XXX? */
 
   /* We first need to create the reveal value */
 
@@ -267,10 +257,22 @@ generate_sr_commitment(time_t timestamp)
     return NULL;
   }
 
-  log_warn(LD_GENERAL, "Created reveal value: %s", reveal_base64);
+  log_warn(LD_GENERAL, "[SR] Created reveal value: %s", reveal_base64);
 
   /* And now we can create the reveal value */
-  ;
+  crypto_digest256(hashed_reveal,
+                   (const char*)reveal_base64, strlen(reveal_base64),
+                   DIGEST_SHA256);
+
+  /* And now base64 encode the reveal value */
+  if (base64_encode(commit_base64, sizeof(commit_base64),
+                    (const char *)hashed_reveal, DIGEST256_LEN,
+                    0)<0) {
+    log_warn(LD_GENERAL, "Could not encode commit to base64");
+    return NULL;
+  }
+
+  /* XXX make actual commitment. Not H(REVEAL). */
 
   return NULL;
 }
@@ -297,22 +299,34 @@ update_state_new_protocol_run(sr_state_t *sr_state, time_t valid_after)
   ;
 
   /* Generate new commitments */
-  /* XXX This must also happen for the first run!!!!!1 */
   generate_sr_commitment(valid_after);
 
   return 1;
 }
 
-/** Update the current SR state if needed. */
+/** Update the current SR state as needed for the upcoming voting round at
+ *  <b>valid_after</b>.  Don't call this function twice in the same voting
+ *  period!!! */
 static void
 update_state(sr_state_t *sr_state, time_t valid_after)
 {
+  int is_new_protocol_run = 0;
+  /* Get the new protocol phase according to the current hour */
+  sr_phase_t new_phase = get_sr_protocol_phase(sr_state, valid_after);
+  tor_assert(new_phase != SR_PHASE_UNKNOWN);
+
+  /* See if we just entered a new protocol run. */
+  if (sr_state->phase == SR_PHASE_UNKNOWN ||
+      (sr_state->phase == SR_PHASE_REVEAL && new_phase == SR_PHASE_COMMIT)) {
+    is_new_protocol_run = 1;
+  }
+
   /* Get the phase of this round */
-  sr_state->phase = get_sr_protocol_phase(sr_state, valid_after);
+  sr_state->phase = new_phase;
 
   /* Check if we are now starting a new protocol run and if yes, do the necessary
      operations */
-  if (is_new_protocol_run(sr_state)) {
+  if (is_new_protocol_run) {
     update_state_new_protocol_run(sr_state, valid_after);
   }
 
@@ -334,7 +348,7 @@ update_state(sr_state_t *sr_state, time_t valid_after)
     struct tm tm;
     tor_gmtime_r(&valid_after, &tm); /* XXX check retval */
     format_iso_time(tbuf, valid_after);
-    log_notice(LD_DIR,"Preparing vote with valid-after %s. Phase is %s (%d/%d).",
+    log_notice(LD_DIR, "[SR] Preparing vote with valid-after %s. Phase is %s (%d/%d).",
                tbuf, get_phase_str(sr_state->phase),
                sr_state->n_commit_rounds, sr_state->n_reveal_rounds);
   }
@@ -355,6 +369,4 @@ sr_get_current_state(time_t valid_after)
 
   /* Update the old state with information about this new round */
   update_state(our_sr_state, valid_after);
-
-  return our_sr_state;
 }

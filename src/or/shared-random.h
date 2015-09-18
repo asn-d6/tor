@@ -19,8 +19,12 @@
 
 /* Protocol phase. */
 typedef enum {
-  SR_PHASE_COMMIT = 0,
-  SR_PHASE_REVEAL = 1,
+  /* We just started we still don't know what phase we are in. */
+  SR_PHASE_UNKNOWN = 0,
+  /* We are commitment phase */
+  SR_PHASE_COMMIT = 1,
+  /* WE are reveal phase */
+  SR_PHASE_REVEAL = 2,
 } sr_phase_t;
 
 /* Shared random value status. */
@@ -102,7 +106,15 @@ sr_conflict_commit_t *sr_conflict_commit_new(const uint8_t *identity,
 void sr_conflict_commit_free(sr_conflict_commit_t *conflict);
 void sr_state_free(sr_state_t *state);
 
-const sr_state_t *sr_get_current_state(time_t valid_after);
+void sr_prepare_state_for_new_voting_period(time_t valid_after);
+char *sr_get_string_for_vote(void);
+
+int sr_handle_received_commitment(const char *auth_pubkey,
+                                  const char *commit_pubkey,
+                                  const char *hash_alg,
+                                  const char *commitment, const char *reveal);
+
+
 
 #ifdef SHARED_RANDOM_PRIVATE
 
