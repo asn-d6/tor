@@ -5385,3 +5385,23 @@ tor_weak_random_range(tor_weak_rng_t *rng, int32_t top)
   return result;
 }
 
+/** Return a uint64_t value from <b>a</b> in network byte order. */
+uint64_t
+tor_htonll(uint64_t a)
+{
+  if (htonl(1) == 1) {
+    /* Big endian. */
+    return a;
+  } else {
+    /* Little endian. The worst... */
+    return htonl((uint32_t)(a>>32)) |
+      (((uint64_t)htonl((uint32_t)a))<<32);
+  }
+}
+
+/** Return a uint64_t value from <b>a</b> in host byte order. */
+uint64_t
+tor_ntohll(uint64_t a)
+{
+  return tor_htonll(a);
+}
