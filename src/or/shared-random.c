@@ -22,6 +22,13 @@ static const char *default_fname = "sr-state";
 /* Disaster shared random value seed. */
 /* static const char *disaster_seed = "shared-random-disaster"; */
 
+/* Shared randomness protocol starts at 12:00 UTC */
+#define SHARED_RANDOM_START_HOUR 12
+/* Each SR round lasts 1 hour */
+#define SHARED_RANDOM_TIME_INTERVAL 1
+/* Each protocol phase has 12 rounds  */
+#define SHARED_RANDOM_N_ROUNDS 12
+
 /* Return a string representation of a srv status. */
 static const char *
 get_srv_status_str(sr_srv_status_t status)
@@ -85,6 +92,74 @@ get_status_from_str(const char *name)
     }
   }
   return status;
+}
+
+/** Return the current protocol phase on a testing network. */
+static time_t
+get_testing_network_protocol_phase(sr_state_t *sr_state)
+{
+  /* XXX In this function we assume that in a testing network all dirauths
+     started together. Otherwise their phases will get desynched!!! */
+
+  /* If we just booted, always start with commitment phase. */
+  if (sr_state->phase == SR_PHASE_UNKNOWN) {
+    return SR_PHASE_COMMIT;
+  }
+
+  /* On testing network, instead of messing with time, we simply count the
+   * number of rounds and switch phase when we reach the right amount of
+   * rounds */
+  if (sr_state->phase == SR_PHASE_COMMIT) {
+    /* Check if we've done all commitment rounds and we are moving to reveal */
+    if (sr_state->n_commit_rounds == SHARED_RANDOM_N_ROUNDS) {
+      return SR_PHASE_REVEAL; /* we switched to reveal phase */
+    } else {
+      return SR_PHASE_COMMIT; /* still more rounds to go on commit phase */
+    }
+  } else { /* phase is reveal */
+    /* Check if we've done all reveal rounds and we are moving to commitment */
+    if (sr_state->n_reveal_rounds == SHARED_RANDOM_N_ROUNDS) {
+      return SR_PHASE_COMMIT; /* we switched to commit phase */
+    } else {
+      return SR_PHASE_REVEAL; /* still more rounds to go on reveal phase */
+    }
+  }
+
+  tor_assert(0); /* should never get here */
+}
+
+/* Given the consensus 'valid-after' time, return the protocol phase we
+ * should be in. */
+STATIC sr_phase_t
+get_sr_protocol_phase(sr_state_t *sr_state, time_t valid_after)
+{
+  sr_phase_t phase;
+  struct tm tm;
+
+  /* Testing network requires special handling (since voting happens every few
+     seconds). */
+  if (get_options()->TestingTorNetwork) {
+    return get_testing_network_protocol_phase(sr_state);
+  }
+
+  /* Break down valid_after to secs/mins/hours */
+  tor_gmtime_r(&valid_after, &tm); /* XXX check retval */
+
+  { /* Now get the phase */
+    int hour_commit_phase_begins = SHARED_RANDOM_START_HOUR;
+
+    int hour_commit_phase_ends = hour_commit_phase_begins +
+      SHARED_RANDOM_TIME_INTERVAL * SHARED_RANDOM_N_ROUNDS;
+
+    if (tm.tm_hour >= hour_commit_phase_begins &&
+        tm.tm_hour < hour_commit_phase_ends) {
+      phase = SR_PHASE_COMMIT;
+    } else {
+      phase = SR_PHASE_REVEAL;
+    }
+  }
+
+  return phase;
 }
 
 /* Allocate a new commit object and initializing it with <b>identity</b>
