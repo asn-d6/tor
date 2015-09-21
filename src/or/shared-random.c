@@ -227,6 +227,42 @@ get_sr_protocol_phase(time_t valid_after)
   return phase;
 }
 
+/* Using the time right now as this function is called, return the shared
+ * random state valid until time that is to the next protocol run. */
+static time_t
+get_valid_until_time(void)
+{
+  char tbuf[ISO_TIME_LEN + 1];
+  time_t valid_until, now = time(NULL);
+  struct tm tm;
+
+  tor_gmtime_r(&now, &tm);
+  {
+    /* Compute the hour difference and if positive, the value is the amount
+     * of hours missing before hitting the mark. Else, it's the next day at
+     * the start hour. */
+    int diff_hour = SHARED_RANDOM_START_HOUR - tm.tm_hour;
+    if (diff_hour <= 0) {
+      /* We are passed that hour. Add one because hour starts at 0. */
+      tm.tm_hour = SHARED_RANDOM_START_HOUR + 1;
+      tm.tm_mday += 1;
+    } else {
+      /* Add one here because hour starts at 0 for struct tm. */
+      tm.tm_hour += diff_hour + 1;
+    }
+    tm.tm_min = 0;
+    tm.tm_sec = 0;
+    tm.tm_isdst = 0;
+  }
+  valid_until = mktime(&tm);
+  /* This should really not happen else serious issue. */
+  tor_assert(valid_until != -1);
+  format_iso_time(tbuf, valid_until);
+  log_debug(LD_DIR, "[SR] Valid until time for state set to %s.", tbuf);
+
+  return valid_until;
+}
+
 /* Allocate a new commit object and initializing it with <b>identity</b>
  * that MUST be provided. The digest algorithm is set to the default one
  * that is supported. The rest is uninitialized. This never returns NULL. */
@@ -384,6 +420,7 @@ state_new(const char *fname)
   new_state->conflicts = digest256map_new();
   /* Get protocol phase we are right _now_ */
   new_state->phase = get_sr_protocol_phase(time(NULL));
+  new_state->valid_until = get_valid_until_time();
   return new_state;
 }
 
