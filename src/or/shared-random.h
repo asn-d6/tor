@@ -144,4 +144,6 @@ typedef struct sr_disk_state_t {
 int sr_init(void);
 void sr_save_and_cleanup(void);
 
+void sr_prepare_state_for_new_voting_period(time_t valid_after);
+
 #endif /* TOR_SHARED_RANDOM_H */
