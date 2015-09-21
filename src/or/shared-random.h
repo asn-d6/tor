@@ -87,6 +87,11 @@ typedef struct sr_state_t {
 
   /* List of commit conflicts seen by this authority. */
   digest256map_t *conflicts;
+
+  /* The number of commitment rounds we've performed in this protocol run. */
+  int n_commit_rounds;
+  /* The number of reveal rounds we've performed in this protocol run. */
+  int n_reveal_rounds;
 } sr_state_t;
 
 /* API */
