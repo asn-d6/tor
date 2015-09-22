@@ -172,7 +172,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  voter->nickname, fingerprint, voter->address,
                  fmt_addr32(addr), voter->dir_port, voter->or_port,
                  voter->contact,
-                 shared_random_vote_str);
+                 shared_random_vote_str ? shared_random_vote_str : "");
 
     tor_free(params);
     tor_free(flags);
