@@ -1175,7 +1175,7 @@ sr_cleanup(void)
 /* Initialize shared random subsystem. This MUST be call early in the boot
  * process of tor. Return 0 on success else -1 on error. */
 int
-sr_init(void)
+sr_init(int save_to_disk)
 {
   int ret;
 
@@ -1197,7 +1197,7 @@ sr_init(void)
        * call will use a lot of functions that need to query it. */
       disk_state_set(new_disk_state);
       /* No entry, let's save our new state to disk. */
-      if (disk_state_save_to_disk() < 0) {
+      if (save_to_disk && disk_state_save_to_disk() < 0) {
         sr_cleanup();
         goto error;
       }
