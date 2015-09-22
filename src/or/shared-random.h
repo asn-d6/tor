@@ -141,10 +141,16 @@ typedef struct sr_disk_state_t {
 
 /* API */
 
-int sr_init(void);
+int sr_init(int save_to_disk);
 void sr_save_and_cleanup(void);
 
 char *sr_get_string_for_vote(void);
 void sr_prepare_state_for_new_voting_period(time_t valid_after);
+
+#ifdef SHARED_RANDOM_PRIVATE
+
+STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
+
+#endif
 
 #endif /* TOR_SHARED_RANDOM_H */
