@@ -7,6 +7,8 @@
  * random protocol as defined in proposal #250.
  **/
 
+#define SHARED_RANDOM_PRIVATE
+
 #include "shared-random.h"
 #include "config.h"
 #include "confparse.h"
@@ -196,7 +198,7 @@ get_testing_network_protocol_phase(void)
 
 /* Given the consensus 'valid-after' time, return the protocol phase we
  * should be in. */
-static sr_phase_t
+STATIC sr_phase_t
 get_sr_protocol_phase(time_t valid_after)
 {
   sr_phase_t phase;
