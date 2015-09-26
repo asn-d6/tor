@@ -102,6 +102,9 @@ typedef struct sr_conflict_commit_t {
 /* State of the protocol. It's also saved on disk in fname. This data
  * structure MUST be synchronized at all time with the one on disk. */
 typedef struct sr_state_t {
+  /* Number of runs completed (mainly for debug) */
+  unsigned int n_protocol_runs;
+
   /* Filename of the state file on disk. */
   char *fname;
   /* Version of the protocol. */
@@ -114,6 +117,7 @@ typedef struct sr_state_t {
   /* A map of all the receive commitments for the protocol run. This is
    * indexed by authority identity digest. */
   digest256map_t *commitments;
+  digestmap_t *commitments_tmp; /* XXX */
 
   /* Current and previous shared random value. See section [SRCALC] in
    * proposal 250 for details on how this is constructed. */
@@ -156,6 +160,12 @@ void sr_save_and_cleanup(void);
 
 char *sr_get_string_for_vote(void);
 void sr_prepare_state_for_new_voting_period(time_t valid_after);
+
+void sr_decide_state_post_voting(smartlist_t *votes);
+
+sr_commit_t * sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
+                                            const char *commitment, const char *reveal);
+
 
 #ifdef SHARED_RANDOM_PRIVATE
 
