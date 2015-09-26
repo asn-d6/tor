@@ -3060,6 +3060,10 @@ dirvote_compute_consensuses(void)
   SMARTLIST_FOREACH(votestrings, sized_chunk_t *, c, tor_free(c));
   smartlist_free(votestrings);
 
+  { /* Now that we have received all votes; decide our SR state */
+      sr_decide_state_post_voting(votes);
+  }
+
   {
     char legacy_dbuf[DIGEST_LEN];
     crypto_pk_t *legacy_sign=NULL;
