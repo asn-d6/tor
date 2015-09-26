@@ -78,6 +78,16 @@ typedef struct sr_commit_t {
   uint8_t random_number[32];
   /* Is this commit has reached majority? */
   unsigned int has_majority:1;
+
+  /* ************************************************************ */
+
+  /* Fingerprint of authority this commitment belongs to */
+  char *auth_fingerprint; /* XXX temp till we use ed25519 */
+  uint8_t auth_digest[DIGEST_LEN];
+
+  char *commitment; /* XXX temp till we use ed25519 */
+
+  char *reveal; /* XXX temp till we use ed25519 */
 } sr_commit_t;
 
 /* Represent a commit conflict. See section [COMMITCONFLICT] in proposal
