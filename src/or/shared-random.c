@@ -13,6 +13,8 @@
 #include "config.h"
 #include "confparse.h"
 #include "routerkeys.h"
+#include "router.h"
+#include "routerlist.h"
 
 /* String representation of a protocol phase. */
 static const char *phase_str[] = { "unknown", "commit", "reveal" };
@@ -58,7 +60,7 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 /* Each SR round lasts 1 hour */
 #define SHARED_RANDOM_TIME_INTERVAL 1
 /* Each protocol phase has 12 rounds  */
-#define SHARED_RANDOM_N_ROUNDS 12
+#define SHARED_RANDOM_N_ROUNDS 3
 
 static int
 disk_state_validate_cb(void *old_state, void *state, void *default_state,
@@ -1378,15 +1380,16 @@ update_state(time_t valid_after)
   sr_phase_t new_phase = get_sr_protocol_phase(valid_after);
   tor_assert(new_phase != SR_PHASE_UNKNOWN);
 
-  /* Set the phase of this round */
-  sr_state->phase = new_phase;
-
-  /* Check if we are now starting a new protocol run and if yes, do the
+  /* By comparing the previous phase with the current one, check if we
+   * are just starting a new protocol run and if it is so, do the
    * necessary operations. */
   if (sr_state->phase == SR_PHASE_UNKNOWN ||
       (sr_state->phase == SR_PHASE_REVEAL && new_phase == SR_PHASE_COMMIT)) {
     update_state_new_protocol_run(valid_after);
   }
+
+  /* Set the phase for this round */
+  sr_state->phase = new_phase;
 
   /* Count the current round */
   if (sr_state->phase == SR_PHASE_COMMIT) {
@@ -1538,7 +1541,200 @@ commit_is_conflicting(const sr_commit_t *commit)
   return 0;
 }
 
-  return vote_str;
+/** Return True if we already have an exact copy of <b>commit</b> in
+ *  our state. */
+static int
+commit_is_already_stored(const sr_commit_t *commit)
+{
+  sr_commit_t *saved_commit = get_commit_from_same_auth(commit);
+
+  /* Find already stored commit */
+  if (saved_commit) {
+
+    if (!strcmp(commit->commitment, saved_commit->commitment)) {
+
+      if (!commit->reveal && !saved_commit->reveal) {
+        return 1;
+      }
+
+      if (!commit->reveal && saved_commit->reveal) {
+        return 1;
+      }
+
+      if (commit->reveal && saved_commit->reveal) {
+      /* XXX do we need to check !strcmp(commit->reveal, saved_commit->reveal) ?? */
+        return 1;
+      }
+    }
+  }
+
+  return 0;
+}
+
+/** Return True if <b>commit</b> is included in enough <b>votes</b> to
+ *  be the majority opinion. */
+/* XXX Does majority opinion still matter now that we've admitted that there are partiiton attacks? */
+/* XXX How should we define majority? Based on the number of voters
+   or the number of total authorities? Consensus seems to use the
+   number of total authorities which is what we are going to be
+   doing here. */
+static int
+commit_has_majority(smartlist_t *votes, const sr_commit_t *commit)
+{
+  int n_voters = get_n_authorities(V3_DIRINFO);
+  int votes_required_for_majority = (n_voters / 2) + 1;
+  int votes_for_this_commit = 0;
+
+  /** XXX Below we need to make sure that all those commitments
+      actually include the same commit value. */
+
+  /* Go through all the votes and count the ones that include this commit. */
+  SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
+    if (digestmap_get(v->commitments, (char *) commit->auth_digest)) {
+      votes_for_this_commit++;
+    }
+  } SMARTLIST_FOREACH_END(v);
+
+  log_warn(LD_GENERAL, "[SR] \t \t Commit %s from %s. It has %d votes and it needs %d.",
+           commit->commitment, commit->auth_fingerprint,
+           votes_for_this_commit, votes_required_for_majority);
+
+  return votes_for_this_commit > votes_required_for_majority;
+}
+
+/* We just received a commit from the vote of authority with
+ * <b>voter_fingerprint</b>. Return True if this commit is
+ * authorititative (that is, it belongs to the authority that voted
+ * it). */
+static int
+commit_is_authoritative(const sr_commit_t *commit, const char *voter_fingerprint)
+{
+  return !strcmp(commit->auth_fingerprint, voter_fingerprint);
+}
+
+/** This is called in the end of each voting round. Decide which
+ *  commitments/reveals to keep and write them to perm state. */
+void
+sr_decide_state_post_voting(smartlist_t *votes)
+{
+  log_warn(LD_GENERAL, "[SR] About to decide state:");
+
+  /** We walk over the commitments of every vote we have received.
+      For each commitment/reveal value, we check if it's new. If it's
+      new, we transcribe it to the permanent state if we need to. */
+
+  /* Walk over all received votes */
+  SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
+    /* Get the fingerprint of the voter. This is needed to find if a
+       commit is authoritative. */
+    char voter_fingerprint[FINGERPRINT_LEN+1];
+    networkstatus_voter_info_t *the_voter = smartlist_get(v->voters, 0);
+    base16_encode(voter_fingerprint, sizeof(voter_fingerprint),
+                  the_voter->identity_digest, DIGEST_LEN);
+
+    log_warn(LD_GENERAL, "[SR] Examining vote by %s!", voter_fingerprint);
+
+    /* Walk over all the commitments in this vote */
+    if (v->commitments) {
+      DIGESTMAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
+        log_warn(LD_GENERAL, "[SR] \t Commit %s (%s) by %s",
+                 commit->commitment,
+                 commit->reveal ? commit->reveal : "NOREVEAL",
+                 commit->auth_fingerprint);
+
+
+        /* While reading a vote we received a commitment belonging to
+           a particular authority. We need to decide if we should keep
+           it, ignore it, or consider it a conflict. This depends on
+           whether we already have stored any commits in our permanent
+           state from that same authority.
+
+           We will start our analysis by splitting this scenario to
+           two cases: either the received commit contains a reveal
+           value or not:
+
+           - Case 1: The received commitment does not contain a reveal
+                     value (only commit value)
+
+                Subcase 1: There is no stored commitment by the same auth.
+
+                           In this case, we store the received commitment.
+
+                Subcase 2: There is a stored commitment and it has the
+                           same commit value as the received commitment
+
+                           In this case, we consider it already stored
+                           and we ignore it.
+
+                Subcase 3: There is a stored commitment but with a
+                           different commit value.
+
+                           In this case, we consider this a conflict
+                           and issue a line in our votes.
+
+                Subcase 4: There is a stored commitment with the same
+                           commitment value which also contains a
+                           reveal value.
+
+                           In this case we consider the commitment
+                           stored. This can happen if a dirauth does
+                           not include reveal values during reveal
+                           phase. This also happens when we parse our
+                           own commits since we already know our
+                           reveal value during the commitment phase.
+
+            - Case 2: The received commitment contains a reveal value.
+
+                Subcase 1: There is no stored commitment by the same auth.
+
+                           This should never happen since reveal
+                           values are only accepted during the reveal
+                           phase, and commit values are only accepted
+                           during the commitment phase. Ignore it.
+
+                Subcase 2: There is a stored commitment which does not
+                           include a reveal value
+
+                           In this case, we just learned the reveal
+                           value of the stored commitment. That's
+                           good! Add the reveal value to state.
+
+                Subcase 3: There is a stored commitment with a reveal value.
+
+                           In this case, we consider the received
+                           commitment already stored and ignore it.
+        */
+
+        /* Bail early on any conflicting commits or commits that we
+           have already stored. */
+        if (commit_is_already_stored(commit)) {
+          log_warn(LD_GENERAL, "[SR] \t \t We already have commit %s by %s. Skipping.",
+                   commit->commitment, commit->auth_fingerprint);
+          continue;
+        } else if (commit_is_conflicting(commit)) {
+          log_warn(LD_GENERAL, "[SR] \t \t We found a conflicting commit by %s. Skipping.",
+                   commit->auth_fingerprint);
+          add_conflict_to_sr_state(commit);
+          continue;
+        }
+
+        /* Now check if we should store this commit in our permanent
+           state. We store if the commit is authoritative or if it's
+           voted by the majority. */
+        if (commit_is_authoritative(commit, voter_fingerprint)) {
+          add_commit_to_sr_state(commit);
+        } else if (commit_has_majority(votes, commit)) {
+          add_commit_to_sr_state(commit);
+        }
+
+        /* XXX also add comit to state if we just received a reveal
+           from a foreign authority. we don't need majority for that */
+
+      } DIGESTMAP_FOREACH_END;
+    }
+  } SMARTLIST_FOREACH_END(v);
+
+  log_warn(LD_GENERAL, "[SR] State decided!");
 }
 
 /* Prepare the shared random state we are going to be using for the upcoming
@@ -1547,7 +1743,6 @@ commit_is_conflicting(const sr_commit_t *commit)
 void
 sr_prepare_state_for_new_voting_period(time_t valid_after)
 {
-  /* Init function should have been called long before this. */
   tor_assert(sr_state);
 
   /* Update the old state with information about this new round */
