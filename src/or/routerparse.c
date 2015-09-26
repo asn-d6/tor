@@ -28,6 +28,7 @@
 #include "routerparse.h"
 #include "entrynodes.h"
 #include "torcert.h"
+#include "shared-random.h"
 
 #undef log
 #include <math.h>
@@ -145,6 +146,7 @@ typedef enum {
   K_CONSENSUS_METHOD,
   K_LEGACY_DIR_KEY,
   K_DIRECTORY_FOOTER,
+  K_COMMITMENT,
   K_PACKAGE,
 
   A_PURPOSE,
@@ -446,6 +448,7 @@ static token_rule_t networkstatus_token_table[] = {
   T1("known-flags",            K_KNOWN_FLAGS,      ARGS,        NO_OBJ ),
   T01("params",                K_PARAMS,           ARGS,        NO_OBJ ),
   T( "fingerprint",            K_FINGERPRINT,      CONCAT_ARGS, NO_OBJ ),
+  T0N("shared-rand-commitment",K_COMMITMENT,       GE(3),       NO_OBJ ),
   T0N("package",               K_PACKAGE,          CONCAT_ARGS, NO_OBJ ),
 
   CERTIFICATE_MEMBERS
@@ -3176,6 +3179,44 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
     if (bad) {
       log_warn(LD_DIR, "Invalid legacy key digest %s on vote.",
                escaped(tok->args[0]));
+    }
+  }
+
+  { /* Get SR commitments from votes */
+    smartlist_t *commitment_lst = find_all_by_keyword(tokens, K_COMMITMENT);
+    if (commitment_lst) {
+      SMARTLIST_FOREACH_BEGIN(commitment_lst, directory_token_t *, tok) {
+        sr_commit_t *rcvd_commit = NULL;
+        const char *commit_pubkey = tok->args[0];
+        const char *hash_alg = tok->args[1];
+        const char *commitment = tok->args[2];
+        const char *reveal = NULL;
+
+        if (tok->n_args > 3) { /* a reveal value might also be included */
+          reveal = tok->args[3];
+        }
+
+        rcvd_commit = sr_handle_received_commitment(commit_pubkey, hash_alg,
+                                                    commitment, reveal);
+
+        if (!rcvd_commit) {
+          log_warn(LD_DIR, "There was an issue with the received commitment XXX print msg");
+          continue; /* XXX hm. continue, break, or goto err? :) */
+        }
+
+        if (!ns->commitments) {
+          ns->commitments = digestmap_new(); /* XXX free in the end */
+        }
+
+        /* XXX check retval to make sure that there is no dup commitments */
+        digestmap_set(ns->commitments, (char *) rcvd_commit->auth_digest, rcvd_commit);
+
+        log_warn(LD_GENERAL, "We received the commitment of %s. Commit value: %s",
+                 rcvd_commit->auth_fingerprint, rcvd_commit->commitment);
+      } SMARTLIST_FOREACH_END(tok);
+
+      smartlist_free(commitment_lst);
+
     }
   }
 
