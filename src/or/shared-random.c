@@ -448,6 +448,26 @@ disk_state_free(sr_disk_state_t *state)
   tor_free(state);
 }
 
+/** We just received <b>commit</b> in a vote. Make sure that it's
+    conforming to the current protocol phase. Also verify its
+    signature and timestamp.  */
+static int
+verify_received_commit(const sr_commit_t *commit)
+{
+  /* XXX Make sure we don't have commits with new commit values during reveal phase */
+  /* XXX Validate signature of commitment. */
+  /* XXX Verify reveal value with the commitment */
+
+  sr_phase_t current_phase = sr_state->phase;
+
+  if (current_phase == SR_PHASE_COMMIT && commit->reveal) {
+    log_warn(LD_DIR, "Found commit with reveal value during commit phase.");
+    return -1;
+  }
+
+  return 0;
+}
+
 /** DOCDOC Given all the commitment information, register an sr_commit_t. */
 /* XXX merge with parse_commitment_line() */
 sr_commit_t *
@@ -477,15 +497,21 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
 
   tor_asprintf(&commit->commitment, "%s", commitment);
 
-  /* XXX Make sure we don't have commits with reveal values during commit phase */
-  /* XXX Make sure we don't have commits with new commit values during reveal phase */
-  /* XXX Validate signature of commitment. */
-  /* XXX Verify reveal value with the commitment */
-
   if (reveal) {
     /* XXX We just received a reveal. Here we need to validate that
        the reveal corresponds with the commit. */
     tor_asprintf(&commit->reveal, "%s", reveal);
+  }
+
+
+  /* If we reach this point, we know that the received commitment was
+     conforming to the current protocol phase (e.g. it does not
+     contain a reveal value during commit phase). We also know that
+     the signature is legitimate, and that the timestamp corresponds
+     to the current session. We have NOT done any conflict resolution. */
+
+  if (verify_received_commit(commit) < 0) {
+    return NULL; /*XXX err mgmt */
   }
 
   return commit;
@@ -1504,7 +1530,8 @@ add_commit_to_sr_state(sr_commit_t *commit)
            commit->auth_fingerprint, commit->commitment);
 }
 
-/** Return True if the two commits have the same commitment values. */
+/** Return True if the two commits have the same commitment
+    values. This function does not care about reveal values. */
 static int
 commitments_are_the_same(const sr_commit_t *commit_one,
                          const sr_commit_t *commit_two)
@@ -1604,6 +1631,8 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
   }
 }
 
+/* We are during commit phase and we found <b>commit</b> in a
+ * vote. See if it contains any reveal values that we could use. */
 static void
 decide_commit_during_reveal_phase(sr_commit_t *commit)
 {
@@ -1637,7 +1666,7 @@ decide_commit_during_reveal_phase(sr_commit_t *commit)
      received commit contains a reveal value. Add it to the stored
      commit. */
   if (commitments_are_the_same(commit, saved_commit)) {
-    if (commit->reveal && !saved_commit->reveal) {
+    if (!saved_commit->reveal) {
       log_warn(LD_GENERAL, "[SR] \t \t Ah, learned reveal value %s for commitment %s",
                commit->reveal, commit->commitment);
       saved_commit->reveal = tor_strdup(commit->reveal);
