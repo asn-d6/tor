@@ -1396,6 +1396,12 @@ update_state_new_protocol_run(time_t valid_after)
   return 1;
 }
 
+static void
+state_phase_transition(time_t valid_after)
+{
+  return; /* XXX */
+}
+
 /* Update the current SR state as needed for the upcoming voting round at
  * <b>valid_after</b>. Don't call this function twice in the same voting
  * period. */
@@ -1414,6 +1420,10 @@ update_state(time_t valid_after)
   if (sr_state->phase == SR_PHASE_UNKNOWN ||
       (sr_state->phase == SR_PHASE_REVEAL && new_phase == SR_PHASE_COMMIT)) {
     update_state_new_protocol_run(valid_after);
+  }
+
+  if (sr_state->phase == SR_PHASE_COMMIT && new_phase == SR_PHASE_REVEAL) {
+    state_phase_transition(valid_after);
   }
 
   /* Set the phase for this round */
