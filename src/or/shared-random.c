@@ -60,7 +60,7 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 /* Each SR round lasts 1 hour */
 #define SHARED_RANDOM_TIME_INTERVAL 1
 /* Each protocol phase has 12 rounds  */
-#define SHARED_RANDOM_N_ROUNDS 3
+#define SHARED_RANDOM_N_ROUNDS 12
 
 static int
 disk_state_validate_cb(void *old_state, void *state, void *default_state,
@@ -299,6 +299,30 @@ static void
 commit_free_(void *p)
 {
   commit_free(p);
+}
+
+/* Issue a log message describing <b>commit</b>. */
+static void
+commit_log(const sr_commit_t *commit)
+{
+  tor_assert(commit);
+  tor_assert(commit->auth_fingerprint);
+
+  log_warn(LD_GENERAL, "Commit by %s", commit->auth_fingerprint);
+
+  if (commit->commit_ts) { /* XXX timestamp could be 0 */
+    log_warn(LD_GENERAL, "C: [TS: %u] [SIG: %s...]",
+           (unsigned) commit->commit_ts,
+           hex_str((char *)commit->commit_signature.sig, 5));
+  }
+
+  if (commit->reveal_ts && commit->random_number) {
+    log_warn(LD_GENERAL, "R: [TS: %u] [RN: %s...]",
+           (unsigned) commit->reveal_ts,
+           hex_str((char *)commit->random_number, 5));
+  } else {
+    log_warn(LD_GENERAL, "R: UNKNOWN");
+  }
 }
 
 /* Allocate a new conflict commit object. If <b>identity</b> is given, it's
