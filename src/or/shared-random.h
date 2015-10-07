@@ -67,26 +67,46 @@ typedef struct sr_commit_t {
   uint8_t identity[ED25519_PUBKEY_LEN];
   /* Timestamp of when the commitment has been received */
   time_t received_ts;
-  /* Timestamp of the commitment value. Correspond to TIMESTAMP. */
-  time_t commit_ts;
-  /* Hashed of the reveal value. Correspond to H(REVEAL). */
-  char reveal_hash[DIGEST256_LEN];
+  /* Is this commit has reached majority? */
+  unsigned int has_majority:1;
   /* Signature of the commit that has been verified against the
    * identity and thus valid. */
   ed25519_signature_t signature;
-  /* 256 bit random number. Correspond to RN. */
-  uint8_t random_number[32];
-  /* Is this commit has reached majority? */
-  unsigned int has_majority:1;
+
 
   /* ************************************************************ */
 
+  /* XXX too much stuff which ones do we actually need? */
+
+  /** Commitment owner info */
+
   /* Fingerprint of authority this commitment belongs to */
   char *auth_fingerprint; /* XXX temp till we use ed25519 */
+  /* Identity digest of authority this commitment belongs to */
   uint8_t auth_digest[DIGEST_LEN];
 
-  char *commitment; /* XXX temp till we use ed25519 */
+  /** Commitment information */
 
+  /* Signature of the commit that has been verified against the
+   * identity and thus valid. */
+  ed25519_signature_t commit_signature;
+  /* Timestamp of reveal. Correspond to TIMESTAMP. */
+  time_t reveal_ts;
+  /* H(REVEAL) as found in COMMIT message. */
+  char reveal_hash[DIGEST256_LEN]; /* XXX rename to hashed_reveal */
+
+  /** Reveal information */
+
+  /* 256 bit random number. Correspond to RN. */
+  uint8_t random_number[SR_RANDOM_NUMBER_LEN];
+  /* Timestamp of commit. Correspond to TIMESTAMP. */
+  time_t commit_ts;
+  /* This is the whole reveal message. We use it during verification */
+  char reveal_b64_blob[SR_REVEAL_BASE64_LEN];
+
+  /* ******************* crap */
+
+  char *commitment; /* XXX temp till we use ed25519 */
   char *reveal; /* XXX temp till we use ed25519 */
 } sr_commit_t;
 
