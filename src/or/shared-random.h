@@ -28,14 +28,20 @@
  * timestamp and the random number. */
 #define SR_REVEAL_LEN \
   (sizeof(uint64_t) + SR_RANDOM_NUMBER_LEN)
+
+
+/* XXX The two base64 lengths below were not working with
+   commit_encode() and reveal_encode(). It works if +1 is added. Need
+   to investigate!!! */
+
 /* Length of base64 encoded commit. Formula is taken from base64_encode.
  * Currently, this adds up to 96 bytes. */
 #define SR_COMMIT_BASE64_LEN \
-  (((SR_COMMIT_LEN - 1) / 3) * 4 + 4)
+  (((SR_COMMIT_LEN - 1) / 3) * 4 + 4 + 1)
 /* Length of base64 encoded reveal. Formula is taken from base64_encode.
  * Currently, this adds up to 56 bytes. */
 #define SR_REVEAL_BASE64_LEN \
-  (((SR_REVEAL_LEN - 1) / 3) * 4 + 4)
+  (((SR_REVEAL_LEN - 1) / 3) * 4 + 4 + 1)
 
 /* Protocol phase. */
 typedef enum {
