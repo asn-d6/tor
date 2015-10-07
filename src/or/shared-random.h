@@ -83,8 +83,6 @@ typedef struct sr_commit_t {
 
   /* ************************************************************ */
 
-  /* XXX too much stuff which ones do we actually need? */
-
   /** Commitment owner info */
 
   /* Fingerprint of authority this commitment belongs to */
