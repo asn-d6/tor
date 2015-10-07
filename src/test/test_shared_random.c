@@ -4,6 +4,9 @@
 #include "test.h"
 #include "config.h"
 #include "shared-random.h"
+#include "routerkeys.h"
+#include "router.h"
+#include "routerparse.h"
 
 static void
 test_get_sr_protocol_phase(void *arg)
@@ -78,8 +81,77 @@ test_get_sr_protocol_phase(void *arg)
   ;
 }
 
+extern const char AUTHORITY_CERT_1[];
+
+
+/* In this test we are going to generate our own commit/reveal values
+   and valida them.
+
+   We first generate our values, and then we parse them as if they
+   were received from the network. After we parse both the commit and
+   the reveal, we verify that they inded match. */
+static void
+test_generate_commitment(void *arg)
+{
+  int retval;
+  authority_cert_t *auth_cert = NULL;
+  char commit_b64[SR_COMMIT_BASE64_LEN];
+  char reveal_b64[SR_REVEAL_BASE64_LEN];
+  time_t now = time(NULL);
+
+  /* This is the commit we generated */
+  sr_commit_t *our_commit = NULL;
+  /* This is our own commit that we parsed */
+  sr_commit_t *parsed_commit = tor_malloc_zero(sizeof(sr_commit_t));
+
+  {  /* Setup a minimal dirauth environment for this test  */
+    or_options_t *options = get_options_mutable();
+    auth_cert = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
+    tt_assert(auth_cert);
+
+    tt_int_op(0, ==, load_ed_keys(options, now));
+  }
+
+  { /* Generate our commit/reveal */
+    our_commit = generate_sr_commitment(now, auth_cert);
+    tt_assert(our_commit);
+  }
+
+  { /* Get the encodings of our commit/reveal. */
+    commit_encode(our_commit, commit_b64);
+    reveal_encode(our_commit, reveal_b64);
+  }
+
+  { /* Parse our own commit */
+
+    /* First copy auth information */
+    parsed_commit->auth_fingerprint = tor_strdup(our_commit->auth_fingerprint);
+    memcpy(parsed_commit->auth_digest, our_commit->auth_digest, DIGEST256_LEN);
+
+    retval = parse_encoded_commit(commit_b64, parsed_commit);
+    tt_int_op(retval, ==, 0);
+  }
+
+  /* XXX Verify commit signature. */
+
+  { /* Parse our own reveal */
+    retval = parse_encoded_reveal(reveal_b64, parsed_commit);
+    tt_int_op(retval, ==, 0);
+  }
+
+  { /* Verify the commit with the reveal */
+    retval = verify_commit_and_reveal(parsed_commit);
+    tt_int_op(retval, ==, 0);
+  }
+
+ done:
+  tor_free(parsed_commit);
+}
+
 struct testcase_t sr_tests[] = {
   { "get_sr_protocol_phase", test_get_sr_protocol_phase, TT_FORK,
+    NULL, NULL },
+  { "generate_commitment", test_generate_commitment, TT_FORK,
     NULL, NULL },
   END_OF_TESTCASES
 };
