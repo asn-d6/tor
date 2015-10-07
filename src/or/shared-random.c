@@ -525,6 +525,8 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
     /* XXX We just received a reveal. Here we need to validate that
        the reveal corresponds with the commit. */
     tor_asprintf(&commit->reveal, "%s", reveal);
+    (void) verify_commit_and_reveal(commit);
+
   }
 
 
@@ -687,6 +689,43 @@ parse_encoded_reveal(const char *encoded, sr_commit_t *commit)
 }
 
 /* Make sure that the commitment and reveal information in
+ * <b>commit</b> match. If they match return 0, return -1
+ * otherwise. This function MUST be used everytime we receive a new
+ * reveal value. */
+STATIC int
+verify_commit_and_reveal(const sr_commit_t *commit)
+{
+  /* Check that the timestamps match. */
+  if (commit->commit_ts != commit->reveal_ts) {
+    log_warn(LD_GENERAL, "MIsmatch on timestamps (%u / %u)",
+             (unsigned) commit->commit_ts, (unsigned) commit->reveal_ts);
+    return -1;
+  }
+
+  {
+    /* Verify that the hashed_reveal received in the COMMIT message,
+       matches the reveal we just received. */
+
+    /* First we need to hash the reveal we just received. */
+    crypto_digest_t *d;
+    char received_hashed_reveal[DIGEST256_LEN];
+
+    d = crypto_digest256_new(DIGEST_SHA256);
+    crypto_digest_add_bytes(d, commit->reveal_b64_blob, strlen(commit->reveal_b64_blob));
+    crypto_digest_get_digest(d, received_hashed_reveal, sizeof(received_hashed_reveal));
+    crypto_digest_free(d);
+
+    if (tor_memneq(received_hashed_reveal, commit->reveal_hash,
+                   DIGEST256_LEN)) {
+      log_warn(LD_GENERAL, "Commitment didn't match reveal...");
+      commit_log(commit);
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
 /* Parse a Commitment line from our disk state and return a newly allocated
  * commit object. NULL is returned on error. */
 static sr_commit_t *
