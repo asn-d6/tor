@@ -695,6 +695,8 @@ parse_encoded_reveal(const char *encoded, sr_commit_t *commit)
 STATIC int
 verify_commit_and_reveal(const sr_commit_t *commit)
 {
+  /* XXX First make sure that all the fields are populated. */
+
   /* Check that the timestamps match. */
   if (commit->commit_ts != commit->reveal_ts) {
     log_warn(LD_GENERAL, "MIsmatch on timestamps (%u / %u)",
@@ -706,7 +708,7 @@ verify_commit_and_reveal(const sr_commit_t *commit)
     /* Verify that the hashed_reveal received in the COMMIT message,
        matches the reveal we just received. */
 
-    /* First we need to hash the reveal we just received. */
+    /* We first hash the reveal we just received. */
     crypto_digest_t *d;
     char received_hashed_reveal[DIGEST256_LEN];
 
@@ -715,6 +717,7 @@ verify_commit_and_reveal(const sr_commit_t *commit)
     crypto_digest_get_digest(d, received_hashed_reveal, sizeof(received_hashed_reveal));
     crypto_digest_free(d);
 
+    /* Now compare that with the hashed_reveal we received in COMMIT. */
     if (tor_memneq(received_hashed_reveal, commit->reveal_hash,
                    DIGEST256_LEN)) {
       log_warn(LD_GENERAL, "Commitment didn't match reveal...");
