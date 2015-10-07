@@ -589,16 +589,17 @@ disk_state_validate_cb(void *old_state, void *state, void *default_state,
  *
  * If successfully decoded and parsed, commit is updated and 0 is returned.
  * On error, return -1. */
-static int
+STATIC int
 parse_encoded_commit(const char *encoded, sr_commit_t *commit)
 {
-  int ok;
-  uint64_t ts;
   size_t offset;
   char b64_buffer[SR_COMMIT_LEN + 1];
 
   tor_assert(encoded);
   tor_assert(commit);
+
+  /* XXX We are now using this function to parse untrusted network
+     data. Make sure it's secure!!! Lenght check !!! */
 
   /* Decode our encoded commit. */
   if (base64_decode(b64_buffer, sizeof(b64_buffer),
@@ -607,31 +608,66 @@ parse_encoded_commit(const char *encoded, sr_commit_t *commit)
     goto error;
   }
 
-  ts = tor_parse_uint64(b64_buffer, 10, 0, UINT64_MAX, &ok, NULL);
-  if (!ok) {
-    log_warn(LD_GENERAL, "Commit timestamp is invalid.");
-    goto error;
-  }
-  commit->commit_ts = (time_t) tor_ntohll(ts);
+  commit->commit_ts = (time_t) tor_ntohll(get_uint64(b64_buffer));
   /* Next is the hash of the reveal value. */
   offset = sizeof(uint64_t);
   memcpy(commit->reveal_hash, b64_buffer + offset,
          sizeof(commit->reveal_hash));
   /* Next is the signature of the commit. */
   offset += sizeof(commit->reveal_hash);
-  memcpy(&commit->signature, b64_buffer + offset,
-         sizeof(commit->signature));
+  memcpy(&commit->commit_signature, b64_buffer + offset,
+         sizeof(commit->commit_signature));
+
+  /* XXX Where do we verify signature ? Signature verification needs
+     to happen right after we get commit!!! */
+  /* XXX Where do we verify timestamp??? */
+
+  log_warn(LD_GENERAL, "Parsed commit:");
+  commit_log(commit);
+
   return 0;
 error:
   return -1;
 }
 
+/* Parse the b64 blob at <b>encoded</b> containin reveal information
+   and store the information in-place in <b>commit</b>. */
+STATIC int
+parse_encoded_reveal(const char *encoded, sr_commit_t *commit)
+{
+  /* XXX The b64 decode didn't work with + 1 and had to bump it to +2. Hm. */
+  char b64_buffer[SR_REVEAL_LEN+2];
+
+  if (base64_decode(b64_buffer, sizeof(b64_buffer),
+                    encoded, strlen(encoded)) < 0) {
+    log_warn(LD_GENERAL, "Commitment line b64 reveal is not recognized.");
+    return -1;
+  }
+
+  /* XXX this function is now used to parse network data. Please make
+     sure it's safe safe safe. Length check!!! */
+
+  commit->reveal_ts = (time_t) tor_ntohll(get_uint64(b64_buffer));
+
+  /* Copy the last part, the random value. */
+  memcpy(commit->random_number, b64_buffer + sizeof(uint64_t),
+         sizeof(commit->random_number));
+
+  /* Also copy the whole message to use during verification */
+  memcpy(commit->reveal_b64_blob, encoded, sizeof(commit->reveal_b64_blob));
+
+  log_warn(LD_GENERAL, "Parsed reveal:");
+  commit_log(commit);
+
+  return 0;
+}
+
+/* Make sure that the commitment and reveal information in
 /* Parse a Commitment line from our disk state and return a newly allocated
  * commit object. NULL is returned on error. */
 static sr_commit_t *
 parse_commitment_line(smartlist_t *args)
 {
-  int ok;
   char *value, identity[ED25519_PUBKEY_LEN], isotime[ISO_TIME_LEN + 1];
   digest_algorithm_t alg;
   sr_commit_t *commit = NULL;
@@ -673,24 +709,9 @@ parse_commitment_line(smartlist_t *args)
   /* (Optional) Seventh argument is the revealed value. */
   value = smartlist_get(args, 6);
   if (value != NULL) {
-    uint64_t ts_64;
-    time_t ts;
-    char b64_buffer[SR_REVEAL_LEN + 1];
-    if (base64_decode(b64_buffer, sizeof(b64_buffer),
-                      value, strlen(value)) < 0) {
-      log_warn(LD_GENERAL, "Commitment line b64 reveal is not recognized.");
+    if (parse_encoded_reveal(value, commit) < 0) {
       goto error;
     }
-
-    ts_64 = tor_parse_uint64(b64_buffer, 10, 0, UINT64_MAX, &ok, NULL);
-    ts = (time_t) tor_ntohll(ts_64);
-    if (!ok || ts != commit->commit_ts) {
-      log_warn(LD_GENERAL, "Commitment reveal timestamp is invalid.");
-      goto error;
-    }
-    /* Copy the last part, the random value. */
-    memcpy(commit->random_number, b64_buffer + sizeof(uint64_t),
-           sizeof(commit->random_number));
   }
 
   return commit;
