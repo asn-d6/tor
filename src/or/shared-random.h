@@ -19,10 +19,11 @@
 
 /* Length of the random number (in bytes). */
 #define SR_RANDOM_NUMBER_LEN 32
-/* Size of a decoded commit value in a vote or state. It consist of a 64 bit
- * timestamp, SHA256 hash digest and signature. */
-#define SR_COMMIT_LEN \
-  (sizeof(uint64_t) + DIGEST256_LEN + ED25519_SIG_LEN)
+/* The signature includes the sha256 hash of the reveal + a 64bit timestamp */
+#define SR_COMMIT_SIG_BODY_LEN (DIGEST256_LEN + sizeof(uint64_t))
+/* Size of a decoded commit value in a vote or state. It consist of
+   the signature body and the signature */
+#define SR_COMMIT_LEN (SR_COMMIT_SIG_BODY_LEN + ED25519_SIG_LEN)
 /* Size of a decoded reveal value from a vote or state. It's a 64 bit
  * timestamp and the random number. */
 #define SR_REVEAL_LEN \
@@ -189,7 +190,17 @@ sr_commit_t * sr_handle_received_commitment(const char *commit_pubkey, const cha
 
 #ifdef SHARED_RANDOM_PRIVATE
 
+STATIC void reveal_encode(sr_commit_t *commit, char *dst);
+STATIC void commit_encode(sr_commit_t *commit, char *dst);
+
 STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
+
+STATIC sr_commit_t *generate_sr_commitment(time_t timestamp, authority_cert_t *my_cert);
+
+STATIC int parse_encoded_commit(const char *encoded, sr_commit_t *commit);
+STATIC int parse_encoded_reveal(const char *encoded, sr_commit_t *commit);
+
+STATIC int verify_commit_and_reveal(const sr_commit_t *commit);
 
 #endif
 
