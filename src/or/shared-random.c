@@ -972,7 +972,7 @@ error:
  * format is as follow:
  *     REVEAL = base64-encode( TIMESTAMP || RN )
  */
-static void
+STATIC void
 reveal_encode(sr_commit_t *commit, char *dst)
 {
   size_t offset;
@@ -983,12 +983,14 @@ reveal_encode(sr_commit_t *commit, char *dst)
 
   memset(buf, 0, sizeof(buf));
 
-  set_uint64(buf, tor_htonll((uint64_t) commit->commit_ts));
-  offset = sizeof(commit->commit_ts);
+  set_uint64(buf, tor_htonll((uint64_t) commit->reveal_ts));
+  offset = sizeof(commit->reveal_ts);
   memcpy(buf + offset, commit->random_number,
          sizeof(commit->random_number));
   /* Let's clean the buffer and then encode it. */
   memset(dst, 0, SR_REVEAL_BASE64_LEN);
+
+  /* XXX check retval */
   base64_encode(dst, SR_REVEAL_BASE64_LEN, buf, sizeof(buf), 0);
 }
 
@@ -996,7 +998,7 @@ reveal_encode(sr_commit_t *commit, char *dst)
  * put the base64-encoded commit. The format is as follow:
  *     COMMIT = base64-encode( TIMESTAMP || H(REVEAL) || SIGNATURE )
  */
-static void
+STATIC void
 commit_encode(sr_commit_t *commit, char *dst)
 {
   size_t offset;
@@ -1013,10 +1015,12 @@ commit_encode(sr_commit_t *commit, char *dst)
   memcpy(buf + offset, commit->reveal_hash, DIGEST256_LEN);
   /* Finally, the signature. */
   offset += DIGEST256_LEN;
-  memcpy(buf + offset, &commit->signature, sizeof(commit->signature));
+  memcpy(buf + offset, commit->commit_signature.sig, ED25519_SIG_LEN);
 
   /* Let's clean the buffer and then encode it. */
   memset(dst, 0, SR_COMMIT_BASE64_LEN);
+
+  /* XXX check retval */
   base64_encode(dst, SR_COMMIT_BASE64_LEN, buf, sizeof(buf), 0);
 }
 
@@ -1342,10 +1346,91 @@ sr_save_and_cleanup(void)
   sr_cleanup();
 }
 
+/** Generate the commitment/reveal value for the protocol run starting
+ *  at <b>timestamp</b>. If <b>my_cert</b> is provided use it as our
+ *  authority certificate (used in unittests). */
+STATIC sr_commit_t *
+generate_sr_commitment(time_t timestamp, authority_cert_t *my_cert)
+{
+  sr_commit_t *commit = tor_malloc_zero(sizeof(sr_commit_t));
+  char reveal_base64[SR_REVEAL_BASE64_LEN]; /* XXX is this enough space? */
+
+  commit->commit_ts = timestamp;
+  commit->reveal_ts = timestamp;
+
+  { /* Encode our identity in the commitment */
+    char fingerprint[FINGERPRINT_LEN+1];
+
+    /* XXX We are currently using our RSA identity. In the future we
+       should be using our shared random ed25519 key. */
+
+    /* Get our RSA fingerprint. */
+    if (!my_cert) {
+      my_cert = get_my_v3_authority_cert();
+      if (!my_cert) {
+        log_warn(LD_DIR, "Can't generate consensus without a certificate.");
+        return NULL; /* XXX error mgmt */
+      }
+    }
+
+    if (crypto_pk_get_fingerprint(my_cert->identity_key,
+                                  fingerprint, 0) < 0) {
+      log_err(LD_GENERAL,"Error computing fingerprint");
+      return NULL; /* XXX error mgmt */
+    }
+
+    /* This commitment belongs to us! Set our fingerprint. */
+    commit->auth_fingerprint = tor_strdup(fingerprint);
+    /* Also set our digest */
+    crypto_pk_get_digest(my_cert->identity_key, (char *)commit->auth_digest);
+  }
+
+  /* Generate the reveal random value */
+  if (crypto_rand((char*)commit->random_number,  SR_RANDOM_NUMBER_LEN) < 0) {
+    log_warn(LD_REND, "Unable to generate reveal random value!");
+    return NULL;
+  }
+
+  /* Now get the base64 blob that corresponds to our reveal */
+  reveal_encode(commit, reveal_base64);
+
+  /** Now let's create the commitment */
+
+  { /* First hash the reveal */
+    crypto_digest_t *d;
+    d = crypto_digest256_new(DIGEST_SHA256);
+    crypto_digest_add_bytes(d, reveal_base64, strlen(reveal_base64));
+    crypto_digest_get_digest(d, commit->reveal_hash, sizeof(commit->reveal_hash));
+    crypto_digest_free(d);
+  }
+
+  { /* Now create the commit signature */
+
+    /* XXX We need to use the special shared random key here! */
+    const ed25519_keypair_t *signing_keypair = get_master_signing_keypair();
+    uint8_t sig_msg[SR_COMMIT_SIG_BODY_LEN];
+
+    memcpy(sig_msg, commit->reveal_hash, DIGEST256_LEN);
+    set_uint64(sig_msg+DIGEST256_LEN, tor_htonll((uint64_t)timestamp));
+
+    if (ed25519_sign(&commit->commit_signature,
+                     sig_msg, SR_COMMIT_SIG_BODY_LEN,
+                     signing_keypair)<0) {
+      log_warn(LD_BUG, "Can't sign commitment!");
+      return NULL; /* XXX error mgmt */
+    }
+  }
+
+  log_warn(LD_GENERAL, "[SR] Generated commitment:");
+  commit_log(commit);
+
+  return commit;
+}
+
 /** Generate the commitment/reveal value for the protocol run starting at
  *  <b>timestamp</b>. */
 static sr_commit_t *
-generate_sr_commitment(time_t timestamp)
+generate_sr_commitment_stupid(time_t timestamp)
 {
   authority_cert_t *my_cert;
   char fingerprint[FINGERPRINT_LEN+1];
@@ -1434,7 +1519,8 @@ update_state_new_protocol_run(time_t valid_after)
   sr_state->commitments_tmp = digestmap_new();
 
   /* Generate fresh commitments for this protocol run */
-  our_commitment = generate_sr_commitment(valid_after);
+  our_commitment = generate_sr_commitment_stupid(valid_after);
+  (void) generate_sr_commitment(valid_after, NULL); /* XXX */
   tor_assert(our_commitment); /* XXX check that this can be asserted */
   digestmap_set(sr_state->commitments_tmp, (char *) our_commitment->auth_digest, our_commitment);
 
