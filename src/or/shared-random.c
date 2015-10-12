@@ -1686,40 +1686,62 @@ sr_get_string_for_vote(void)
   return vote_str;
 }
 
-/** Return true if we have another commit from the same authority as
- *  <b>commit</b>. */
+/* Return commit object from the given authority digest <b>auth_digest</b>.
+ * Return NULL if not found. */
 static sr_commit_t *
-get_commit_from_same_auth(const sr_commit_t *commit)
+get_commit_from_state(const uint8_t *auth_digest)
 {
-  return (sr_commit_t *) digestmap_get(sr_state->commitments_tmp, (char *) commit->auth_digest);
+  tor_assert(auth_digest);
+  return digestmap_get(sr_state->commitments_tmp, (char *) auth_digest);
 }
 
-static void
-add_conflict_to_sr_state(const sr_commit_t *commit)
+/* Return conflict object from the given authority digest
+ * <b>auth_digest</b>. Return NULL if not found. */
+static sr_conflict_commit_t *
+get_conflict_from_state(const char *auth_digest)
 {
-  (void) commit;
+  (void) auth_digest;
+  return NULL; /* XXX NOP */
+}
+
+/* Add a conflict to the state using the different commits <b>c1</b> and
+ * <b>c2</b>. If a conflict already exists, update it with those values. */
+static void
+add_conflict_to_sr_state(const sr_commit_t *c1, const sr_commit_t *c2)
+{
+  (void) c1;
+  (void) c2;
   return; /* XXX NOP */
 }
 
-/** Add <b>commit</b> to the permanent state.  Make sure there are no
- *  conflicts. */
+/* Add <b>commit</b> to the permanent state.  Make sure there are no
+ * conflicts. */
 static void
 add_commit_to_sr_state(sr_commit_t *commit)
 {
+  sr_commit_t *saved_commit = NULL;
+
   tor_assert(sr_state);
+  tor_assert(commit);
 
-  /* XXX we also need to make sure we don't use this commit value
-     during _this_ voting session. */
+  saved_commit = get_commit_from_state(commit->auth_digest);
+  if (saved_commit != NULL) {
+    /* MUST be same pointer else there is a code flow issue. */
+    tor_assert(saved_commit == commit);
+    return;
+  }
+  digestmap_set(sr_state->commitments_tmp, (char *) commit->auth_digest,
+                commit);
 
-  /* XXX check retval to see if there is already one with the same digest */
-  digestmap_set(sr_state->commitments_tmp, (char *) commit->auth_digest, commit);
-
-  log_warn(LD_GENERAL, "[SR] \t \t Found authoritative commit from %s (%s)",
-           commit->auth_fingerprint, commit->commitment);
+  log_warn(LD_GENERAL, "[SR] \t \t Commit from %s (%s) has been added. "
+                       "It's %s authoritative and has %s majority",
+           commit->auth_fingerprint, commit->commitment,
+           commit->is_authoritative ? "" : "NOT",
+           commit->has_majority ? "" : "NO");
 }
 
-/** Return True if the two commits have the same commitment
-    values. This function does not care about reveal values. */
+/* Return True if the two commits have the same commitment values. This
+ * function does not care about reveal values. */
 static int
 commitments_are_the_same(const sr_commit_t *commit_one,
                          const sr_commit_t *commit_two)
@@ -1731,20 +1753,23 @@ commitments_are_the_same(const sr_commit_t *commit_one,
     return 1;
   }
 
+  /* XXX: Should we validate also the timestamp here that should be the same
+   * even if commit is being carried ??? */
+
   return 0;
 }
 
-/** Return True if <b>commit</b> is included in enough <b>votes</b> to
- *  be the majority opinion. */
+/* Return True if <b>commit</b> is included in enough <b>votes</b> to be the
+ * majority opinion. */
 static int
-commit_has_majority(smartlist_t *votes, const sr_commit_t *commit)
+commit_has_majority(const sr_commit_t *commit, smartlist_t *votes)
 {
   int n_voters = get_n_authorities(V3_DIRINFO);
   int votes_required_for_majority = (n_voters / 2) + 1;
   int votes_for_this_commit = 0;
 
-  /** XXX Below we need to make sure that all those commitments
-      actually include the same commit value. */
+  tor_assert(commit);
+  tor_assert(votes);
 
   /* Go through all the votes and count the ones that include this commit. */
   SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
@@ -1757,115 +1782,182 @@ commit_has_majority(smartlist_t *votes, const sr_commit_t *commit)
            commit->commitment, commit->auth_fingerprint,
            votes_for_this_commit, votes_required_for_majority);
 
-  return votes_for_this_commit > votes_required_for_majority;
+  /* Did we reached at least majority ? */
+  return votes_for_this_commit >= votes_required_for_majority;
 }
 
 /* We just received a commit from the vote of authority with
- * <b>voter_fingerprint</b>. Return True if this commit is
- * authorititative (that is, it belongs to the authority that voted
- * it). */
+ * <b>identity_digest</b>. Return 1 if this commit is authorititative that
+ * is, it belongs to the authority that voted it. Else return 0 if not. */
 static int
-commit_is_authoritative(const sr_commit_t *commit, const char *voter_fingerprint)
+commit_is_authoritative(const sr_commit_t *commit,
+                        const char *identity_digest)
 {
-  return !strcmp(commit->auth_fingerprint, voter_fingerprint);
+  tor_assert(commit);
+  tor_assert(identity_digest);
+  return !fast_memcmp(commit->auth_digest, identity_digest,
+                      sizeof(commit->auth_digest));
 }
 
 /* We are during commit phase and we found <b>commit</b> in a vote of
-   <b>voter_fingerprint</b>. All the other received votes are found in
-   <b>votes</b>. Decide whether we should keep this commit, issue a
-   conflict line, or ignore it. */
+ * <b>voter_fingerprint</b>. All the other received votes are found in
+ * <b>votes</b>. Decide whether we should keep this commit, issue a conflict
+ * line, or ignore it. */
 static void
 decide_commit_during_commit_phase(sr_commit_t *commit,
-                    const char *voter_fingerprint,
-                    smartlist_t *votes)
-
+                                  networkstatus_voter_info_t *voter,
+                                  smartlist_t *votes)
 {
+  int add_commit = 0;
+
+  tor_assert(commit);
+  tor_assert(voter);
+  tor_assert(votes);
+  tor_assert(sr_state->phase == SR_PHASE_COMMIT);
+
   log_warn(LD_GENERAL, "[SR] \t Deciding commit %s by %s",
            commit->commitment, commit->auth_fingerprint);
 
-  tor_assert(sr_state->phase == SR_PHASE_COMMIT);
-
-  sr_commit_t *saved_commit = get_commit_from_same_auth(commit);
-  if (saved_commit) {
-    /* If we already have a commit from this auth and it's the
-       same commitment value, ignore the new one (it's probably
-       carrying) */
-    if (commitments_are_the_same(commit, saved_commit)) {
-      log_warn(LD_GENERAL, "[SR] \t \t We already have commit %s by %s. Skipping.",
-               commit->commitment, commit->auth_fingerprint);
-      return;
-    } else {
-      log_warn(LD_GENERAL, "[SR] \t \t We found a conflicting commit by %s.",
-               commit->auth_fingerprint);
-      add_conflict_to_sr_state(commit);
-      return;
-    }
+  /* Check if commit is authoritative and if so flag it. */
+  if (commit_is_authoritative(commit, voter->identity_digest)) {
+    commit->is_authoritative = 1;
+    add_commit = 1;
+  }
+  /* Check if commit has majority and if so flag it. */
+  if (commit_has_majority(commit, votes)) {
+    commit->has_majority = 1;
+    add_commit = 1;
   }
 
-  /* If we get here, we have no stored commit from this auth. */
-  tor_assert(!saved_commit);
-
-  /* This is the first commit we've seen from this auth in
-     this protocol run. We should store it if the commit is
-     authoritative or if it's voted by the majority.*/
-
-  if (commit_is_authoritative(commit, voter_fingerprint)) {
-    add_commit_to_sr_state(commit);
-  } else if (commit_has_majority(votes, commit)) {
+  if (add_commit) {
     add_commit_to_sr_state(commit);
   } else {
-    log_warn(LD_GENERAL, "Got unusable commit %s by %s.",
-             commit->commitment, commit->auth_fingerprint);
+    char voter_fp[HEX_DIGEST_LEN + 1];
+    base16_encode(voter_fp, sizeof(voter_fp), voter->identity_digest,
+                  sizeof(voter->identity_digest));
+    log_warn(LD_DIR, "[SR] Commit of authority %s received from %s "
+                     "is not authoritative nor has majority. Ignoring.",
+             commit->auth_fingerprint, voter_fp);
   }
 }
 
 /* We are during commit phase and we found <b>commit</b> in a
  * vote. See if it contains any reveal values that we could use. */
 static void
-decide_commit_during_reveal_phase(sr_commit_t *commit)
+decide_commit_during_reveal_phase(sr_commit_t *saved_commit,
+                                  sr_commit_t *received_commit)
 {
-  /* XXX dup code */
-  sr_commit_t *saved_commit = NULL;
-
+  tor_assert(saved_commit);
+  tor_assert(received_commit);
   tor_assert(sr_state->phase == SR_PHASE_REVEAL);
 
   log_warn(LD_GENERAL, "[SR] \t Commit %s (%s) by %s",
-           commit->commitment,
-           commit->reveal ? commit->reveal : "NOREVEAL",
-           commit->auth_fingerprint);
+           received_commit->commitment,
+           received_commit->reveal ? received_commit->reveal : "NOREVEAL",
+           received_commit->auth_fingerprint);
 
-  /* If this commit contains no reveal value during the reveal phase,
-     we are not interested in it */
-  if (!commit->reveal) {
+  /* If this commit contains no reveal value during the reveal phase, we are
+   * not interested in it */
+  if (received_commit->reveal == NULL) {
     return;
   }
 
-  /* if we have don't have a commitment value by this auth ignore this
-     new commit. We don't accept new commitment values during the
-     reveal phase. */
-  saved_commit = get_commit_from_same_auth(commit);
-  if (!saved_commit) {
-    return;
+  if (saved_commit->reveal == NULL) {
+    /* If we already have a commitment by this authority, and this newly
+     * received commit contains a reveal value. Add it to the commit. */
+    log_warn(LD_GENERAL, "[SR] \t \t Ah, learned reveal %s for commit %s",
+             received_commit->reveal, received_commit->commitment);
+    saved_commit->reveal = tor_strdup(received_commit->reveal);
   }
+}
 
-  tor_assert(saved_commit);
+/* Return the authoritative commit from the given vote that is the commit
+ * that is from the vote's authority. Return the commit on success else NULL
+ * value if not found. */
+static sr_commit_t *
+get_authoritative_commit_from_vote(const networkstatus_t *vote)
+{
+  networkstatus_voter_info_t *voter = smartlist_get(vote->voters, 0);
+  return digestmap_get(vote->commitments, voter->identity_digest);
+}
 
-  /* If we already have a commitment by this authority, and this newly
-     received commit contains a reveal value. Add it to the stored
-     commit. */
-  if (commitments_are_the_same(commit, saved_commit)) {
-    if (!saved_commit->reveal) {
-      log_warn(LD_GENERAL, "[SR] \t \t Ah, learned reveal value %s for commitment %s",
-               commit->reveal, commit->commitment);
-      saved_commit->reveal = tor_strdup(commit->reveal);
+/* Go over all votes and look for authoritative commit. For each of them,
+ * see if we have a conflict commit in our state and if so add the conflict
+ * to the state. */
+static void
+decide_conflict_from_votes(const smartlist_t *votes)
+{
+  tor_assert(votes);
+
+  SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
+    sr_commit_t *auth_commit, *saved_commit;
+
+    auth_commit = get_authoritative_commit_from_vote(v);
+    if (auth_commit == NULL) {
+      /* For some reason the authority didn't commit a value in its vote.
+       * Ignore and continue processing other votes. */
+      continue;
     }
-  } else {
-    log_warn(LD_GENERAL, "[SR] \t \t We found a conflicting commit by %s.",
-             commit->auth_fingerprint);
-    add_conflict_to_sr_state(commit);
-  }
+    /* Do we have a differenct commitment in our state and if so add a
+     * conflict to the state. */
+    saved_commit = get_commit_from_state(auth_commit->auth_digest);
+    if (saved_commit == NULL) {
+      /* No conflict since we do not have it in our state. Ignore. */
+      continue;
+    }
+    if (commitments_are_the_same(auth_commit, saved_commit)) {
+      add_conflict_to_sr_state(auth_commit, saved_commit);
+    }
+  } SMARTLIST_FOREACH_END (v);
+}
 
-  /* XXX free received commit */
+/* For all vote in <b>votes</b>, decide if the commitments should be ignored
+ * or added/updated to our state. Depending on the phase here, different
+ * actions are taken. */
+static void
+decide_commit_from_votes(sr_phase_t phase, smartlist_t *votes)
+{
+  tor_assert(votes);
+  tor_assert(phase == SR_PHASE_COMMIT || phase == SR_PHASE_REVEAL);
+
+  /* For each votes, check if we need to add it to our state or not. */
+  SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
+    networkstatus_voter_info_t *voter = smartlist_get(v->voters, 0);
+    /* Ignore authority vote if we have a conflict for it. */
+    if (get_conflict_from_state(voter->identity_digest)) {
+      continue;
+    }
+    /* Go over all commitments and depending on the phase decide what to do
+     * with them that is keeping or updating them based on the votes. */
+    DIGESTMAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
+      sr_commit_t *saved_commit;
+
+      saved_commit = get_commit_from_state(commit->auth_digest);
+      if (saved_commit != NULL) {
+        /* They can not be different commits at this point since we've
+         * already processed all conflicts. */
+        int ret = commitments_are_the_same(commit, saved_commit);
+        tor_assert(ret);
+      }
+
+      switch (phase) {
+      case SR_PHASE_COMMIT:
+      {
+        sr_commit_t *use_commit = commit;
+        if (saved_commit != NULL) {
+          use_commit = saved_commit;
+        }
+        decide_commit_during_commit_phase(use_commit, voter, votes);
+        break;
+      }
+      case SR_PHASE_REVEAL:
+        decide_commit_during_reveal_phase(saved_commit, commit);
+        break;
+      case SR_PHASE_UNKNOWN:
+        tor_assert(0);
+      }
+    } DIGESTMAP_FOREACH_END;
+  } SMARTLIST_FOREACH_END (v);
 }
 
 /** This is called in the end of each voting round. Decide which
@@ -1876,41 +1968,15 @@ sr_decide_state_post_voting(smartlist_t *votes)
   log_warn(LD_GENERAL, "[SR] About to decide state (%s):",
            get_phase_str(sr_state->phase));
 
-  /** We walk over the commitments of every vote we have received.
-      For each commitment/reveal value, we check if it's new. If it's
-      new, we transcribe it to the permanent state if we need to. */
+  /* First step is to find if we have any conflicts and if so add them to
+   * our state. This is important because after that we will decide if we
+   * keep the commitments as authoritative or decided by majority from which
+   * we MUST exclude conflicts. */
+  decide_conflict_from_votes(votes);
 
-  /* Walk over all received votes */
-  SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
-    /* Get the fingerprint of the voter. This is needed to find if a
-       commit is authoritative. */
-    char voter_fingerprint[FINGERPRINT_LEN+1];
-    networkstatus_voter_info_t *the_voter = smartlist_get(v->voters, 0);
-    base16_encode(voter_fingerprint, sizeof(voter_fingerprint),
-                  the_voter->identity_digest, DIGEST_LEN);
-
-    log_warn(LD_GENERAL, "[SR] Examining vote by %s (%d commits)!",
-             voter_fingerprint,
-             v->commitments ? digestmap_size(v->commitments) : 0);
-
-    /* Ignore votes that don't contain any commitments */
-    if (!v->commitments) {
-      continue;
-    }
-
-    /* Walk over all the commitments in this vote */
-    DIGESTMAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
-
-      if (sr_state->phase == SR_PHASE_COMMIT) {
-        decide_commit_during_commit_phase(commit, voter_fingerprint, votes);
-      } else {
-        tor_assert(sr_state->phase == SR_PHASE_REVEAL);
-        decide_commit_during_reveal_phase(commit);
-      }
-
-    } DIGESTMAP_FOREACH_END;
-
-  } SMARTLIST_FOREACH_END(v);
+   /* Then we decide which commit to keep in our state considering that all
+    * conflicts have been found previously. */
+  decide_commit_from_votes(sr_state->phase, votes);
 
   log_warn(LD_GENERAL, "[SR] State decided!");
 }
