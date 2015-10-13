@@ -1623,7 +1623,6 @@ state_new_protocol_run(time_t valid_after)
            sr_state->n_protocol_runs);
 
   /* Wipe old commit/reveal values */
-  sr_state->commitments_tmp = digestmap_new();
   DIGESTMAP_FOREACH_MODIFY(sr_state->commitments_tmp, key,
                            sr_commit_t *, c) {
     commit_free(c);
