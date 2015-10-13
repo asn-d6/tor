@@ -1508,6 +1508,67 @@ generate_sr_commitment_stupid(time_t timestamp)
   return commit;
 }
 
+/* Return commit object from the given authority digest <b>auth_digest</b>.
+ * Return NULL if not found. */
+static sr_commit_t *
+get_commit_from_state(const uint8_t *auth_digest)
+{
+  tor_assert(auth_digest);
+  return digestmap_get(sr_state->commitments_tmp, (char *) auth_digest);
+}
+
+/* Return conflict object from the given authority digest
+ * <b>auth_digest</b>. Return NULL if not found. */
+static sr_conflict_commit_t *
+get_conflict_from_state(const char *auth_digest)
+{
+  (void) auth_digest;
+  return NULL; /* XXX NOP */
+}
+
+/* Add a conflict to the state using the different commits <b>c1</b> and
+ * <b>c2</b>. If a conflict already exists, update it with those values. */
+static void
+add_conflict_to_sr_state(const sr_commit_t *c1, const sr_commit_t *c2)
+{
+  (void) c1;
+  (void) c2;
+  /* XXX: It's possible to add a conflict for an authority that already
+   * has a conflict in our state so we should simply update the entry with
+   * the latest commits. */
+  return; /* XXX NOP */
+}
+
+/* Add <b>commit</b> to the permanent state.  Make sure there are no
+ * conflicts. */
+static void
+add_commit_to_sr_state(sr_commit_t *commit)
+{
+  sr_commit_t *saved_commit = NULL;
+
+  tor_assert(sr_state);
+  tor_assert(commit);
+
+  saved_commit = get_commit_from_state(commit->auth_digest);
+  if (saved_commit != NULL) {
+    /* MUST be same pointer else there is a code flow issue. */
+    tor_assert(saved_commit == commit);
+    return;
+  }
+
+  /* XXX: We have to dup the commit here since the commit object comes from
+   * the commitments list of a vote thus will be cleanup after the voting
+   * period. */
+  digestmap_set(sr_state->commitments_tmp, (char *) commit->auth_digest,
+                commit);
+
+  log_warn(LD_GENERAL, "[SR] \t \t Commit from %s (%s) has been added. "
+           "It's %s authoritative and has %s majority",
+           commit->auth_fingerprint, commit->commitment,
+           commit->is_authoritative ? "" : "NOT",
+           commit->has_majority ? "" : "NO");
+}
+
 /** Compute the shared random value based on the reveals we have. */
 static void
 compute_shared_random_value(void)
@@ -1535,11 +1596,10 @@ compute_shared_random_value(void)
   log_warn(LD_GENERAL, "[SR] \t SRV = %d", sum);
 }
 
-
 /** This is the first round of the new protocol run starting at
  *  <b>valid_after</b>. Do the necessary housekeeping. */
-static int
-update_state_new_protocol_run(time_t valid_after)
+static void
+state_new_protocol_run(time_t valid_after)
 {
   sr_commit_t *our_commitment = NULL;
 
@@ -1556,17 +1616,25 @@ update_state_new_protocol_run(time_t valid_after)
   log_warn(LD_GENERAL, "[SR] Protocol run #%u starting!",
            sr_state->n_protocol_runs);
 
-  /*  Wipe old commit/reveal values */
-  digestmap_free(sr_state->commitments_tmp, NULL); /* XXX free commits!!! */
+  /* Wipe old commit/reveal values */
   sr_state->commitments_tmp = digestmap_new();
+  DIGESTMAP_FOREACH_MODIFY(sr_state->commitments_tmp, key,
+                           sr_commit_t *, c) {
+    commit_free(c);
+    MAP_DEL_CURRENT(key);
+  } DIGESTMAP_FOREACH_END;
+  /* Wipe old conflicts */
+  DIGEST256MAP_FOREACH_MODIFY(sr_state->conflicts, key,
+                              sr_conflict_commit_t *, c) {
+    conflict_commit_free(c);
+    MAP_DEL_CURRENT(key);
+  } DIGEST256MAP_FOREACH_END;
 
   /* Generate fresh commitments for this protocol run */
   our_commitment = generate_sr_commitment_stupid(valid_after);
   (void) generate_sr_commitment(valid_after, NULL); /* XXX */
   tor_assert(our_commitment); /* XXX check that this can be asserted */
-  digestmap_set(sr_state->commitments_tmp, (char *) our_commitment->auth_digest, our_commitment);
-
-  return 1;
+  add_commit_to_sr_state(our_commitment);
 }
 
 static void
@@ -1578,6 +1646,14 @@ state_phase_transition(time_t valid_after)
   /* XXX Remove commitments that don't have majority. */
 
   return; /* XXX */
+}
+
+/* Return 1 iff the <b>next_phase</b> is a phase transition from the current
+ * phase that is it's different. */
+static int
+is_phase_transition(sr_phase_t next_phase)
+{
+  return sr_state->phase != next_phase;
 }
 
 /* Update the current SR state as needed for the upcoming voting round at
@@ -1592,20 +1668,25 @@ update_state(time_t valid_after)
   sr_phase_t new_phase = get_sr_protocol_phase(valid_after);
   tor_assert(new_phase != SR_PHASE_UNKNOWN);
 
-  /* By comparing the previous phase with the current one, check if we
-   * are just starting a new protocol run and if it is so, do the
-   * necessary operations. */
-  if (sr_state->phase == SR_PHASE_UNKNOWN ||
-      (sr_state->phase == SR_PHASE_REVEAL && new_phase == SR_PHASE_COMMIT)) {
-    update_state_new_protocol_run(valid_after);
+  /* Are we in a phase transition that is the next phase is not the same as
+   * the current one? */
+  if (is_phase_transition(new_phase)) {
+    switch (new_phase) {
+    case SR_PHASE_COMMIT:
+      /* We were in the reveal phase or we are just starting so this is a
+       * new protocol run. */
+      state_new_protocol_run(valid_after);
+      break;
+    case SR_PHASE_REVEAL:
+      /* We were in the commit phase thus now in reveal. */
+      state_phase_transition(valid_after);
+      break;
+    case SR_PHASE_UNKNOWN:
+      tor_assert(0);
+    }
+    /* Set the new phase for this round */
+    sr_state->phase = new_phase;
   }
-
-  if (sr_state->phase == SR_PHASE_COMMIT && new_phase == SR_PHASE_REVEAL) {
-    state_phase_transition(valid_after);
-  }
-
-  /* Set the phase for this round */
-  sr_state->phase = new_phase;
 
   /* Count the current round */
   if (sr_state->phase == SR_PHASE_COMMIT) {
@@ -1684,67 +1765,6 @@ sr_get_string_for_vote(void)
   vote_str = smartlist_join_strings(chunks, "", 0, NULL);
 
   return vote_str;
-}
-
-/* Return commit object from the given authority digest <b>auth_digest</b>.
- * Return NULL if not found. */
-static sr_commit_t *
-get_commit_from_state(const uint8_t *auth_digest)
-{
-  tor_assert(auth_digest);
-  return digestmap_get(sr_state->commitments_tmp, (char *) auth_digest);
-}
-
-/* Return conflict object from the given authority digest
- * <b>auth_digest</b>. Return NULL if not found. */
-static sr_conflict_commit_t *
-get_conflict_from_state(const char *auth_digest)
-{
-  (void) auth_digest;
-  return NULL; /* XXX NOP */
-}
-
-/* Add a conflict to the state using the different commits <b>c1</b> and
- * <b>c2</b>. If a conflict already exists, update it with those values. */
-static void
-add_conflict_to_sr_state(const sr_commit_t *c1, const sr_commit_t *c2)
-{
-  (void) c1;
-  (void) c2;
-  /* XXX: It's possible to add a conflict for an authority that already
-   * has a conflict in our state so we should simply update the entry with
-   * the latest commits. */
-  return; /* XXX NOP */
-}
-
-/* Add <b>commit</b> to the permanent state.  Make sure there are no
- * conflicts. */
-static void
-add_commit_to_sr_state(sr_commit_t *commit)
-{
-  sr_commit_t *saved_commit = NULL;
-
-  tor_assert(sr_state);
-  tor_assert(commit);
-
-  saved_commit = get_commit_from_state(commit->auth_digest);
-  if (saved_commit != NULL) {
-    /* MUST be same pointer else there is a code flow issue. */
-    tor_assert(saved_commit == commit);
-    return;
-  }
-
-  /* XXX: We have to dup the commit here since the commit object comes from
-   * the commitments list of a vote thus will be cleanup after the voting
-   * period. */
-  digestmap_set(sr_state->commitments_tmp, (char *) commit->auth_digest,
-                commit);
-
-  log_warn(LD_GENERAL, "[SR] \t \t Commit from %s (%s) has been added. "
-                       "It's %s authoritative and has %s majority",
-           commit->auth_fingerprint, commit->commitment,
-           commit->is_authoritative ? "" : "NOT",
-           commit->has_majority ? "" : "NO");
 }
 
 /* Return True if the two commits have the same commitment values. This
