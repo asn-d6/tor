@@ -1711,6 +1711,9 @@ add_conflict_to_sr_state(const sr_commit_t *c1, const sr_commit_t *c2)
 {
   (void) c1;
   (void) c2;
+  /* XXX: It's possible to add a conflict for an authority that already
+   * has a conflict in our state so we should simply update the entry with
+   * the latest commits. */
   return; /* XXX NOP */
 }
 
@@ -1871,43 +1874,29 @@ decide_commit_during_reveal_phase(sr_commit_t *saved_commit,
   }
 }
 
-/* Return the authoritative commit from the given vote that is the commit
- * that is from the vote's authority. Return the commit on success else NULL
- * value if not found. */
-static sr_commit_t *
-get_authoritative_commit_from_vote(const networkstatus_t *vote)
-{
-  networkstatus_voter_info_t *voter = smartlist_get(vote->voters, 0);
-  return digestmap_get(vote->commitments, voter->identity_digest);
-}
-
-/* Go over all votes and look for authoritative commit. For each of them,
- * see if we have a conflict commit in our state and if so add the conflict
- * to the state. */
+/* For all vote in <b>votes</b>, go over the every commitment and check if
+ * we already have a commit from the same authority but with a different
+ * value in our state and if so add the conflict to the state.  */
 static void
 decide_conflict_from_votes(const smartlist_t *votes)
 {
   tor_assert(votes);
 
   SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
-    sr_commit_t *auth_commit, *saved_commit;
+    DIGESTMAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
+      sr_commit_t *saved_commit;
 
-    auth_commit = get_authoritative_commit_from_vote(v);
-    if (auth_commit == NULL) {
-      /* For some reason the authority didn't commit a value in its vote.
-       * Ignore and continue processing other votes. */
-      continue;
-    }
-    /* Do we have a differenct commitment in our state and if so add a
-     * conflict to the state. */
-    saved_commit = get_commit_from_state(auth_commit->auth_digest);
-    if (saved_commit == NULL) {
-      /* No conflict since we do not have it in our state. Ignore. */
-      continue;
-    }
-    if (commitments_are_the_same(auth_commit, saved_commit)) {
-      add_conflict_to_sr_state(auth_commit, saved_commit);
-    }
+      saved_commit = get_commit_from_state(commit->auth_digest);
+      if (saved_commit == NULL) {
+        /* No conflict since we do not have it in our state. Ignore. */
+        continue;
+      }
+      /* Is it a different commit from our state? If yes, add a conflict to
+       * the state. */
+      if (!commitments_are_the_same(commit, saved_commit)) {
+        add_conflict_to_sr_state(commit, saved_commit);
+      }
+    } DIGESTMAP_FOREACH_END;
   } SMARTLIST_FOREACH_END (v);
 }
 
