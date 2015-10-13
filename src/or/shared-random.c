@@ -1463,6 +1463,9 @@ generate_sr_commitment(time_t timestamp, authority_cert_t *my_cert)
     }
   }
 
+  /* This is _our_ commit so it's authoritative. */
+  commit->is_authoritative = 1;
+
   log_warn(LD_GENERAL, "[SR] Generated commitment:");
   commit_log(commit);
 
@@ -1501,6 +1504,9 @@ generate_sr_commitment_stupid(time_t timestamp)
 
   tor_asprintf(&commit->commitment, "%d", commitment);
   tor_asprintf(&commit->reveal, "%d", reveal);
+
+  /* This is _our_ commit so it's authoritative. */
+  commit->is_authoritative = 1;
 
   log_warn(LD_GENERAL, "[SR] Generated commitment: %d / %d (identity: %s)",
            commitment, reveal, fingerprint);
