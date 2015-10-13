@@ -1733,6 +1733,10 @@ add_commit_to_sr_state(sr_commit_t *commit)
     tor_assert(saved_commit == commit);
     return;
   }
+
+  /* XXX: We have to dup the commit here since the commit object comes from
+   * the commitments list of a vote thus will be cleanup after the voting
+   * period. */
   digestmap_set(sr_state->commitments_tmp, (char *) commit->auth_digest,
                 commit);
 
@@ -1774,6 +1778,11 @@ commit_has_majority(const sr_commit_t *commit, smartlist_t *votes)
   tor_assert(commit);
   tor_assert(votes);
 
+  /* Let's avoid some useless work here. Protect those CPU cycles! */
+  if (commit->has_majority) {
+    return 1;
+  }
+
   /* Go through all the votes and count the ones that include this commit. */
   SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
     if (digestmap_get(v->commitments, (char *) commit->auth_digest)) {
@@ -1798,8 +1807,44 @@ commit_is_authoritative(const sr_commit_t *commit,
 {
   tor_assert(commit);
   tor_assert(identity_digest);
+
+  /* Let's avoid some useless work here. Protect those CPU cycles! */
+  if (commit->is_authoritative) {
+    return 1;
+  }
   return !fast_memcmp(commit->auth_digest, identity_digest,
                       sizeof(commit->auth_digest));
+}
+
+/* Decide if <b>commit</b> can be added to our state that is check if the
+ * commit is authoritative or/and has majority. Return 1 if the commit
+ * should be added to our state or 0 if not. */
+static int
+decide_commit_state(sr_commit_t *commit, networkstatus_voter_info_t *voter,
+                    smartlist_t *votes)
+{
+  tor_assert(commit);
+  tor_assert(voter);
+  tor_assert(votes);
+
+  /* For a commit to be added to our state, we need it to match one of the
+   * two possible conditions.
+   *
+   * First, if the commit is authoritative that is it's the voter's commit.
+   * The reason to keep it is that we put those authoritative commits in our
+   * vote to try to reach majority which is basically telling the world
+   * we've seen a commit from a specific authority.
+   *
+   * Second, if the commit has been seen by the majority of authorities. If
+   * so, by consensus, we decided that this commit is usable for our shared
+   * random computation and we can then also put it in our vote from that
+   * point on. */
+  commit->is_authoritative = commit_is_authoritative(commit,
+                                                     voter->identity_digest);
+  commit->has_majority = commit_has_majority(commit, votes);
+
+  /* One of those conditions is enough. */
+  return commit->is_authoritative | commit->has_majority;
 }
 
 /* We are during commit phase and we found <b>commit</b> in a vote of
@@ -1811,7 +1856,7 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
                                   networkstatus_voter_info_t *voter,
                                   smartlist_t *votes)
 {
-  int add_commit = 0;
+  sr_commit_t *saved_commit;
 
   tor_assert(commit);
   tor_assert(voter);
@@ -1821,19 +1866,25 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
   log_warn(LD_GENERAL, "[SR] \t Deciding commit %s by %s",
            commit->commitment, commit->auth_fingerprint);
 
-  /* Check if commit is authoritative and if so flag it. */
-  if (commit_is_authoritative(commit, voter->identity_digest)) {
-    commit->is_authoritative = 1;
-    add_commit = 1;
-  }
-  /* Check if commit has majority and if so flag it. */
-  if (commit_has_majority(commit, votes)) {
-    commit->has_majority = 1;
-    add_commit = 1;
+  /* Query our state to know if we already have this commit saved. If so,
+   * use the saved commit else use the new one. */
+  saved_commit = get_commit_from_state(commit->auth_digest);
+  if (saved_commit != NULL) {
+    /* They can not be different commits at this point since we've
+     * already processed all conflicts. */
+    int ret = commitments_are_the_same(commit, saved_commit);
+    tor_assert(ret);
+    /* From now on, uses the commit found in our state. */
+    commit = saved_commit;
   }
 
-  if (add_commit) {
-    add_commit_to_sr_state(commit);
+  /* Decide the state of the commit which will tell us if we can add it to
+   * our state. This also updates the commit object. */
+  if (decide_commit_state(commit, voter, votes)) {
+    /* Let's not add a commit that we already have. */
+    if (saved_commit == NULL) {
+      add_commit_to_sr_state(commit);
+    }
   } else {
     char voter_fp[HEX_DIGEST_LEN + 1];
     base16_encode(voter_fp, sizeof(voter_fp), voter->identity_digest,
@@ -1847,30 +1898,43 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
 /* We are during commit phase and we found <b>commit</b> in a
  * vote. See if it contains any reveal values that we could use. */
 static void
-decide_commit_during_reveal_phase(sr_commit_t *saved_commit,
-                                  sr_commit_t *received_commit)
+decide_commit_during_reveal_phase(sr_commit_t *commit)
 {
-  tor_assert(saved_commit);
-  tor_assert(received_commit);
+  sr_commit_t *saved_commit;
+
+  tor_assert(commit);
   tor_assert(sr_state->phase == SR_PHASE_REVEAL);
 
   log_warn(LD_GENERAL, "[SR] \t Commit %s (%s) by %s",
-           received_commit->commitment,
-           received_commit->reveal ? received_commit->reveal : "NOREVEAL",
-           received_commit->auth_fingerprint);
+           commit->commitment,
+           commit->reveal ? commit->reveal : "NOREVEAL",
+           commit->auth_fingerprint);
 
-  /* If this commit contains no reveal value during the reveal phase, we are
-   * not interested in it */
-  if (received_commit->reveal == NULL) {
+  /* Get the commit from our state. If it's not found, it's possible that we
+   * didn't get a commit from the commit phase but we now see the reveal
+   * from someone else. In this case, we ignore it since we didn't rule that
+   * this commit had majority. */
+  saved_commit = get_commit_from_state(commit->auth_digest);
+  if (saved_commit == NULL) {
+    return;
+  }
+  /* They can not be different commits at this point since we've
+   * already processed all conflicts. */
+  int ret = commitments_are_the_same(commit, saved_commit);
+  tor_assert(ret);
+
+  /* If the received commit contains no reveal value, we are not interested
+   * in it so ignore. */
+  if (commit->reveal == NULL) {
     return;
   }
 
   if (saved_commit->reveal == NULL) {
-    /* If we already have a commitment by this authority, and this newly
-     * received commit contains a reveal value. Add it to the commit. */
+    /* If we already have a commitment by this authority, and our saved
+     * commit doesn't have a reveal value, add it. */
     log_warn(LD_GENERAL, "[SR] \t \t Ah, learned reveal %s for commit %s",
-             received_commit->reveal, received_commit->commitment);
-    saved_commit->reveal = tor_strdup(received_commit->reveal);
+             commit->reveal, commit->commitment);
+    saved_commit->reveal = tor_strdup(commit->reveal);
   }
 }
 
@@ -1919,28 +1983,12 @@ decide_commit_from_votes(sr_phase_t phase, smartlist_t *votes)
     /* Go over all commitments and depending on the phase decide what to do
      * with them that is keeping or updating them based on the votes. */
     DIGESTMAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
-      sr_commit_t *saved_commit;
-
-      saved_commit = get_commit_from_state(commit->auth_digest);
-      if (saved_commit != NULL) {
-        /* They can not be different commits at this point since we've
-         * already processed all conflicts. */
-        int ret = commitments_are_the_same(commit, saved_commit);
-        tor_assert(ret);
-      }
-
       switch (phase) {
       case SR_PHASE_COMMIT:
-      {
-        sr_commit_t *use_commit = commit;
-        if (saved_commit != NULL) {
-          use_commit = saved_commit;
-        }
-        decide_commit_during_commit_phase(use_commit, voter, votes);
+        decide_commit_during_commit_phase(commit, voter, votes);
         break;
-      }
       case SR_PHASE_REVEAL:
-        decide_commit_during_reveal_phase(saved_commit, commit);
+        decide_commit_during_reveal_phase(commit);
         break;
       case SR_PHASE_UNKNOWN:
         tor_assert(0);
