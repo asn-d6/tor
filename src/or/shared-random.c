@@ -1528,8 +1528,8 @@ get_commit_from_state(const uint8_t *auth_digest)
 static sr_conflict_commit_t *
 get_conflict_from_state(const uint8_t *auth_digest)
 {
-  (void) auth_digest;
-  return NULL; /* XXX NOP */
+  tor_assert(auth_digest);
+  return digest256map_get(sr_state->conflicts, auth_digest);
 }
 
 /* Add a conflict to the state using the different commits <b>c1</b> and
