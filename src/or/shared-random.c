@@ -1526,7 +1526,7 @@ get_commit_from_state(const uint8_t *auth_digest)
 /* Return conflict object from the given authority digest
  * <b>auth_digest</b>. Return NULL if not found. */
 static sr_conflict_commit_t *
-get_conflict_from_state(const char *auth_digest)
+get_conflict_from_state(const uint8_t *auth_digest)
 {
   (void) auth_digest;
   return NULL; /* XXX NOP */
@@ -1642,15 +1642,37 @@ state_new_protocol_run(time_t valid_after)
   add_commit_to_sr_state(our_commitment);
 }
 
+/* Transition from the commit phase to the reveal phase by sanitizing our
+ * state and making sure it's coherent to get in the reveal phase. */
 static void
-state_phase_transition(time_t valid_after)
+state_reveal_phase_transition(void)
 {
+  tor_assert(sr_state->phase == SR_PHASE_REVEAL);
+  tor_assert(sr_state->n_reveal_rounds == 0);
 
-  (void) valid_after;
+  /* Remove commitments that don't have majority. */
+  DIGESTMAP_FOREACH_MODIFY(sr_state->commitments_tmp, key,
+                           sr_commit_t *, commit) {
+    sr_conflict_commit_t *conflict;
 
-  /* XXX Remove commitments that don't have majority. */
-
-  return; /* XXX */
+    if (!commit->has_majority) {
+      commit_free(commit);
+      MAP_DEL_CURRENT(key);
+      /* Commit is out, we are done here. */
+      continue;
+    }
+    /* Safety net, we shouldn't have a commit from an authority that also
+     * has a conflict for the same authority. If so, this is a BUG so log it
+     * and clean it. */
+    conflict = get_conflict_from_state(commit->identity);
+    if (conflict != NULL) {
+      log_warn(LD_DIR, "[SR] BUG: Commit found for authority %s "
+                       "but we have a conflict for this authority.",
+               commit->auth_fingerprint);
+      commit_free(commit);
+      MAP_DEL_CURRENT(key);
+    }
+  } DIGESTMAP_FOREACH_END;
 }
 
 /* Return 1 iff the <b>next_phase</b> is a phase transition from the current
@@ -1684,7 +1706,7 @@ update_state(time_t valid_after)
       break;
     case SR_PHASE_REVEAL:
       /* We were in the commit phase thus now in reveal. */
-      state_phase_transition(valid_after);
+      state_reveal_phase_transition();
       break;
     case SR_PHASE_UNKNOWN:
       tor_assert(0);
@@ -2002,7 +2024,8 @@ decide_commit_from_votes(sr_phase_t phase, smartlist_t *votes)
   SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
     networkstatus_voter_info_t *voter = smartlist_get(v->voters, 0);
     /* Ignore authority vote if we have a conflict for it. */
-    if (get_conflict_from_state(voter->identity_digest)) {
+    if (get_conflict_from_state((uint8_t *) voter->identity_digest)) {
+      /* XXX: remove cast since at some point we'll only use the ed25519. */
       continue;
     }
     /* Go over all commitments and depending on the phase decide what to do
