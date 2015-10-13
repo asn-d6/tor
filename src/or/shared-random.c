@@ -1569,10 +1569,10 @@ add_commit_to_sr_state(sr_commit_t *commit)
                 commit);
 
   log_warn(LD_GENERAL, "[SR] \t \t Commit from %s (%s) has been added. "
-           "It's %s authoritative and has %s majority",
+           "It's %sauthoritative and has %smajority",
            commit->auth_fingerprint, commit->commitment,
-           commit->is_authoritative ? "" : "NOT",
-           commit->has_majority ? "" : "NO");
+           commit->is_authoritative ? "" : "NOT ",
+           commit->has_majority ? "" : "NO ");
 }
 
 /** Compute the shared random value based on the reveals we have. */
