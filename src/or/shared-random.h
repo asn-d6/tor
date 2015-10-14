@@ -16,6 +16,12 @@
 #define SR_PROTO_VERSION  1
 /* Current digest algorithm. */
 #define SR_DIGEST_ALG DIGEST_SHA256
+/* Invariant token in the SRV calculation. */
+#define SR_SRV_TOKEN "shared-random"
+/* Don't count the NULL terminated byte even though the TOKEN has it. */
+#define SR_SRV_TOKEN_LEN (sizeof(SR_SRV_TOKEN) - 1)
+/* Minimum number of reveal values needed to compute a SRV value. */
+#define SR_SRV_MIN_REVEAL 3
 
 /* Length of the random number (in bytes). */
 #define SR_RANDOM_NUMBER_LEN 32
@@ -28,11 +34,10 @@
  * timestamp and the random number. */
 #define SR_REVEAL_LEN \
   (sizeof(uint64_t) + SR_RANDOM_NUMBER_LEN)
-
-
-/* XXX The two base64 lengths below were not working with
-   commit_encode() and reveal_encode(). It works if +1 is added. Need
-   to investigate!!! */
+/* Size of SRV HMAC message length. The construction is has follow:
+ *  "shared-random" | INT_8(reveal_num) | INT_8(version) | PREV_SRV */
+#define SR_SRV_HMAC_MSG_LEN \
+  (SR_SRV_TOKEN_LEN + sizeof(uint8_t) + sizeof(uint8_t) + DIGEST256_LEN)
 
 /* Length of base64 encoded commit. Formula is taken from base64_encode.
  * Currently, this adds up to 96 bytes. */
@@ -45,12 +50,10 @@
 
 /* Protocol phase. */
 typedef enum {
-  /* We just started we still don't know what phase we are in. */
-  SR_PHASE_UNKNOWN = 0,
   /* We are commitment phase */
-  SR_PHASE_COMMIT = 1,
+  SR_PHASE_COMMIT  = 1,
   /* We are reveal phase */
-  SR_PHASE_REVEAL = 2,
+  SR_PHASE_REVEAL  = 2,
 } sr_phase_t;
 
 /* Shared random value status. */
@@ -61,7 +64,11 @@ typedef enum {
 
 /* A shared random value object that contains its status and value. */
 typedef struct sr_srv_t {
+  /* Is this value a fresh value meaning it was succesfully computed or
+   * non-fresh which means we didn't have enough reveal values thus we used
+   * the fallback computation method. */
   sr_srv_status_t status;
+  /* The actual value. This is the stored result of HMAC-SHA256. */
   uint8_t value[DIGEST256_LEN];
 } sr_srv_t;
 
@@ -70,10 +77,6 @@ typedef struct sr_commit_t {
   /* Hashing algorithm used for the value. Depends on the version of the
    * protocol located in the state. */
   digest_algorithm_t alg;
-  /* Authority ed25519 identity from which this commitment is. */
-  uint8_t identity[ED25519_PUBKEY_LEN];
-  /* Timestamp of when the commitment has been received */
-  time_t received_ts;
   /* Is this commit has reached majority? */
   unsigned int has_majority:1;
   /* Is this commit an authoritative commit that is a vote from a directory
@@ -83,15 +86,13 @@ typedef struct sr_commit_t {
    * identity and thus valid. */
   ed25519_signature_t signature;
 
-
-  /* ************************************************************ */
-
   /** Commitment owner info */
 
-  /* Fingerprint of authority this commitment belongs to */
-  char *auth_fingerprint; /* XXX temp till we use ed25519 */
-  /* Identity digest of authority this commitment belongs to */
-  uint8_t auth_digest[DIGEST_LEN];
+  /* Authority ed25519 identity from which this commitment is. */
+  ed25519_public_key_t auth_identity;
+  /* Authority ed25519 identity key fingerprint base64 format. We keep it
+   * for logging purposes instead of encoding each time. */
+  char auth_fingerprint[ED25519_BASE64_LEN + 1];
 
   /** Commitment information */
 
@@ -101,7 +102,9 @@ typedef struct sr_commit_t {
   /* Timestamp of reveal. Correspond to TIMESTAMP. */
   time_t reveal_ts;
   /* H(REVEAL) as found in COMMIT message. */
-  char reveal_hash[DIGEST256_LEN]; /* XXX rename to hashed_reveal */
+  char hashed_reveal[DIGEST256_LEN];
+  /* Base64 encoded COMMIT. We use this to put it in our vote. */
+  char encoded_commit[SR_COMMIT_BASE64_LEN + 1];
 
   /** Reveal information */
 
@@ -110,19 +113,14 @@ typedef struct sr_commit_t {
   /* Timestamp of commit. Correspond to TIMESTAMP. */
   time_t commit_ts;
   /* This is the whole reveal message. We use it during verification */
-  char reveal_b64_blob[SR_REVEAL_BASE64_LEN];
-
-  /* ******************* crap */
-
-  char *commitment; /* XXX temp till we use ed25519 */
-  char *reveal; /* XXX temp till we use ed25519 */
+  char encoded_reveal[SR_REVEAL_BASE64_LEN + 1];
 } sr_commit_t;
 
 /* Represent a commit conflict. See section [COMMITCONFLICT] in proposal
  * 250. A conflict is valid only for a full protocol run. */
 typedef struct sr_conflict_commit_t {
-  /* Authority ed25519 identity from which this commitment is. */
-  uint8_t identity[ED25519_PUBKEY_LEN];
+  /* Authority ed25519 identity of the conflict commit. */
+  ed25519_public_key_t auth_identity;
   /* First commit has been seen before the second one. */
   sr_commit_t *commit1, *commit2;
 } sr_conflict_commit_t;
@@ -145,12 +143,11 @@ typedef struct sr_state_t {
   /* A map of all the receive commitments for the protocol run. This is
    * indexed by authority identity digest. */
   digest256map_t *commitments;
-  digestmap_t *commitments_tmp; /* XXX */
 
   /* Current and previous shared random value. See section [SRCALC] in
    * proposal 250 for details on how this is constructed. */
-  sr_srv_t previous_srv;
-  sr_srv_t current_srv;
+  sr_srv_t *previous_srv;
+  sr_srv_t *current_srv;
 
   /* List of commit conflicts seen by this authority. */
   digest256map_t *conflicts;
@@ -191,18 +188,19 @@ void sr_prepare_state_for_new_voting_period(time_t valid_after);
 
 void sr_decide_state_post_voting(smartlist_t *votes);
 
-sr_commit_t * sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
-                                            const char *commitment, const char *reveal);
-
+sr_commit_t *sr_handle_received_commitment(const char *commit_pubkey,
+                                           const char *hash_alg,
+                                           const char *commitment,
+                                           const char *reveal);
 
 #ifdef SHARED_RANDOM_PRIVATE
 
-STATIC void reveal_encode(sr_commit_t *commit, char *dst);
-STATIC void commit_encode(sr_commit_t *commit, char *dst);
+STATIC int reveal_encode(sr_commit_t *commit, char *dst, size_t len);
+STATIC int commit_encode(sr_commit_t *commit, char *dst, size_t len);
 
 STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
 
-STATIC sr_commit_t *generate_sr_commitment(time_t timestamp, authority_cert_t *my_cert);
+STATIC sr_commit_t *generate_sr_commitment(time_t timestamp);
 
 STATIC int parse_encoded_commit(const char *encoded, sr_commit_t *commit);
 STATIC int parse_encoded_reveal(const char *encoded, sr_commit_t *commit);
