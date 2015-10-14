@@ -1867,8 +1867,9 @@ commit_is_authoritative(const sr_commit_t *commit,
  * commit is authoritative or/and has majority. Return 1 if the commit
  * should be added to our state or 0 if not. */
 static int
-decide_commit_state(sr_commit_t *commit, networkstatus_voter_info_t *voter,
-                    smartlist_t *votes)
+should_keep_commitment(sr_commit_t *commit,
+                       networkstatus_voter_info_t *voter,
+                       smartlist_t *votes)
 {
   tor_assert(commit);
   tor_assert(voter);
@@ -1919,15 +1920,15 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
   if (saved_commit != NULL) {
     /* They can not be different commits at this point since we've
      * already processed all conflicts. */
-    int ret = commitments_are_the_same(commit, saved_commit);
-    tor_assert(ret);
+    int same_commits = commitments_are_the_same(commit, saved_commit);
+    tor_assert(same_commits);
     /* From now on, uses the commit found in our state. */
     commit = saved_commit;
   }
 
   /* Decide the state of the commit which will tell us if we can add it to
    * our state. This also updates the commit object. */
-  if (decide_commit_state(commit, voter, votes)) {
+  if (should_keep_commitment(commit, voter, votes)) {
     /* Let's not add a commit that we already have. */
     if (saved_commit == NULL) {
       add_commit_to_sr_state(commit);
@@ -1967,8 +1968,8 @@ decide_commit_during_reveal_phase(sr_commit_t *commit)
   }
   /* They can not be different commits at this point since we've
    * already processed all conflicts. */
-  int ret = commitments_are_the_same(commit, saved_commit);
-  tor_assert(ret);
+  int same_commits = commitments_are_the_same(commit, saved_commit);
+  tor_assert(same_commits);
 
   /* If the received commit contains no reveal value, we are not interested
    * in it so ignore. */
