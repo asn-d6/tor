@@ -94,10 +94,11 @@ static void
 test_generate_commitment(void *arg)
 {
   int retval;
-  authority_cert_t *auth_cert = NULL;
-  char commit_b64[SR_COMMIT_BASE64_LEN];
-  char reveal_b64[SR_REVEAL_BASE64_LEN];
+  char commit_b64[SR_COMMIT_BASE64_LEN + 1];
+  char reveal_b64[SR_REVEAL_BASE64_LEN + 1];
   time_t now = time(NULL);
+
+  (void) arg;
 
   /* This is the commit we generated */
   sr_commit_t *our_commit = NULL;
@@ -106,27 +107,26 @@ test_generate_commitment(void *arg)
 
   {  /* Setup a minimal dirauth environment for this test  */
     or_options_t *options = get_options_mutable();
-    auth_cert = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
-    tt_assert(auth_cert);
-
     tt_int_op(0, ==, load_ed_keys(options, now));
   }
 
   { /* Generate our commit/reveal */
-    our_commit = generate_sr_commitment(now, auth_cert);
+    our_commit = generate_sr_commitment(now);
     tt_assert(our_commit);
   }
 
   { /* Get the encodings of our commit/reveal. */
-    commit_encode(our_commit, commit_b64);
-    reveal_encode(our_commit, reveal_b64);
+    commit_encode(our_commit, commit_b64, sizeof(commit_b64));
+    reveal_encode(our_commit, reveal_b64, sizeof(reveal_b64));
   }
 
   { /* Parse our own commit */
 
     /* First copy auth information */
-    parsed_commit->auth_fingerprint = tor_strdup(our_commit->auth_fingerprint);
-    memcpy(parsed_commit->auth_digest, our_commit->auth_digest, DIGEST256_LEN);
+    memcpy(&parsed_commit->auth_fingerprint, &our_commit->auth_fingerprint,
+           sizeof(parsed_commit->auth_fingerprint));
+    memcpy(&parsed_commit->auth_identity, &our_commit->auth_identity,
+           sizeof(parsed_commit->auth_identity));
 
     retval = parse_encoded_commit(commit_b64, parsed_commit);
     tt_int_op(retval, ==, 0);
