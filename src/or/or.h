@@ -2571,7 +2571,7 @@ typedef struct networkstatus_t {
 
   /* Vote only: For each vote received, this is the list of
    * commitments included in that vote. */
-  digestmap_t *commitments;
+  digest256map_t *commitments;
 } networkstatus_t;
 
 /** A set of signatures for a networkstatus consensus.  Unless otherwise
