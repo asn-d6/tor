@@ -3061,10 +3061,6 @@ dirvote_compute_consensuses(void)
   SMARTLIST_FOREACH(votestrings, sized_chunk_t *, c, tor_free(c));
   smartlist_free(votestrings);
 
-  { /* Now that we have received all votes; decide our SR state */
-      sr_decide_state_post_voting(votes);
-  }
-
   {
     char legacy_dbuf[DIGEST_LEN];
     crypto_pk_t *legacy_sign=NULL;
@@ -3118,6 +3114,10 @@ dirvote_compute_consensuses(void)
       log_warn(LD_DIR, "Couldn't generate any consensus flavors at all.");
       goto err;
     }
+  }
+
+  { /* Now that we have received all votes; decide our SR state */
+    sr_decide_state_post_voting(votes);
   }
 
   signatures = get_detached_signatures_from_pending_consensuses(
