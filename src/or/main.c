@@ -3052,6 +3052,7 @@ sandbox_init_filter(void)
   OPEN_DATADIR_SUFFIX("cached-extrainfo.new", ".tmp");
   OPEN_DATADIR("cached-extrainfo.tmp.tmp");
   OPEN_DATADIR_SUFFIX("state", ".tmp");
+  OPEN_DATADIR_SUFFIX("sr-state", ".tmp");
   OPEN_DATADIR_SUFFIX("unparseable-desc", ".tmp");
   OPEN_DATADIR_SUFFIX("v3-status-votes", ".tmp");
   OPEN_DATADIR("key-pinning-journal");
