@@ -117,7 +117,6 @@ static const char *
 get_phase_str(sr_phase_t phase)
 {
   switch (phase) {
-  case SR_PHASE_UNKNOWN:
   case SR_PHASE_COMMIT:
   case SR_PHASE_REVEAL:
     return phase_str[phase];
@@ -169,10 +168,10 @@ get_testing_network_protocol_phase(void)
 {
   /* XXX In this function we assume that in a testing network all dirauths
      started together. Otherwise their phases will get desynched!!! */
-  tor_assert(sr_state);
 
-  /* If we just booted, always start with commitment phase. */
-  if (sr_state->phase == SR_PHASE_UNKNOWN) {
+  /* XXX: This can be called when allocating a new state so in this case we
+   * are starting up thus in commit phase. */
+  if (sr_state == NULL) {
     return SR_PHASE_COMMIT;
   }
 
@@ -213,7 +212,7 @@ get_sr_protocol_phase(time_t valid_after)
   }
 
   /* Break down valid_after to secs/mins/hours */
-  tor_gmtime_r(&valid_after, &tm); /* XXX check retval */
+  tor_gmtime_r(&valid_after, &tm);
 
   { /* Now get the phase */
     int hour_commit_phase_begins = SHARED_RANDOM_START_HOUR;
@@ -272,12 +271,14 @@ get_valid_until_time(void)
  * that MUST be provided. The digest algorithm is set to the default one
  * that is supported. The rest is uninitialized. This never returns NULL. */
 static sr_commit_t *
-commit_new(const uint8_t *identity)
+commit_new(const ed25519_public_key_t *identity)
 {
   sr_commit_t *commit = tor_malloc_zero(sizeof(*commit));
   commit->alg = SR_DIGEST_ALG;
   tor_assert(identity);
-  memcpy(commit->identity, identity, sizeof(commit->identity));
+  memcpy(&commit->auth_identity, identity, sizeof(commit->auth_identity));
+  /* This call can't fail. */
+  ed25519_public_to_base64(commit->auth_fingerprint, identity);
   return commit;
 }
 
@@ -288,7 +289,7 @@ commit_free(sr_commit_t *commit)
   if (commit == NULL) {
     return;
   }
-  /* Make sure we do not leave OUR random number in memoryr. */
+  /* Make sure we do not leave OUR random number in memory. */
   memwipe(commit->random_number, 0, sizeof(commit->random_number));
   tor_free(commit);
 }
@@ -301,22 +302,33 @@ commit_free_(void *p)
   commit_free(p);
 }
 
+/* Dup the given <b>orig</b> commit and return the newly allocated commit
+ * object that is the exact same copy as orig. */
+static sr_commit_t *
+commit_dup(const sr_commit_t *orig)
+{
+  sr_commit_t *new;
+  tor_assert(orig);
+  new = commit_new(&orig->auth_identity);
+  memcpy(new, orig, sizeof(*new));
+  return new;
+}
+
 /* Issue a log message describing <b>commit</b>. */
 static void
 commit_log(const sr_commit_t *commit)
 {
   tor_assert(commit);
-  tor_assert(commit->auth_fingerprint);
 
   log_warn(LD_GENERAL, "Commit by %s", commit->auth_fingerprint);
 
-  if (commit->commit_ts) { /* XXX timestamp could be 0 */
+  if (commit->commit_ts >= 0) {
     log_warn(LD_GENERAL, "C: [TS: %u] [SIG: %s...]",
            (unsigned) commit->commit_ts,
            hex_str((char *)commit->commit_signature.sig, 5));
   }
 
-  if (commit->reveal_ts && commit->random_number) {
+  if (commit->reveal_ts >= 0 && commit->random_number) {
     log_warn(LD_GENERAL, "R: [TS: %u] [RN: %s...]",
            (unsigned) commit->reveal_ts,
            hex_str((char *)commit->random_number, 5));
@@ -331,17 +343,20 @@ commit_log(const sr_commit_t *commit)
  * MUST not free the commits and should consider the conflict object having
  * a reference on them. This never returns NULL. */
 static sr_conflict_commit_t *
-conflict_commit_new(const uint8_t *identity, sr_commit_t *c1,
-                       sr_commit_t *c2)
+conflict_commit_new(sr_commit_t *c1, sr_commit_t *c2)
 {
   sr_conflict_commit_t *conflict = tor_malloc_zero(sizeof(*conflict));
 
   tor_assert(c1);
   tor_assert(c2);
 
-  if (identity != NULL) {
-    memcpy(conflict->identity, identity, sizeof(conflict->identity));
-  }
+  /* This is should NEVER happen else code flow issue. */
+  int key_are_equal = tor_memeq(&c1->auth_identity, &c2->auth_identity,
+                                sizeof(c1->auth_identity));
+  tor_assert(key_are_equal);
+
+  memcpy(&conflict->auth_identity, &c1->auth_identity,
+         sizeof(conflict->auth_identity));
   conflict->commit1 = c1;
   conflict->commit2 = c2;
   return conflict;
@@ -377,12 +392,13 @@ conflict_commit_add(sr_conflict_commit_t *conflict)
   tor_assert(conflict);
 
   /* Replace current value if any and free the old one if any. */
-  old = digest256map_set(sr_state->conflicts, conflict->identity, conflict);
+  old = digest256map_set(sr_state->conflicts,
+                         conflict->auth_identity.pubkey, conflict);
   conflict_commit_free(old);
   {
     /* Logging. */
     char ed_b64[BASE64_DIGEST256_LEN + 1];
-    digest256_to_base64(ed_b64, (const char *) conflict->identity);
+    ed25519_public_to_base64(ed_b64, &conflict->auth_identity);
     log_warn(LD_GENERAL, "Authority %s has just triggered a shared random "
                          "commit conflict. It will be ignored for the rest "
                          "of the protocol run.", ed_b64);
@@ -402,20 +418,19 @@ commit_add(sr_commit_t *commit)
   /* Remove the current commit of this authority from state so if one exist,
    * our conflict object can get the ownership. If none exist, no conflict
    * so we can add the commit to the state. */
-  old_commit = digest256map_remove(sr_state->commitments, commit->identity);
+  old_commit = digest256map_remove(sr_state->commitments,
+                                   commit->auth_identity.pubkey);
   if (old_commit != NULL) {
     /* Create conflict for this authority identity and update the state. */
     sr_conflict_commit_t *conflict =
-      conflict_commit_new(commit->identity, old_commit, commit);
+      conflict_commit_new(old_commit, commit);
     conflict_commit_add(conflict);
   } else {
-    char ed_b64[BASE64_DIGEST256_LEN + 1];
     /* Set it in state. */
-    digest256map_set(sr_state->commitments, commit->identity, commit);
-    /* Logging. */
-    digest256_to_base64(ed_b64, (const char *) commit->identity);
+    digest256map_set(sr_state->commitments, commit->auth_identity.pubkey,
+                     commit);
     log_info(LD_GENERAL, "Commit from authority %s has been saved.",
-             ed_b64);
+             commit->auth_fingerprint);
   }
 }
 
@@ -446,9 +461,8 @@ state_new(const char *fname)
   new_state->fname = tor_strdup(fname);
   new_state->version = SR_PROTO_VERSION;
   new_state->commitments = digest256map_new();
-  new_state->commitments_tmp = digestmap_new();
   new_state->conflicts = digest256map_new();
-  new_state->phase = SR_PHASE_UNKNOWN;
+  new_state->phase = get_sr_protocol_phase(time(NULL));
   new_state->valid_until = get_valid_until_time();
   return new_state;
 }
@@ -472,75 +486,90 @@ disk_state_free(sr_disk_state_t *state)
   tor_free(state);
 }
 
-/** We just received <b>commit</b> in a vote. Make sure that it's
-    conforming to the current protocol phase. Also verify its
-    signature and timestamp.  */
-static int
-verify_received_commit(const sr_commit_t *commit)
+/* Make sure that the commitment and reveal information in <b>commit</b>
+ * match. If they match return 0, return -1 otherwise. This function MUST be
+ * used everytime we receive a new reveal value. */
+STATIC int
+verify_commit_and_reveal(const sr_commit_t *commit)
 {
-  /* XXX Make sure we don't have commits with new commit values during reveal phase */
-  /* XXX Validate signature of commitment. */
-  /* XXX Verify reveal value with the commitment */
+  tor_assert(commit);
 
-  sr_phase_t current_phase = sr_state->phase;
+  /* Check that the timestamps match. */
+  if (commit->commit_ts != commit->reveal_ts) {
+    log_warn(LD_DIR, "[SR] Commit timestamp %ld doesn't match reveal "
+                     "timestamp %ld", commit->commit_ts, commit->reveal_ts);
+    goto invalid;
+  }
 
-  if (current_phase == SR_PHASE_COMMIT && commit->reveal) {
-    log_warn(LD_DIR, "Found commit with reveal value during commit phase.");
-    return -1;
+  /* Verify that the hashed_reveal received in the COMMIT message, matches
+   * the reveal we just received. */
+  {
+    /* We first hash the reveal we just received. */
+    char received_hashed_reveal[sizeof(commit->hashed_reveal)];
+    if (crypto_digest256(received_hashed_reveal,
+                         commit->encoded_reveal,
+                         sizeof(commit->encoded_reveal),
+                         DIGEST_SHA256) < 0) {
+      /* Unable to digest the reveal blob, this is unlikely. */
+      goto invalid;
+    }
+    /* Now compare that with the hashed_reveal we received in COMMIT. */
+    if (tor_memneq(received_hashed_reveal, commit->hashed_reveal,
+                   sizeof(received_hashed_reveal))) {
+      log_warn(LD_DIR, "[SR] Commitment didn't match reveal:");
+      commit_log(commit);
+      goto invalid;
+    }
   }
 
   return 0;
+ invalid:
+  return -1;
 }
 
-/** DOCDOC Given all the commitment information, register an sr_commit_t. */
-/* XXX merge with parse_commitment_line() */
-sr_commit_t *
-sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
-                              const char *commitment, const char *reveal)
+/* We just received <b>commit</b> in a vote. Make sure that it's conforming
+ * to the current protocol phase. Verify its signature and timestamp. */
+static int
+verify_received_commit(const sr_commit_t *commit)
 {
-  sr_commit_t *commit = tor_malloc_zero(sizeof(sr_commit_t));
-  char digest[DIGEST_LEN];
-  digest_algorithm_t alg;
+  int have_reveal;
 
-  /* Get the identity fpr of the auth that the commitment belongs to */
-  commit->auth_fingerprint = tor_strdup(commit_pubkey);
+  tor_assert(commit);
 
-  /* Now get the identity digest from the hex fpr. */
-  if (base16_decode(digest, DIGEST_LEN, commit_pubkey, strlen(commit_pubkey))) {
-    log_warn(LD_DIR, "Couldn't decode router fingerprint %s", commit_pubkey);
-    return NULL; /* XXX error mgmt */
-  }
-  memcpy(commit->auth_digest, digest, DIGEST_LEN);
-
-  /* Parse hash algorithm */
-  alg = crypto_digest_algorithm_parse_name(hash_alg);
-  if (alg != SR_DIGEST_ALG) {
-    log_warn(LD_GENERAL, "Commitment line algorithm is not recognized.");
-    return NULL; /* XXX error mgmt */
+  /* Let's verify the signature of the commitment. */
+  if (ed25519_checksig(&commit->commit_signature,
+                       (const uint8_t *) commit->encoded_commit,
+                       SR_COMMIT_SIG_BODY_LEN, &commit->auth_identity) < 0) {
+    log_warn(LD_GENERAL, "[SR] Commit signature from %s is invalid!",
+             commit->auth_fingerprint);
+    goto invalid;
   }
 
-  tor_asprintf(&commit->commitment, "%s", commitment);
+  have_reveal = !tor_mem_is_zero(commit->encoded_reveal,
+                                 sizeof(commit->encoded_reveal));
 
-  if (reveal) {
-    /* XXX We just received a reveal. Here we need to validate that
-       the reveal corresponds with the commit. */
-    tor_asprintf(&commit->reveal, "%s", reveal);
-    (void) verify_commit_and_reveal(commit);
-
+  switch (sr_state->phase) {
+  case SR_PHASE_COMMIT:
+    /* During commit phase, we shouldn't get a reveal value and if so this
+     * is considered as a malformed commit thus invalid. */
+    if (have_reveal) {
+      log_warn(LD_DIR, "Found commit with reveal value during commit phase.");
+      goto invalid;
+    }
+    break;
+  case SR_PHASE_REVEAL:
+    /* We do have a reveal so let's verify it. */
+    if (have_reveal && verify_commit_and_reveal(commit) < 0) {
+      goto invalid;
+    }
+    break;
+  default:
+    goto invalid;
   }
 
-
-  /* If we reach this point, we know that the received commitment was
-     conforming to the current protocol phase (e.g. it does not
-     contain a reveal value during commit phase). We also know that
-     the signature is legitimate, and that the timestamp corresponds
-     to the current session. We have NOT done any conflict resolution. */
-
-  if (verify_received_commit(commit) < 0) {
-    return NULL; /*XXX err mgmt */
-  }
-
-  return commit;
+  return 0;
+ invalid:
+  return -1;
 }
 
 /* Allocate a new disk state, initialized it and return it. */
@@ -611,7 +640,7 @@ disk_state_validate_cb(void *old_state, void *state, void *default_state,
 }
 
 /* Parse the encoded commit. The format is:
- *    base64-encode(TIMESTAMP || H(REVEAL) || SIGNATURE)
+ *    base64-encode(H(REVEAL) || TIMESTAMP || SIGNATURE)
  *
  * If successfully decoded and parsed, commit is updated and 0 is returned.
  * On error, return -1. */
@@ -619,34 +648,29 @@ STATIC int
 parse_encoded_commit(const char *encoded, sr_commit_t *commit)
 {
   size_t offset;
-  char b64_buffer[SR_COMMIT_LEN + 1];
+  char b64_decoded[SR_COMMIT_LEN + 1];
 
   tor_assert(encoded);
   tor_assert(commit);
 
-  /* XXX We are now using this function to parse untrusted network
-     data. Make sure it's secure!!! Lenght check !!! */
-
   /* Decode our encoded commit. */
-  if (base64_decode(b64_buffer, sizeof(b64_buffer),
+  if (base64_decode(b64_decoded, sizeof(b64_decoded),
                     encoded, strlen(encoded)) < 0) {
     log_warn(LD_GENERAL, "Commit can't be bas64-decoded.");
     goto error;
   }
 
-  commit->commit_ts = (time_t) tor_ntohll(get_uint64(b64_buffer));
+  commit->commit_ts = (time_t) tor_ntohll(get_uint64(b64_decoded));
   /* Next is the hash of the reveal value. */
   offset = sizeof(uint64_t);
-  memcpy(commit->reveal_hash, b64_buffer + offset,
-         sizeof(commit->reveal_hash));
+  memcpy(commit->hashed_reveal, b64_decoded + offset,
+         sizeof(commit->hashed_reveal));
   /* Next is the signature of the commit. */
-  offset += sizeof(commit->reveal_hash);
-  memcpy(&commit->commit_signature, b64_buffer + offset,
-         sizeof(commit->commit_signature));
-
-  /* XXX Where do we verify signature ? Signature verification needs
-     to happen right after we get commit!!! */
-  /* XXX Where do we verify timestamp??? */
+  offset += sizeof(commit->hashed_reveal);
+  memcpy(&commit->commit_signature.sig, b64_decoded + offset,
+         sizeof(commit->commit_signature.sig));
+  /* Copy the base64 blob to the commit. Useful for voting. */
+  memcpy(commit->encoded_commit, encoded, sizeof(commit->encoded_commit));
 
   log_warn(LD_GENERAL, "Parsed commit:");
   commit_log(commit);
@@ -661,70 +685,23 @@ error:
 STATIC int
 parse_encoded_reveal(const char *encoded, sr_commit_t *commit)
 {
-  /* XXX The b64 decode didn't work with + 1 and had to bump it to +2. Hm. */
-  char b64_buffer[SR_REVEAL_LEN+2];
-
+  char b64_buffer[SR_REVEAL_BASE64_LEN + 1];
   if (base64_decode(b64_buffer, sizeof(b64_buffer),
                     encoded, strlen(encoded)) < 0) {
     log_warn(LD_GENERAL, "Commitment line b64 reveal is not recognized.");
     return -1;
   }
 
-  /* XXX this function is now used to parse network data. Please make
-     sure it's safe safe safe. Length check!!! */
-
   commit->reveal_ts = (time_t) tor_ntohll(get_uint64(b64_buffer));
 
   /* Copy the last part, the random value. */
   memcpy(commit->random_number, b64_buffer + sizeof(uint64_t),
          sizeof(commit->random_number));
-
   /* Also copy the whole message to use during verification */
-  memcpy(commit->reveal_b64_blob, encoded, sizeof(commit->reveal_b64_blob));
+  memcpy(commit->encoded_reveal, encoded, sizeof(commit->encoded_reveal));
 
   log_warn(LD_GENERAL, "Parsed reveal:");
   commit_log(commit);
-
-  return 0;
-}
-
-/* Make sure that the commitment and reveal information in
- * <b>commit</b> match. If they match return 0, return -1
- * otherwise. This function MUST be used everytime we receive a new
- * reveal value. */
-STATIC int
-verify_commit_and_reveal(const sr_commit_t *commit)
-{
-  /* XXX First make sure that all the fields are populated. */
-
-  /* Check that the timestamps match. */
-  if (commit->commit_ts != commit->reveal_ts) {
-    log_warn(LD_GENERAL, "MIsmatch on timestamps (%u / %u)",
-             (unsigned) commit->commit_ts, (unsigned) commit->reveal_ts);
-    return -1;
-  }
-
-  {
-    /* Verify that the hashed_reveal received in the COMMIT message,
-       matches the reveal we just received. */
-
-    /* We first hash the reveal we just received. */
-    crypto_digest_t *d;
-    char received_hashed_reveal[DIGEST256_LEN];
-
-    d = crypto_digest256_new(DIGEST_SHA256);
-    crypto_digest_add_bytes(d, commit->reveal_b64_blob, strlen(commit->reveal_b64_blob));
-    crypto_digest_get_digest(d, received_hashed_reveal, sizeof(received_hashed_reveal));
-    crypto_digest_free(d);
-
-    /* Now compare that with the hashed_reveal we received in COMMIT. */
-    if (tor_memneq(received_hashed_reveal, commit->reveal_hash,
-                   DIGEST256_LEN)) {
-      log_warn(LD_GENERAL, "Commitment didn't match reveal...");
-      commit_log(commit);
-      return -1;
-    }
-  }
 
   return 0;
 }
@@ -734,7 +711,8 @@ verify_commit_and_reveal(const sr_commit_t *commit)
 static sr_commit_t *
 parse_commitment_line(smartlist_t *args)
 {
-  char *value, identity[ED25519_PUBKEY_LEN], isotime[ISO_TIME_LEN + 1];
+  char *value;
+  ed25519_public_key_t pubkey;
   digest_algorithm_t alg;
   sr_commit_t *commit = NULL;
 
@@ -747,18 +725,18 @@ parse_commitment_line(smartlist_t *args)
   }
   /* Second arg is the authority identity. */
   value = smartlist_get(args, 1);
-  if (digest256_from_base64(identity, value) < 0) {
+  if (ed25519_public_from_base64(&pubkey, value) < 0) {
     log_warn(LD_GENERAL, "Commitment line identity is not recognized.");
     goto error;
   }
   /* Allocate commit since we have a valid identity now. */
-  commit = commit_new((uint8_t *) identity);
+  commit = commit_new(&pubkey);
 
   /* Third argument is the majority value. 0 or 1. */
   value = smartlist_get(args, 2);
   commit->has_majority = !!strcmp(value, "0");
 
-  /* Fourth and fifth arguments is the ISOTIME. */
+  /* Fourth and fifth arguments is the ISOTIME.
   tor_snprintf(isotime, sizeof(isotime), "%s %s",
                (char *) smartlist_get(args, 3),
                (char *) smartlist_get(args, 4));
@@ -766,14 +744,15 @@ parse_commitment_line(smartlist_t *args)
     log_warn(LD_GENERAL, "Commitment line timestamp is not recognized.");
     goto error;
   }
-  /* Sixth argument is the commitment value base64-encoded. */
-  value = smartlist_get(args, 5);
+  */
+  /* Fourth argument is the commitment value base64-encoded. */
+  value = smartlist_get(args, 3);
   if (parse_encoded_commit(value, commit) < 0) {
     goto error;
   }
 
-  /* (Optional) Seventh argument is the revealed value. */
-  value = smartlist_get(args, 6);
+  /* (Optional) Fifth argument is the revealed value. */
+  value = smartlist_get(args, 4);
   if (value != NULL) {
     if (parse_encoded_reveal(value, commit) < 0) {
       goto error;
@@ -834,30 +813,31 @@ error:
 static sr_conflict_commit_t *
 parse_conflict_line(smartlist_t *args)
 {
-  char *value, identity[ED25519_PUBKEY_LEN];
+  char *value;
+  ed25519_public_key_t identity;
   sr_commit_t *commit1 = NULL, *commit2 = NULL;
   sr_conflict_commit_t *conflict = NULL;
 
   /* First argument is the authority identity. */
   value = smartlist_get(args, 0);
-  if (digest256_from_base64(identity, value) < 0) {
+  if (ed25519_public_from_base64(&identity, value) < 0) {
     log_warn(LD_GENERAL, "Conflict line identity is not recognized.");
     goto error;
   }
   /* Second argument is the first commit value base64-encoded. */
-  commit1 = commit_new((uint8_t *) identity);
+  commit1 = commit_new(&identity);
   value = smartlist_get(args, 5);
   if (parse_encoded_commit(value, commit1) < 0) {
     goto error;
   }
   /* Third argument is the second commit value base64-encoded. */
-  commit2 = commit_new((uint8_t *) identity);
+  commit2 = commit_new(&identity);
   value = smartlist_get(args, 5);
   if (parse_encoded_commit(value, commit2) < 0) {
     goto error;
   }
   /* Everything is parsing correctly, allocate object and return it. */
-  conflict = conflict_commit_new((uint8_t *) identity, commit1, commit2);
+  conflict = conflict_commit_new(commit1, commit2);
   return conflict;
 error:
   conflict_commit_free(conflict);
@@ -957,7 +937,8 @@ disk_state_parse_previous_srv(sr_state_t *state,
   if (line->value == NULL) {
     return 0;
   }
-  return disk_state_parse_srv(line->value, &state->previous_srv);
+  state->previous_srv = tor_malloc_zero(sizeof(*state->previous_srv));
+  return disk_state_parse_srv(line->value, state->previous_srv);
 }
 
 /* Parse the SharedRandCurrentValue line from the state. Return 0 on success
@@ -971,7 +952,8 @@ disk_state_parse_current_srv(sr_state_t *state,
   if (line->value == NULL) {
     return 0;
   }
-  return disk_state_parse_srv(line->value, &state->current_srv);
+  state->current_srv = tor_malloc_zero(sizeof(*state->current_srv));
+  return disk_state_parse_srv(line->value, state->current_srv);
 }
 
 /* Parse the given disk state and set a newly allocated state. On success,
@@ -1013,9 +995,10 @@ error:
  * buffer large enough to put the base64-encoded reveal construction. The
  * format is as follow:
  *     REVEAL = base64-encode( TIMESTAMP || RN )
+ * Return 0 on success else a negative value.
  */
-STATIC void
-reveal_encode(sr_commit_t *commit, char *dst)
+STATIC int
+reveal_encode(sr_commit_t *commit, char *dst, size_t len)
 {
   size_t offset;
   char buf[SR_REVEAL_LEN];
@@ -1030,18 +1013,16 @@ reveal_encode(sr_commit_t *commit, char *dst)
   memcpy(buf + offset, commit->random_number,
          sizeof(commit->random_number));
   /* Let's clean the buffer and then encode it. */
-  memset(dst, 0, SR_REVEAL_BASE64_LEN);
-
-  /* XXX check retval */
-  base64_encode(dst, SR_REVEAL_BASE64_LEN, buf, sizeof(buf), 0);
+  memset(dst, 0, len);
+  return base64_encode(dst, len, buf, sizeof(buf), 0);
 }
 
 /* Encode the given commit object to dst which is a buffer large enough to
  * put the base64-encoded commit. The format is as follow:
  *     COMMIT = base64-encode( TIMESTAMP || H(REVEAL) || SIGNATURE )
  */
-STATIC void
-commit_encode(sr_commit_t *commit, char *dst)
+STATIC int
+commit_encode(sr_commit_t *commit, char *dst, size_t len)
 {
   size_t offset;
   char buf[SR_COMMIT_LEN];
@@ -1054,16 +1035,15 @@ commit_encode(sr_commit_t *commit, char *dst)
   set_uint64(buf, tor_htonll((uint64_t) commit->commit_ts));
   /* The hash of the reveal is next. */
   offset = sizeof(commit->commit_ts);
-  memcpy(buf + offset, commit->reveal_hash, DIGEST256_LEN);
+  memcpy(buf + offset, commit->hashed_reveal,
+         sizeof(commit->hashed_reveal));
   /* Finally, the signature. */
-  offset += DIGEST256_LEN;
-  memcpy(buf + offset, commit->commit_signature.sig, ED25519_SIG_LEN);
-
+  offset += sizeof(commit->hashed_reveal);
+  memcpy(buf + offset, commit->commit_signature.sig,
+         sizeof(commit->commit_signature.sig));
   /* Let's clean the buffer and then encode it. */
-  memset(dst, 0, SR_COMMIT_BASE64_LEN);
-
-  /* XXX check retval */
-  base64_encode(dst, SR_COMMIT_BASE64_LEN, buf, sizeof(buf), 0);
+  memset(dst, 0, len);
+  return base64_encode(dst, len, buf, sizeof(buf), 0);
 }
 
 /* From a valid conflict object and an allocated config line, set the line's
@@ -1080,10 +1060,12 @@ disk_state_put_conflict_line(sr_conflict_commit_t *conflict,
   tor_assert(conflict);
   tor_assert(line);
 
-  ret = digest256_to_base64(ed_b64, (const char *) conflict->identity);
+  ret = ed25519_public_to_base64(ed_b64, &conflict->auth_identity);
   tor_assert(!ret);
-  commit_encode(conflict->commit1, commit1_b64);
-  commit_encode(conflict->commit2, commit2_b64);
+  ret = commit_encode(conflict->commit1, commit1_b64, sizeof(commit1_b64));
+  tor_assert(ret);
+  ret = commit_encode(conflict->commit2, commit2_b64, sizeof(commit2_b64));
+  tor_assert(ret);
   /* We can construct a reveal string if the random number exists meaning
    * it's ours or we got it during the reveal phase. */
   tor_asprintf(&line->value, "%s %s %s %s",
@@ -1099,8 +1081,6 @@ static void
 disk_state_put_commit_line(sr_commit_t *commit, config_line_t *line)
 {
   int ret;
-  char ed_b64[BASE64_DIGEST256_LEN + 1];
-  char tbuf[ISO_TIME_LEN + 1];
   char commit_b64[SR_COMMIT_BASE64_LEN + 1];
   /* Add an extra bytes for a whitespace in front to make sure we have the
    * proper disk state format. */
@@ -1110,24 +1090,21 @@ disk_state_put_commit_line(sr_commit_t *commit, config_line_t *line)
   tor_assert(commit);
   tor_assert(line);
 
-  ret = digest256_to_base64(ed_b64, (const char *) commit->identity);
-  tor_assert(!ret);
-  format_iso_time(tbuf, commit->commit_ts);
-  commit_encode(commit, commit_b64);
+  ret = commit_encode(commit, commit_b64, sizeof(commit_b64));
+  tor_assert(ret);
   /* We can construct a reveal string if the random number exists meaning
    * it's ours or we got it during the reveal phase. */
   if (tor_mem_is_zero((const char *) commit->random_number,
                       sizeof(commit->random_number))) {
     /* First char is a whitespace so we are next to the commit value. */
     reveal_b64[0] = ' ';
-    reveal_encode(commit, reveal_b64 + 1);
+    reveal_encode(commit, reveal_b64 + 1, sizeof(reveal_b64) - 1);
   }
-  tor_asprintf(&line->value, "%s %s %s %s %s %s%s",
+  tor_asprintf(&line->value, "%s %s %s %s %s%s",
                dstate_commit_key,
                crypto_digest_algorithm_get_name(commit->alg),
-               ed_b64,
+               commit->auth_fingerprint,
                commit->has_majority ? "1" : "0",
-               tbuf,
                commit_b64,
                reveal_b64);
 }
@@ -1177,16 +1154,19 @@ disk_state_update(void)
    * construct something. */
   sr_disk_state->Version = sr_state->version;
   sr_disk_state->ValidUntil = sr_state->valid_until;
+  sr_disk_state->ProtocolPhase = tor_strdup(get_phase_str(sr_state->phase));
 
   /* Shared random values. */
   line = sr_disk_state->SharedRandPreviousValue =
     tor_malloc_zero(sizeof(*line));
   line->key = tor_strdup(dstate_prev_srv_key);
-  disk_state_put_srv_line(&sr_state->previous_srv, line);
+  sr_state->previous_srv = tor_malloc_zero(sizeof(*sr_state->previous_srv));
+  disk_state_put_srv_line(sr_state->previous_srv, line);
   line = sr_disk_state->SharedRandCurrentValue =
     tor_malloc_zero(sizeof(*line));
   line->key = tor_strdup(dstate_cur_srv_key);
-  disk_state_put_srv_line(&sr_state->current_srv, line);
+  sr_state->current_srv = tor_malloc_zero(sizeof(*sr_state->current_srv));
+  disk_state_put_srv_line(sr_state->current_srv, line);
 
   /* Parse the commitments and construct config line(s). */
   next = &sr_disk_state->Commitments;
@@ -1279,6 +1259,7 @@ disk_state_load_from_disk(void)
     goto error;
   }
   state_set(parsed_state);
+  disk_state_set(disk_state);
   log_notice(LD_DIR, "[SR] State loaded from \"%s\"", fname);
   return 0;
 error:
@@ -1294,8 +1275,6 @@ disk_state_save_to_disk(void)
   char *state, *content, *fname;
   char tbuf[ISO_TIME_LEN + 1];
   time_t now = time(NULL);
-
-  return 0; /* XXX tempp to avoid assert */
 
   tor_assert(sr_disk_state);
 
@@ -1392,75 +1371,70 @@ sr_save_and_cleanup(void)
  *  at <b>timestamp</b>. If <b>my_cert</b> is provided use it as our
  *  authority certificate (used in unittests). */
 STATIC sr_commit_t *
-generate_sr_commitment(time_t timestamp, authority_cert_t *my_cert)
+generate_sr_commitment(time_t timestamp)
 {
-  sr_commit_t *commit = tor_malloc_zero(sizeof(sr_commit_t));
-  char reveal_base64[SR_REVEAL_BASE64_LEN]; /* XXX is this enough space? */
+  sr_commit_t *commit;
+  const ed25519_keypair_t *signing_keypair;
 
-  commit->commit_ts = timestamp;
-  commit->reveal_ts = timestamp;
+  /* XXX We are currently using our relay identity. In the future we
+   * should be using our shared random ed25519 key derived from the
+   * authority signing key. */
+  signing_keypair = get_master_signing_keypair();
+  tor_assert(signing_keypair);
 
-  { /* Encode our identity in the commitment */
-    char fingerprint[FINGERPRINT_LEN+1];
-
-    /* XXX We are currently using our RSA identity. In the future we
-       should be using our shared random ed25519 key. */
-
-    /* Get our RSA fingerprint. */
-    if (!my_cert) {
-      my_cert = get_my_v3_authority_cert();
-      if (!my_cert) {
-        log_warn(LD_DIR, "Can't generate consensus without a certificate.");
-        return NULL; /* XXX error mgmt */
-      }
-    }
-
-    if (crypto_pk_get_fingerprint(my_cert->identity_key,
-                                  fingerprint, 0) < 0) {
-      log_err(LD_GENERAL,"Error computing fingerprint");
-      return NULL; /* XXX error mgmt */
-    }
-
-    /* This commitment belongs to us! Set our fingerprint. */
-    commit->auth_fingerprint = tor_strdup(fingerprint);
-    /* Also set our digest */
-    crypto_pk_get_digest(my_cert->identity_key, (char *)commit->auth_digest);
-  }
+  /* New commit with our identity key. */
+  commit = commit_new(&signing_keypair->pubkey);
 
   /* Generate the reveal random value */
-  if (crypto_rand((char*)commit->random_number,  SR_RANDOM_NUMBER_LEN) < 0) {
-    log_warn(LD_REND, "Unable to generate reveal random value!");
-    return NULL;
+  if (crypto_rand((char *) commit->random_number,
+                  sizeof(commit->random_number)) < 0) {
+    log_err(LD_REND, "[SR] Unable to generate reveal random value!");
+    goto error;
   }
+  commit->commit_ts = commit->reveal_ts = timestamp;
 
   /* Now get the base64 blob that corresponds to our reveal */
-  reveal_encode(commit, reveal_base64);
+  if (reveal_encode(commit, commit->encoded_reveal,
+                    sizeof(commit->encoded_reveal)) < 0) {
+    log_err(LD_REND, "[SR] Unable to encode the reveal value!");
+    goto error;
+  }
 
-  /** Now let's create the commitment */
+  /* Now let's create the commitment */
 
-  { /* First hash the reveal */
-    crypto_digest_t *d;
-    d = crypto_digest256_new(DIGEST_SHA256);
-    crypto_digest_add_bytes(d, reveal_base64, strlen(reveal_base64));
-    crypto_digest_get_digest(d, commit->reveal_hash, sizeof(commit->reveal_hash));
-    crypto_digest_free(d);
+  switch (commit->alg) {
+  case DIGEST_SHA1:
+    tor_assert(0);
+  case DIGEST_SHA256:
+    /* Only sha256 is supported and the default. */
+  default:
+    if (crypto_digest256(commit->hashed_reveal, commit->encoded_reveal,
+                         sizeof(commit->encoded_reveal),
+                         DIGEST_SHA256) < 0) {
+      goto error;
+    }
+    break;
   }
 
   { /* Now create the commit signature */
-
-    /* XXX We need to use the special shared random key here! */
-    const ed25519_keypair_t *signing_keypair = get_master_signing_keypair();
     uint8_t sig_msg[SR_COMMIT_SIG_BODY_LEN];
 
-    memcpy(sig_msg, commit->reveal_hash, DIGEST256_LEN);
-    set_uint64(sig_msg+DIGEST256_LEN, tor_htonll((uint64_t)timestamp));
+    memcpy(sig_msg, commit->hashed_reveal, sizeof(commit->hashed_reveal));
+    set_uint64(sig_msg + sizeof(commit->hashed_reveal),
+               tor_htonll((uint64_t) commit->commit_ts));
 
-    if (ed25519_sign(&commit->commit_signature,
-                     sig_msg, SR_COMMIT_SIG_BODY_LEN,
-                     signing_keypair)<0) {
-      log_warn(LD_BUG, "Can't sign commitment!");
-      return NULL; /* XXX error mgmt */
+    if (ed25519_sign(&commit->commit_signature, sig_msg, sizeof(sig_msg),
+                     signing_keypair) < 0) {
+      log_warn(LD_BUG, "[SR] Can't sign commitment!");
+      goto error;
     }
+  }
+
+  /* Now get the base64 blob that corresponds to our commit. */
+  if (commit_encode(commit, commit->encoded_commit,
+                    sizeof(commit->encoded_commit)) < 0) {
+    log_err(LD_REND, "[SR] Unable to encode the commit value!");
+    goto error;
   }
 
   /* This is _our_ commit so it's authoritative. */
@@ -1468,10 +1442,14 @@ generate_sr_commitment(time_t timestamp, authority_cert_t *my_cert)
 
   log_warn(LD_GENERAL, "[SR] Generated commitment:");
   commit_log(commit);
-
   return commit;
+
+ error:
+  commit_free(commit);
+  return NULL;
 }
 
+#if 0
 /** Generate the commitment/reveal value for the protocol run starting at
  *  <b>timestamp</b>. */
 static sr_commit_t *
@@ -1513,93 +1491,211 @@ generate_sr_commitment_stupid(time_t timestamp)
 
   return commit;
 }
+#endif
 
-/* Return commit object from the given authority digest <b>auth_digest</b>.
+/* Return commit object from the given authority digest <b>identity</b>.
  * Return NULL if not found. */
 static sr_commit_t *
-get_commit_from_state(const uint8_t *auth_digest)
+get_commit_from_state(const ed25519_public_key_t *identity)
 {
-  tor_assert(auth_digest);
-  return digestmap_get(sr_state->commitments_tmp, (char *) auth_digest);
+  tor_assert(identity);
+  return digest256map_get(sr_state->commitments, identity->pubkey);
 }
 
-/* Return conflict object from the given authority digest
- * <b>auth_digest</b>. Return NULL if not found. */
+/* Return conflict object from the given authority digest <b>identity</b>.
+ * Return NULL if not found. */
 static sr_conflict_commit_t *
-get_conflict_from_state(const uint8_t *auth_digest)
+get_conflict_from_state(const ed25519_public_key_t *identity)
 {
-  tor_assert(auth_digest);
-  return digest256map_get(sr_state->conflicts, auth_digest);
+  tor_assert(identity);
+  return digest256map_get(sr_state->conflicts, identity->pubkey);
 }
 
 /* Add a conflict to the state using the different commits <b>c1</b> and
  * <b>c2</b>. If a conflict already exists, update it with those values. */
 static void
-add_conflict_to_sr_state(const sr_commit_t *c1, const sr_commit_t *c2)
+add_conflict_to_sr_state(sr_commit_t *c1, sr_commit_t *c2)
 {
-  (void) c1;
-  (void) c2;
-  /* XXX: It's possible to add a conflict for an authority that already
-   * has a conflict in our state so we should simply update the entry with
-   * the latest commits. */
-  return; /* XXX NOP */
+  sr_conflict_commit_t *conflict, *prev_conflict;
+
+  tor_assert(c1);
+  tor_assert(c2);
+
+  /* It's possible to add a conflict for an authority that already has a
+   * conflict in our state so we update the entry with the latest one. */
+  conflict = conflict_commit_new(c1, c2);
+  prev_conflict = digest256map_set(sr_state->conflicts,
+                                   conflict->auth_identity.pubkey,
+                                   conflict);
+  if (prev_conflict != conflict) {
+    conflict_commit_free(prev_conflict);
+  }
 }
 
-/* Add <b>commit</b> to the permanent state.  Make sure there are no
- * conflicts. */
+/* Add <b>commit</b> to the permanent state. Make sure there are no
+ * conflicts. The given commit is duped so the caller should free the memory
+ * if needed upon return. */
 static void
 add_commit_to_sr_state(sr_commit_t *commit)
 {
-  sr_commit_t *saved_commit = NULL;
+  sr_commit_t *saved_commit = NULL, *dup_commit;
 
   tor_assert(sr_state);
   tor_assert(commit);
 
-  saved_commit = get_commit_from_state(commit->auth_digest);
+  saved_commit = get_commit_from_state(&commit->auth_identity);
   if (saved_commit != NULL) {
     /* MUST be same pointer else there is a code flow issue. */
     tor_assert(saved_commit == commit);
     return;
   }
 
-  /* XXX: We have to dup the commit here since the commit object comes from
-   * the commitments list of a vote thus will be cleanup after the voting
-   * period. */
-  digestmap_set(sr_state->commitments_tmp, (char *) commit->auth_digest,
-                commit);
+  dup_commit = commit_dup(commit);
+  digest256map_set(sr_state->commitments, commit->auth_identity.pubkey,
+                   dup_commit);
 
   log_warn(LD_GENERAL, "[SR] \t \t Commit from %s (%s) has been added. "
            "It's %sauthoritative and has %smajority",
-           commit->auth_fingerprint, commit->commitment,
-           commit->is_authoritative ? "" : "NOT ",
-           commit->has_majority ? "" : "NO ");
+           dup_commit->auth_fingerprint, dup_commit->encoded_commit,
+           dup_commit->is_authoritative ? "" : "NOT ",
+           dup_commit->has_majority ? "" : "NO ");
+}
+
+/* Using <b>commit</b>, return a newly allocated string containing the
+ * authority identity fingerprint concatenated with its encoded reveal
+ * value. It's the caller responsibility to free the memory. This can't fail
+ * thus a valid string is always returned. */
+static char *
+get_srv_element_from_commit(const sr_commit_t *commit)
+{
+  char *element;
+  tor_assert(commit);
+  tor_asprintf(&element, "%s%s", commit->auth_fingerprint,
+               commit->encoded_reveal);
+  return element;
+}
+
+/* Return a srv object that is built with the construction:
+ *    SRV = HMAC(HASHED_REVEALS, "shared-random" | INT_8(reveal_num) |
+ *                               INT_8(version) | previous_SRV)
+ * This function cannot fail. */
+static sr_srv_t *
+generate_srv(const char *hashed_reveals, uint8_t reveal_num)
+{
+  char msg[SR_SRV_HMAC_MSG_LEN];
+  size_t offset = 0;
+  sr_srv_t *srv;
+
+  tor_assert(hashed_reveals);
+  /* Specification requires at least 3 authorities are needed. */
+  tor_assert(reveal_num >= 3);
+
+  /* Add the invariant token. */
+  memcpy(msg, SR_SRV_TOKEN, SR_SRV_TOKEN_LEN);
+  offset += SR_SRV_TOKEN_LEN;
+  set_uint8(msg + offset, reveal_num);
+  offset += sizeof(uint8_t);
+  set_uint8(msg + offset, SR_PROTO_VERSION);
+  offset += sizeof(uint8_t);
+  if (sr_state->previous_srv != NULL) {
+    memcpy(msg + offset, sr_state->previous_srv->value,
+           sizeof(sr_state->previous_srv->value));
+  }
+
+  /* Ok we have our message and key for the HMAC computation, allocate our
+   * srv object and do the last step. */
+  srv = tor_malloc_zero(sizeof(*srv));
+  crypto_hmac_sha256((char *) srv->value,
+                     hashed_reveals, strlen(hashed_reveals),
+                     msg, sizeof(msg));
+  srv->status = SR_SRV_STATUS_FRESH;
+  return srv;
+}
+
+/* Return a srv object that constructed with the disaster mode
+ * specification. It's as follow:
+ *    HMAC(previous_SRV, "shared-random-disaster")
+ * This function cannot fail. */
+static sr_srv_t *
+generate_srv_disaster(void)
+{
+  sr_srv_t *srv = tor_malloc_zero(sizeof(*srv));
+  static const char *invariant = "shared-random-disaster";
+
+  crypto_hmac_sha256((char *) srv->value,
+                     (const char *) sr_state->previous_srv->value,
+                     sizeof(sr_state->previous_srv->value),
+                     invariant, strlen(invariant));
+  srv->status = SR_SRV_STATUS_NONFRESH;
+  return srv;
 }
 
 /** Compute the shared random value based on the reveals we have. */
 static void
 compute_shared_random_value(void)
 {
-  int sum = 0; /* XXX */
-  int ok;
+  size_t reveal_num;
+  char *reveals = NULL;
+  smartlist_t *chunks, *commits;
 
-  /* XXX Don't call this during bootstrap */
+  log_warn(LD_GENERAL, "[SR] Computing SRV");
 
-  log_warn(LD_GENERAL, "[SR] About to calculate SRV:");
+  /* Computing a shared random value in the commit phase is very wrong. This
+   * should only happen at the very end of the reveal phase when a new
+   * protocol run is about to start. */
+  tor_assert(sr_state->phase == SR_PHASE_REVEAL);
 
-  DIGESTMAP_FOREACH(sr_state->commitments_tmp, key, const sr_commit_t *, commit) {
-    if (commit->reveal) {
-      int reveal_int =
-        (int) tor_parse_long(commit->reveal,10,0,65535,&ok,NULL);
+  /* XXX: Let's make sure those conditions to compute an SRV are solid and
+   * cover all cases. While writing this I'm still unsure of those. */
+  reveal_num = digest256map_size(sr_state->commitments);
+  tor_assert(reveal_num < UINT8_MAX);
+  /* No reveal values means that we are booting up in the reveal phase thus
+   * we shouldn't try to compute a shared random value. */
+  if (reveal_num == 0) {
+    goto end;
+  }
+  /* Make sure we have enough reveal values and if not, generate the
+   * disaster srv value and stop right away. */
+  if (reveal_num < SR_SRV_MIN_REVEAL) {
+    sr_state->current_srv = generate_srv_disaster();
+    goto end;
+  }
 
-      tor_assert(ok);
+  commits = smartlist_new();
+  chunks = smartlist_new();
 
-      log_warn(LD_GENERAL, "[SR] \t Folding in %d", reveal_int);
+  /* We must make a list of commit ordered by authority fingerprint in
+   * ascending order as specified by proposal 250. */
+  DIGEST256MAP_FOREACH(sr_state->commitments, key, sr_commit_t *, c) {
+    smartlist_add(commits, c);
+  } DIGEST256MAP_FOREACH_END;
+  smartlist_sort_strings(commits);
 
-      sum += reveal_int;
+  /* Now for each commit, we'll build the element for each authority that
+   * needs to go into the srv computation. */
+  SMARTLIST_FOREACH_BEGIN(commits, const sr_commit_t *, c) {
+    char *element = get_srv_element_from_commit(c);
+    smartlist_add(chunks, element);
+  } SMARTLIST_FOREACH_END(c);
+  smartlist_free(commits);
+
+  {
+    /* Make the HMAC-SHA256 computation. */
+    char hashed_reveals[DIGEST256_LEN];
+    reveals = smartlist_join_strings(chunks, "", 0, NULL);
+    SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
+    smartlist_free(chunks);
+    if (crypto_digest256(hashed_reveals, reveals, strlen(reveals),
+                         DIGEST_SHA256) < 0) {
+      log_warn(LD_DIR, "[SR] Unable to hash the reveals. Stopping.");
+      goto end;
     }
-  } DIGESTMAP_FOREACH_END;
+    sr_state->current_srv = generate_srv(hashed_reveals,
+                                         (uint8_t) reveal_num);
+  }
 
-  log_warn(LD_GENERAL, "[SR] \t SRV = %d", sum);
+ end:
+  tor_free(reveals);
 }
 
 /** This is the first round of the new protocol run starting at
@@ -1609,8 +1705,17 @@ state_new_protocol_run(time_t valid_after)
 {
   sr_commit_t *our_commitment = NULL;
 
-  /* Compute the shared randomness value of the day. */
-  compute_shared_random_value();
+  /* Only compute the srv at the end of the reveal phase. */
+  if (sr_state->phase == SR_PHASE_REVEAL) {
+    /* We are about to compute a new shared random value that will be set in
+     * our state as the current value so swap the current to the previous
+     * value right now. */
+    tor_free(sr_state->previous_srv);
+    sr_state->previous_srv = sr_state->current_srv;
+    sr_state->current_srv = NULL;
+    /* Compute the shared randomness value of the day. */
+    compute_shared_random_value();
+  }
 
   /* Keep counters in track */
   sr_state->n_reveal_rounds = 0;
@@ -1623,11 +1728,10 @@ state_new_protocol_run(time_t valid_after)
            sr_state->n_protocol_runs);
 
   /* Wipe old commit/reveal values */
-  DIGESTMAP_FOREACH_MODIFY(sr_state->commitments_tmp, key,
-                           sr_commit_t *, c) {
+  DIGEST256MAP_FOREACH_MODIFY(sr_state->commitments, key, sr_commit_t *, c) {
     commit_free(c);
     MAP_DEL_CURRENT(key);
-  } DIGESTMAP_FOREACH_END;
+  } DIGEST256MAP_FOREACH_END;
   /* Wipe old conflicts */
   DIGEST256MAP_FOREACH_MODIFY(sr_state->conflicts, key,
                               sr_conflict_commit_t *, c) {
@@ -1636,10 +1740,13 @@ state_new_protocol_run(time_t valid_after)
   } DIGEST256MAP_FOREACH_END;
 
   /* Generate fresh commitments for this protocol run */
-  our_commitment = generate_sr_commitment_stupid(valid_after);
-  (void) generate_sr_commitment(valid_after, NULL); /* XXX */
-  tor_assert(our_commitment); /* XXX check that this can be asserted */
-  add_commit_to_sr_state(our_commitment);
+  our_commitment = generate_sr_commitment(valid_after);
+  if (our_commitment) {
+    /* Add our commitment to our state. In case we are unable to create one
+     * (highly unlikely), we won't vote for this protocol run since our
+     * commitment won't be in our state. */
+    add_commit_to_sr_state(our_commitment);
+  }
 }
 
 /* Transition from the commit phase to the reveal phase by sanitizing our
@@ -1651,7 +1758,7 @@ state_reveal_phase_transition(void)
   tor_assert(sr_state->n_reveal_rounds == 0);
 
   /* Remove commitments that don't have majority. */
-  DIGESTMAP_FOREACH_MODIFY(sr_state->commitments_tmp, key,
+  DIGEST256MAP_FOREACH_MODIFY(sr_state->commitments, key,
                            sr_commit_t *, commit) {
     sr_conflict_commit_t *conflict;
 
@@ -1664,7 +1771,7 @@ state_reveal_phase_transition(void)
     /* Safety net, we shouldn't have a commit from an authority that also
      * has a conflict for the same authority. If so, this is a BUG so log it
      * and clean it. */
-    conflict = get_conflict_from_state(commit->identity);
+    conflict = get_conflict_from_state(&commit->auth_identity);
     if (conflict != NULL) {
       log_warn(LD_DIR, "[SR] BUG: Commit found for authority %s "
                        "but we have a conflict for this authority.",
@@ -1672,7 +1779,7 @@ state_reveal_phase_transition(void)
       commit_free(commit);
       MAP_DEL_CURRENT(key);
     }
-  } DIGESTMAP_FOREACH_END;
+  } DIGEST256MAP_FOREACH_END;
 }
 
 /* Return 1 iff the <b>next_phase</b> is a phase transition from the current
@@ -1693,7 +1800,6 @@ update_state(time_t valid_after)
 
   /* Get the new protocol phase according to the current hour */
   sr_phase_t new_phase = get_sr_protocol_phase(valid_after);
-  tor_assert(new_phase != SR_PHASE_UNKNOWN);
 
   /* Are we in a phase transition that is the next phase is not the same as
    * the current one? */
@@ -1708,8 +1814,6 @@ update_state(time_t valid_after)
       /* We were in the commit phase thus now in reveal. */
       state_reveal_phase_transition();
       break;
-    case SR_PHASE_UNKNOWN:
-      tor_assert(0);
     }
     /* Set the new phase for this round */
     sr_state->phase = new_phase;
@@ -1743,29 +1847,97 @@ update_state(time_t valid_after)
   }
 }
 
-/** Given <b>commit</b> give the line that we should place in our
- *  votes. It's the responsibility of hte caller to free the
- *  string. */
+/** Given <b>commit</b> give the line that we should place in our votes.
+ * It's the responsibility of the caller to free the string. */
 static char *
-get_vote_line_from_commit(const sr_commit_t *commit, sr_phase_t current_phase)
+get_vote_line_from_commit(const sr_commit_t *commit)
 {
   char *vote_line = NULL;
+  sr_phase_t current_phase = sr_state->phase;
+  static const char *commit_str_key = "shared-rand-commitment";
 
-  tor_assert(current_phase != SR_PHASE_UNKNOWN);
-
-  if (current_phase == SR_PHASE_COMMIT) {
-    tor_asprintf(&vote_line, "shared-rand-commitment %s %s %s\n",
-                 commit->auth_fingerprint, "sha256", commit->commitment);
-  } else { /* reveal phase */
-    /* We are in reveal phase. Send a reveal value for this commit if we have one. */
-    const char *reveal_str = commit->reveal ? commit->reveal : "";
-
-    tor_asprintf(&vote_line, "shared-rand-commitment %s %s %s %s\n",
-                 commit->auth_fingerprint, "sha256", commit->commitment,
-                 reveal_str);
+  switch (current_phase) {
+  case SR_PHASE_COMMIT:
+    tor_asprintf(&vote_line, "%s %s %s %s\n",
+                 commit_str_key,
+                 commit->auth_fingerprint,
+                 crypto_digest_algorithm_get_name(commit->alg),
+                 commit->encoded_commit);
+    break;
+  case SR_PHASE_REVEAL:
+  {
+    /* Send a reveal value for this commit if we have one. */
+    const char *reveal_str = commit->encoded_reveal;
+    if (tor_mem_is_zero(commit->encoded_reveal,
+                        sizeof(commit->encoded_reveal))) {
+      reveal_str = "";
+    }
+    tor_asprintf(&vote_line, "%s %s %s %s %s\n",
+                 commit_str_key,
+                 commit->auth_fingerprint,
+                 crypto_digest_algorithm_get_name(commit->alg),
+                 commit->encoded_commit, reveal_str);
+    break;
+  }
+  default:
+    tor_assert(0);
   }
 
   return vote_line;
+}
+
+/* Given <b>conflict</b> give the line that we should place in our votes.
+ * It's the responsibility of the caller to free the string. */
+static char *
+get_vote_line_from_conflict(const sr_conflict_commit_t *conflict)
+{
+  char *line = NULL;
+  static const char *conflict_str_key = "shared-rand-conflict";
+
+  tor_assert(conflict);
+
+  tor_asprintf(&line, "%s %s %s %s\n",
+               conflict_str_key,
+               conflict->commit1->auth_fingerprint,
+               conflict->commit1->encoded_commit,
+               conflict->commit2->encoded_commit);
+  return line;
+}
+
+/* Return a smartlist for which each element is the SRV line that should be
+ * put in a vote or consensus. Caller must free the string elements in the
+ * list once done with it. */
+static smartlist_t *
+get_srv_vote_line(void)
+{
+  char *srv_line = NULL;
+  char srv_hash_encoded[HEX_DIGEST256_LEN + 1];
+  smartlist_t *lines = smartlist_new();
+  sr_srv_t *srv;
+  static const char *prev_str_key = "shared-rand-previous-value";
+  static const char *cur_str_key = "shared-rand-current-value";
+
+  /* Compute the previous srv value if one. */
+  srv = sr_state->previous_srv;
+  if (srv != NULL) {
+    base16_encode(srv_hash_encoded, sizeof(srv_hash_encoded),
+                  (const char *) srv->value, sizeof(srv->value));
+    tor_asprintf(&srv_line, "%s %s %s\n", prev_str_key,
+                 get_srv_status_str(srv->status), srv_hash_encoded);
+    smartlist_add(lines, srv_line);
+    log_warn(LD_DIR, "[SR] \t Previous SRV: %s", srv_line);
+  }
+  /* Compute current srv value if one. */
+  srv = sr_state->current_srv;
+  if (srv != NULL) {
+    base16_encode(srv_hash_encoded, sizeof(srv_hash_encoded),
+                  (const char *) srv->value, sizeof(srv->value));
+    tor_asprintf(&srv_line, "%s %s %s\n", cur_str_key,
+                 get_srv_status_str(srv->status), srv_hash_encoded);
+    smartlist_add(lines, srv_line);
+    log_warn(LD_DIR, "[SR] \t Current SRV: %s", srv_line);
+  }
+  return lines;
 }
 
 /* Return a heap-allocated string that should be put in the votes and
@@ -1782,19 +1954,84 @@ sr_get_string_for_vote(void)
   log_warn(LD_GENERAL, "[SR] Sending out vote string:");
 
   /* In our vote we include every commitment in our permanent state. */
-  DIGESTMAP_FOREACH(sr_state->commitments_tmp, key, const sr_commit_t *, commit) {
-    char *commitment_vote_line = get_vote_line_from_commit(commit, sr_state->phase);
-    smartlist_add(chunks, commitment_vote_line);
-    log_warn(LD_GENERAL, "[SR] \t %s", commitment_vote_line);
-  } DIGESTMAP_FOREACH_END;
+  DIGEST256MAP_FOREACH(sr_state->commitments, key,
+                       const sr_commit_t *, commit) {
+    char *line = get_vote_line_from_commit(commit);
+    smartlist_add(chunks, line);
+    log_warn(LD_DIR, "[SR] \t Commit: %s", line);
+  } DIGEST256MAP_FOREACH_END;
 
-  /* XXX free chunks */
+  /* Add conflict(s) to our vote. */
+  DIGEST256MAP_FOREACH(sr_state->conflicts, key,
+                       const sr_conflict_commit_t *, conflict) {
+    char *line = get_vote_line_from_conflict(conflict);
+    smartlist_add(chunks, line);
+    log_warn(LD_DIR, "[SR] \t Conflict: %s", line);
+  } DIGEST256MAP_FOREACH_END;
+
+  /* Add the SRV values to the string. */
+  {
+    smartlist_t *srv_lines = get_srv_vote_line();
+    smartlist_add_all(chunks, srv_lines);
+    smartlist_free(srv_lines);
+  }
+
   vote_str = smartlist_join_strings(chunks, "", 0, NULL);
-
+  //SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
+  //smartlist_free(chunks);
+  log_warn(LD_DIR, "[SR] Our vote string:\n%s\n", vote_str);
   return vote_str;
 }
 
-/* Return True if the two commits have the same commitment values. This
+/* Given all the commitment information from a commitment line in a vote,
+ * parse the line, validate it and return a newly allocated commit object
+ * that contains the verified data from the vote. Return NULL on error. */
+sr_commit_t *
+sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
+                              const char *commitment, const char *reveal)
+{
+  sr_commit_t *commit;
+  smartlist_t *args;
+
+  tor_assert(commit_pubkey);
+  tor_assert(hash_alg);
+  tor_assert(commitment);
+
+  /* Build a list of arguments that have the same order as the Commitment
+   * line in the state. With that, we can parse it using the same function
+   * that the state uses. Line format is as follow:
+   *    "shared-rand-commitment" SP algname SP identity SP majority SP
+   *                             commitment-value [SP revealed-value] NL
+   */
+  args = smartlist_new();
+  smartlist_add(args, (char *) hash_alg);
+  smartlist_add(args, (char *) commit_pubkey);
+  smartlist_add(args, (char *) "0"); /* Majority field set to 0. */
+  smartlist_add(args, (char *) commitment);
+  if (reveal != NULL) {
+    smartlist_add(args, (char *) reveal);
+  }
+  /* Parse our arguments to get a commit that we'll then verify. */
+  commit = parse_commitment_line(args);
+  if (commit == NULL) {
+    goto end;
+  }
+  /* We now have a commit object that has been fully populated by our vote
+   * data. Now we'll validate it. This function will make sure also to
+   * validate the reveal value if one is present. */
+  if (verify_received_commit(commit) < 0) {
+    commit_free(commit);
+    commit = NULL;
+    goto end;
+  }
+
+end:
+  smartlist_free(args);
+  return commit;
+}
+
+
+/* Return 1 iff the two commits have the same commitment values. This
  * function does not care about reveal values. */
 static int
 commitments_are_the_same(const sr_commit_t *commit_one,
@@ -1803,14 +2040,10 @@ commitments_are_the_same(const sr_commit_t *commit_one,
   tor_assert(commit_one);
   tor_assert(commit_two);
 
-  if (!strcmp(commit_one->commitment, commit_two->commitment)) {
-    return 1;
+  if (strcmp(commit_one->encoded_commit, commit_two->encoded_commit)) {
+    return 0;
   }
-
-  /* XXX: Should we validate also the timestamp here that should be the same
-   * even if commit is being carried ??? */
-
-  return 0;
+  return 1;
 }
 
 /* Return True if <b>commit</b> is included in enough <b>votes</b> to be the
@@ -1832,36 +2065,38 @@ commit_has_majority(const sr_commit_t *commit, smartlist_t *votes)
 
   /* Go through all the votes and count the ones that include this commit. */
   SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
-    if (digestmap_get(v->commitments, (char *) commit->auth_digest)) {
+    if (digest256map_get(v->commitments, commit->auth_identity.pubkey)) {
       votes_for_this_commit++;
     }
   } SMARTLIST_FOREACH_END(v);
 
   log_warn(LD_GENERAL, "[SR] \t \t Commit %s from %s. It has %d votes and it needs %d.",
-           commit->commitment, commit->auth_fingerprint,
+           commit->encoded_commit, commit->auth_fingerprint,
            votes_for_this_commit, votes_required_for_majority);
 
   /* Did we reached at least majority ? */
   return votes_for_this_commit >= votes_required_for_majority;
 }
 
+#if 0
 /* We just received a commit from the vote of authority with
  * <b>identity_digest</b>. Return 1 if this commit is authorititative that
  * is, it belongs to the authority that voted it. Else return 0 if not. */
 static int
 commit_is_authoritative(const sr_commit_t *commit,
-                        const char *identity_digest)
+                        const ed25519_public_key_t *identity)
 {
   tor_assert(commit);
-  tor_assert(identity_digest);
+  tor_assert(identity);
 
   /* Let's avoid some useless work here. Protect those CPU cycles! */
   if (commit->is_authoritative) {
     return 1;
   }
-  return !fast_memcmp(commit->auth_digest, identity_digest,
-                      sizeof(commit->auth_digest));
+  return !fast_memcmp(&commit->auth_identity, identity,
+                      sizeof(commit->auth_identity));
 }
+#endif
 
 /* Decide if <b>commit</b> can be added to our state that is check if the
  * commit is authoritative or/and has majority. Return 1 if the commit
@@ -1887,8 +2122,12 @@ should_keep_commitment(sr_commit_t *commit,
    * so, by consensus, we decided that this commit is usable for our shared
    * random computation and we can then also put it in our vote from that
    * point on. */
+  /* XXX: Use ed25519 identity key here of the voter. */
+  commit->is_authoritative = 1;
+#if 0
   commit->is_authoritative = commit_is_authoritative(commit,
                                                      voter->identity_digest);
+#endif
   commit->has_majority = commit_has_majority(commit, votes);
 
   /* One of those conditions is enough. */
@@ -1912,11 +2151,11 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
   tor_assert(sr_state->phase == SR_PHASE_COMMIT);
 
   log_warn(LD_GENERAL, "[SR] \t Deciding commit %s by %s",
-           commit->commitment, commit->auth_fingerprint);
+           commit->encoded_commit, commit->auth_fingerprint);
 
   /* Query our state to know if we already have this commit saved. If so,
    * use the saved commit else use the new one. */
-  saved_commit = get_commit_from_state(commit->auth_digest);
+  saved_commit = get_commit_from_state(&commit->auth_identity);
   if (saved_commit != NULL) {
     /* They can not be different commits at this point since we've
      * already processed all conflicts. */
@@ -1953,16 +2192,24 @@ decide_commit_during_reveal_phase(sr_commit_t *commit)
   tor_assert(commit);
   tor_assert(sr_state->phase == SR_PHASE_REVEAL);
 
+  int have_reveal = !tor_mem_is_zero(commit->encoded_reveal,
+                                     sizeof(commit->encoded_reveal));
   log_warn(LD_GENERAL, "[SR] \t Commit %s (%s) by %s",
-           commit->commitment,
-           commit->reveal ? commit->reveal : "NOREVEAL",
+           commit->encoded_commit,
+           have_reveal ? commit->encoded_reveal : "NOREVEAL",
            commit->auth_fingerprint);
+
+  /* If the received commit contains no reveal value, we are not interested
+   * in it so ignore. */
+  if (!have_reveal) {
+    return;
+  }
 
   /* Get the commit from our state. If it's not found, it's possible that we
    * didn't get a commit from the commit phase but we now see the reveal
    * from someone else. In this case, we ignore it since we didn't rule that
    * this commit had majority. */
-  saved_commit = get_commit_from_state(commit->auth_digest);
+  saved_commit = get_commit_from_state(&commit->auth_identity);
   if (saved_commit == NULL) {
     return;
   }
@@ -1971,19 +2218,12 @@ decide_commit_during_reveal_phase(sr_commit_t *commit)
   int same_commits = commitments_are_the_same(commit, saved_commit);
   tor_assert(same_commits);
 
-  /* If the received commit contains no reveal value, we are not interested
-   * in it so ignore. */
-  if (commit->reveal == NULL) {
-    return;
-  }
-
-  if (saved_commit->reveal == NULL) {
-    /* If we already have a commitment by this authority, and our saved
-     * commit doesn't have a reveal value, add it. */
-    log_warn(LD_GENERAL, "[SR] \t \t Ah, learned reveal %s for commit %s",
-             commit->reveal, commit->commitment);
-    saved_commit->reveal = tor_strdup(commit->reveal);
-  }
+  /* If we already have a commitment by this authority, and our saved
+   * commit doesn't have a reveal value, add it. */
+  log_warn(LD_GENERAL, "[SR] \t \t Ah, learned reveal %s for commit %s",
+           commit->encoded_reveal, commit->encoded_commit);
+  memcpy(saved_commit->encoded_reveal, commit->encoded_reveal,
+         sizeof(saved_commit->encoded_reveal));
 }
 
 /* For all vote in <b>votes</b>, go over the every commitment and check if
@@ -1995,10 +2235,14 @@ decide_conflict_from_votes(const smartlist_t *votes)
   tor_assert(votes);
 
   SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
-    DIGESTMAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
+    /* No commitments were present in this vote. */
+    if (v->commitments == NULL) {
+      continue;
+    }
+    DIGEST256MAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
       sr_commit_t *saved_commit;
 
-      saved_commit = get_commit_from_state(commit->auth_digest);
+      saved_commit = get_commit_from_state(&commit->auth_identity);
       if (saved_commit == NULL) {
         /* No conflict since we do not have it in our state. Ignore. */
         continue;
@@ -2008,7 +2252,7 @@ decide_conflict_from_votes(const smartlist_t *votes)
       if (!commitments_are_the_same(commit, saved_commit)) {
         add_conflict_to_sr_state(commit, saved_commit);
       }
-    } DIGESTMAP_FOREACH_END;
+    } DIGEST256MAP_FOREACH_END;
   } SMARTLIST_FOREACH_END (v);
 }
 
@@ -2024,14 +2268,20 @@ decide_commit_from_votes(sr_phase_t phase, smartlist_t *votes)
   /* For each votes, check if we need to add it to our state or not. */
   SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
     networkstatus_voter_info_t *voter = smartlist_get(v->voters, 0);
-    /* Ignore authority vote if we have a conflict for it. */
-    if (get_conflict_from_state((uint8_t *) voter->identity_digest)) {
-      /* XXX: remove cast since at some point we'll only use the ed25519. */
+    /* No commitments were present in this vote. */
+    if (v->commitments == NULL) {
       continue;
     }
+    /* XXX: Use the ed25519 authority key here. */
+#if 0
+    /* Ignore authority vote if we have a conflict for it. */
+    if (get_conflict_from_state()) {
+      continue;
+    }
+#endif
     /* Go over all commitments and depending on the phase decide what to do
      * with them that is keeping or updating them based on the votes. */
-    DIGESTMAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
+    DIGEST256MAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
       switch (phase) {
       case SR_PHASE_COMMIT:
         decide_commit_during_commit_phase(commit, voter, votes);
@@ -2039,10 +2289,10 @@ decide_commit_from_votes(sr_phase_t phase, smartlist_t *votes)
       case SR_PHASE_REVEAL:
         decide_commit_during_reveal_phase(commit);
         break;
-      case SR_PHASE_UNKNOWN:
+      default:
         tor_assert(0);
       }
-    } DIGESTMAP_FOREACH_END;
+    } DIGEST256MAP_FOREACH_END;
   } SMARTLIST_FOREACH_END (v);
 }
 
@@ -2051,7 +2301,7 @@ decide_commit_from_votes(sr_phase_t phase, smartlist_t *votes)
 void
 sr_decide_state_post_voting(smartlist_t *votes)
 {
-  log_warn(LD_GENERAL, "[SR] About to decide state (%s):",
+  log_warn(LD_GENERAL, "[SR] About to decide state (phase: %s):",
            get_phase_str(sr_state->phase));
 
   /* First step is to find if we have any conflicts and if so add them to
