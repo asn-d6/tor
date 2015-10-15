@@ -3116,9 +3116,8 @@ dirvote_compute_consensuses(void)
     }
   }
 
-  { /* Now that we have received all votes; decide our SR state */
-    sr_decide_state_post_voting(votes);
-  }
+  /* Now that we have received all votes; decide our SR state */
+  sr_decide_state_post_voting(votes);
 
   signatures = get_detached_signatures_from_pending_consensuses(
        pending, N_CONSENSUS_FLAVORS);

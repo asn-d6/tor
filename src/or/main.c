@@ -3378,6 +3378,7 @@ sandbox_init_filter(void)
   RENAME_SUFFIX("cached-extrainfo", ".new");
   RENAME_SUFFIX("cached-extrainfo.new", ".tmp");
   RENAME_SUFFIX("state", ".tmp");
+  RENAME_SUFFIX("sr-state", ".tmp");
   RENAME_SUFFIX("unparseable-desc", ".tmp");
   RENAME_SUFFIX("v3-status-votes", ".tmp");
 
