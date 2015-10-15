@@ -74,6 +74,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
   char *packages = NULL;
   char fingerprint[FINGERPRINT_LEN+1];
   char master_ed_key_base64[ED25519_BASE64_LEN+1];
+  char *ed_signing_cert_line = NULL;
   char digest[DIGEST_LEN];
   uint32_t addr;
   char *client_versions_line = NULL, *server_versions_line = NULL;
@@ -119,6 +120,9 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
   }
 
   { /* Get our ed25519 master router key */
+
+    /* By putting this in the vote, we certify the ed25519 master
+       router key using the RSA signing key. */
     const ed25519_public_key_t *our_master_ed25519_key = get_master_identity_key();
 
     if (ed25519_public_to_base64(master_ed_key_base64,
@@ -127,6 +131,26 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
       goto err;
     }
   }
+
+  { /* Get our (ed25519 master key -> ed25519 signing key) certificate */
+    char ed_cert_base64[256];
+    const tor_cert_t *signing_key_cert = get_master_signing_key_cert();
+
+    if (base64_encode(ed_cert_base64, sizeof(ed_cert_base64),
+                      (const char*)signing_key_cert->encoded,
+                      signing_key_cert->encoded_len,
+                      BASE64_ENCODE_MULTILINE) < 0) {
+      log_err(LD_BUG,"Couldn't base64-encode signing key certificate!");
+      goto err;
+    }
+
+    tor_asprintf(&ed_signing_cert_line, "identity-ed25519\n"
+                 "-----BEGIN ED25519 CERT-----\n"
+                 "%s"
+                 "-----END ED25519 CERT-----\n",
+                 ed_cert_base64);
+  }
+
 
   { /* Get shared random string */
     shared_random_vote_str = sr_get_string_for_vote();
@@ -173,6 +197,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  "dir-source %s %s %s %s %d %d\n"
                  "contact %s\n"
                  "master-key-ed25519 %s\n"
+                 "%s"
                  "%s", /* shared randomness information */
                  v3_ns->type == NS_TYPE_VOTE ? "vote" : "opinion",
                  methods,
@@ -188,6 +213,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  fmt_addr32(addr), voter->dir_port, voter->or_port,
                  voter->contact,
                  master_ed_key_base64,
+                 ed_signing_cert_line,
                  shared_random_vote_str ? shared_random_vote_str : "");
 
     tor_free(params);
