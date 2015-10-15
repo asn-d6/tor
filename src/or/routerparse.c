@@ -144,6 +144,9 @@ typedef enum {
   K_CONSENSUS_METHOD,
   K_LEGACY_DIR_KEY,
   K_DIRECTORY_FOOTER,
+  K_MASTER_KEY_ED,
+  K_SIGNING_CERT_ED,
+  K_SR_CERT_ED,
   K_COMMITMENT,
   K_PACKAGE,
 
@@ -445,6 +448,9 @@ static token_rule_t networkstatus_token_table[] = {
   T1("known-flags",            K_KNOWN_FLAGS,      ARGS,        NO_OBJ ),
   T01("params",                K_PARAMS,           ARGS,        NO_OBJ ),
   T( "fingerprint",            K_FINGERPRINT,      CONCAT_ARGS, NO_OBJ ),
+  T01("master-key-ed25519",    K_MASTER_KEY_ED,    GE(1),       NO_OBJ ),
+  T01("signing-ed25519",       K_SIGNING_CERT_ED,  NO_ARGS ,    NEED_OBJ ),
+  T01("shared-random-ed25519", K_SR_CERT_ED,       NO_ARGS,     NEED_OBJ ),
   T0N("shared-rand-commitment",K_COMMITMENT,       GE(3),       NO_OBJ ),
   T0N("package",               K_PACKAGE,          CONCAT_ARGS, NO_OBJ ),
 
@@ -3168,6 +3174,91 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
     if (bad) {
       log_warn(LD_DIR, "Invalid legacy key digest %s on vote.",
                escaped(tok->args[0]));
+    }
+  }
+
+  { /* Get the SR key if there is one */
+    directory_token_t *master_key_tok, *sign_cert_tok, *sr_cert_tok;
+    master_key_tok = find_opt_by_keyword(tokens, K_MASTER_KEY_ED);
+    sign_cert_tok = find_opt_by_keyword(tokens, K_SIGNING_CERT_ED);
+    sr_cert_tok = find_opt_by_keyword(tokens, K_SR_CERT_ED);
+
+    /* Make sure we received all of that info, or nothing */
+    int n_ed_toks = !!master_key_tok + !!sign_cert_tok + !!sr_cert_tok;
+    if ((n_ed_toks != 0 && n_ed_toks != 3)) {
+      log_warn(LD_DIR, "Vote has only a partial ed25519 cert chain");
+      goto err;
+    }
+
+    if (master_key_tok) {
+      /* The ed25519 master key of the authority */
+      ed25519_public_key_t master_key;
+      /* The ed25519 signing key of the authority */
+      ed25519_public_key_t signing_key;
+      (void) signing_key;
+
+      tor_assert(sign_cert_tok && sr_cert_tok);
+
+      /* Do some basic validation */
+      if (strcmp(sign_cert_tok->object_type, "ED25519 CERT")) {
+        log_warn(LD_DIR, "Wrong object type on signing-ed25519");
+        goto err;
+      }
+      if (strcmp(sr_cert_tok->object_type, "ED25519 CERT")) {
+        log_warn(LD_DIR, "Wrong object type on sr-ed25519");
+        goto err;
+      }
+
+      /* Parse the master key so that we can verify the signing key
+         certificate */
+      tor_assert(master_key_tok->n_args >= 1);
+      if (ed25519_public_from_base64(&master_key,
+                                     master_key_tok->args[0]) < 0) {
+        log_warn(LD_DIR, "Bogus ed25519 master key in vote");
+        goto err; /* XXX error mgmt */
+      }
+
+      /* XXX Maybe check that it's the same listed in the router desc */
+
+      /* Parse the signing key certificate */
+      tor_cert_t *sign_cert = tor_cert_parse(
+                       (const uint8_t*)sign_cert_tok->object_body,
+                       sign_cert_tok->object_size);
+      if (!sign_cert) {
+        log_warn(LD_DIR, "Couldn't parse ed25519 signing cert");
+        goto err;
+      }
+
+      /* XXX Should 'now' be 0 in tor_cerT_checksig()? */
+      /* XXX Why &master_key? */
+
+      /* Verify signing key certificate */
+      if (tor_cert_checksig(sign_cert, &master_key, 0) < 0) {
+        log_warn(LD_DIR, "Couldn't verify sig of signing cert");
+        goto err;
+      }
+
+      /* Now parse the SR key certificate */
+      tor_cert_t *sr_cert = tor_cert_parse(
+                       (const uint8_t*)sr_cert_tok->object_body,
+                       sr_cert_tok->object_size);
+      if (!sr_cert) {
+        log_warn(LD_DIR, "Couldn't parse ed25519 shared random cert");
+        goto err;
+      }
+
+      /* XXX Why &sign_cert->signed_key ?*/
+
+      /* Verify SR cert using the signing key from the singing cert. */
+      if (tor_cert_checksig(sr_cert, &sign_cert->signed_key, 0) < 0) {
+        log_warn(LD_DIR, "Couldn't verify sig of sr cert");
+        goto err;
+      }
+
+      ns->ed25519_shared_random_cert = sr_cert; /* XXX free */
+
+      log_warn(LD_GENERAL, "[SR] Saved SR key %s.",
+               hex_str((char *)sr_cert->signed_key.pubkey, ED25519_PUBKEY_LEN));
     }
   }
 
