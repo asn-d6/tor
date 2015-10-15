@@ -3185,8 +3185,10 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
   /* Get SR commitments from votes */
   smartlist_t *commitment_lst = find_all_by_keyword(tokens, K_COMMITMENT);
   if (commitment_lst) {
+    /* XXX clean and free. */
+    ns->commitments = digest256map_new();
     SMARTLIST_FOREACH_BEGIN(commitment_lst, directory_token_t *, tok) {
-      sr_commit_t *rcvd_commit = NULL;
+      sr_commit_t *rcvd_commit = NULL, *ret_commit;
       const char *commit_pubkey = tok->args[0];
       const char *hash_alg = tok->args[1];
       const char *commitment = tok->args[2];
@@ -3203,16 +3205,11 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
         continue; /* XXX hm. continue, break, or goto err? :) */
       }
 
-      if (!ns->commitments) {
-        ns->commitments = digest256map_new(); /* XXX free in the end */
-      }
-
       /* XXX check retval to make sure that there is no dup commitments */
-      digest256map_set(ns->commitments, rcvd_commit->auth_identity.pubkey,
-                       rcvd_commit);
-
-      log_warn(LD_GENERAL, "We received the commitment of %s. Commit value: %s",
-               rcvd_commit->auth_fingerprint, rcvd_commit->encoded_commit);
+      ret_commit = digest256map_set(ns->commitments,
+                                    rcvd_commit->auth_identity.pubkey,
+                                    rcvd_commit);
+      tor_assert(ret_commit == NULL);
     } SMARTLIST_FOREACH_END(tok);
     smartlist_free(commitment_lst);
   }
