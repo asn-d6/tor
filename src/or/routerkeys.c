@@ -648,6 +648,11 @@ static tor_cert_t *auth_key_cert = NULL;
 static uint8_t *rsa_ed_crosscert = NULL;
 static size_t rsa_ed_crosscert_len = 0;
 
+/* Authority only SR key XXX */
+static ed25519_keypair_t *shared_random_key = NULL;
+/* Certificate (ed25519 singing key -> ed25519 sr key) */
+static tor_cert_t *shared_random_cert = NULL;
+
 /**
  * Running as a server: load, reload, or refresh our ed25519 keys and
  * certificates, creating and saving new ones as needed.
@@ -658,9 +663,11 @@ load_ed_keys(const or_options_t *options, time_t now)
   ed25519_keypair_t *id = NULL;
   ed25519_keypair_t *sign = NULL;
   ed25519_keypair_t *auth = NULL;
+  ed25519_keypair_t *shared_random = NULL;
   const ed25519_keypair_t *sign_signing_key_with_id = NULL;
   const ed25519_keypair_t *use_signing = NULL;
   const tor_cert_t *check_signing_cert = NULL;
+  tor_cert_t *sr_cert = NULL;
   tor_cert_t *sign_cert = NULL;
   tor_cert_t *auth_cert = NULL;
 
@@ -886,6 +893,61 @@ load_ed_keys(const or_options_t *options, time_t now)
       FAIL("Can't create auth key");
   }
 
+
+  /* If we are an authority we need an SR key. Load it or generate it!! */
+  if (authdir_mode(options)) {
+    log_warn(LD_GENERAL, "[SR] We are an authority! We need an SR key!");
+
+    char *sr_fname =
+      options_get_datadir_fname2(options, "keys", "ed25519_shared_random");
+
+    /* XXX Do I need to make a new cert type or is CERT_TYPE_ID_SIGNING ok? */
+
+    /* Try to load it up from disk */
+    shared_random = ed_key_init_from_file(
+                                   sr_fname,
+                                   INIT_ED_KEY_NEEDCERT,
+                                   LOG_INFO,
+                                   NULL, 0, 0, CERT_TYPE_ID_SIGNING,
+                                   &sr_cert);
+
+    /* See if we need a new shared random key. Maybe the file did not
+       exist, or maybe the current one expires soon */
+    const int need_new_sr_key =
+      NULL == shared_random || EXPIRES_SOON(sr_cert, 0);
+
+    if (need_new_sr_key) {
+      uint32_t flags = (INIT_ED_KEY_CREATE|
+                        INIT_ED_KEY_REPLACE|
+                        INIT_ED_KEY_EXTRA_STRONG|
+                        INIT_ED_KEY_NEEDCERT);
+
+      log_warn(LD_GENERAL, "[SR] Seems like we need a new SR key");
+
+      /* XXX What should be the lifetime of the SR key? Should it be
+         SigningKeyLifetime, the same value as the signing key? Or
+         should we try to actually synchronize their creation/deletion? */
+
+      /* XXX Should we use sign or use_signing */
+
+      shared_random = ed_key_init_from_file(sr_fname,
+                                   flags, LOG_WARN,
+                                   sign, now,
+                                   options->SharedRandomKeyLifetime,
+                                   CERT_TYPE_ID_SIGNING,
+                                   &sr_cert);
+
+      /* XXX Should we fail in this case, or try to proceed without SR key? */
+      if (!shared_random)
+        FAIL("Could not create missing SR key");
+
+      /* Make sure that the right key was included in the cert */
+      tor_assert(ed25519_pubkey_eq(&sr_cert->signed_key, &shared_random->pubkey));
+    }
+
+    tor_free(sr_fname);
+  }
+
   /* We've generated or loaded everything.  Put them in memory. */
 
  end:
@@ -901,6 +963,10 @@ load_ed_keys(const or_options_t *options, time_t now)
   if (auth) {
     SET_KEY(current_auth_key, auth);
     SET_CERT(auth_key_cert, auth_cert);
+  }
+  if (shared_random) {
+    SET_KEY(shared_random_key, shared_random);
+    SET_CERT(shared_random_cert, sr_cert);
   }
 
   return 0;
@@ -1020,6 +1086,19 @@ get_current_auth_key_cert(void)
 {
   return auth_key_cert;
 }
+
+const ed25519_keypair_t *
+get_shared_random_keypair(void)
+{
+  return shared_random_key;
+}
+
+const tor_cert_t *
+get_shared_random_key_cert(void)
+{
+  return shared_random_cert;
+}
+
 
 void
 get_master_rsa_crosscert(const uint8_t **cert_out,

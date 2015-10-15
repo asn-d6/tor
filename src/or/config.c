@@ -303,6 +303,8 @@ static config_var_t option_vars_[] = {
   V(ServerTransportListenAddr,   LINELIST, NULL),
   V(ServerTransportOptions,      LINELIST, NULL),
   V(SigningKeyLifetime,          INTERVAL, "30 days"),
+  /* XXX Do all the checks that are done for SigningKeyLifetime */
+  V(SharedRandomKeyLifetime,     INTERVAL, "30 days"),
   V(Socks4Proxy,                 STRING,   NULL),
   V(Socks5Proxy,                 STRING,   NULL),
   V(Socks5ProxyUsername,         STRING,   NULL),
