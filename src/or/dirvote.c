@@ -15,6 +15,7 @@
 #include "policies.h"
 #include "rephist.h"
 #include "router.h"
+#include "routerkeys.h"
 #include "routerlist.h"
 #include "routerparse.h"
 #include "entrynodes.h" /* needed for guardfraction methods */
@@ -72,6 +73,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
   const char *client_versions = NULL, *server_versions = NULL;
   char *packages = NULL;
   char fingerprint[FINGERPRINT_LEN+1];
+  char master_ed_key_base64[ED25519_BASE64_LEN+1];
   char digest[DIGEST_LEN];
   uint32_t addr;
   char *client_versions_line = NULL, *server_versions_line = NULL;
@@ -116,7 +118,19 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
     packages = tor_strdup("");
   }
 
-  shared_random_vote_str = sr_get_string_for_vote();
+  { /* Get our ed25519 master router key */
+    const ed25519_public_key_t *our_master_ed25519_key = get_master_identity_key();
+
+    if (ed25519_public_to_base64(master_ed_key_base64,
+                                 our_master_ed25519_key)<0) {
+      log_err(LD_BUG,"Couldn't base64-encode our own master key\n");
+      goto err;
+    }
+  }
+
+  { /* Get shared random string */
+    shared_random_vote_str = sr_get_string_for_vote();
+  }
 
   {
     char published[ISO_TIME_LEN+1];
@@ -158,6 +172,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  "params %s\n"
                  "dir-source %s %s %s %s %d %d\n"
                  "contact %s\n"
+                 "master-key-ed25519 %s\n"
                  "%s", /* shared randomness information */
                  v3_ns->type == NS_TYPE_VOTE ? "vote" : "opinion",
                  methods,
@@ -172,6 +187,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  voter->nickname, fingerprint, voter->address,
                  fmt_addr32(addr), voter->dir_port, voter->or_port,
                  voter->contact,
+                 master_ed_key_base64,
                  shared_random_vote_str ? shared_random_vote_str : "");
 
     tor_free(params);
