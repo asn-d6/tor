@@ -128,8 +128,8 @@ typedef struct sr_conflict_commit_t {
 /* State of the protocol. It's also saved on disk in fname. This data
  * structure MUST be synchronized at all time with the one on disk. */
 typedef struct sr_state_t {
-  /* Number of runs completed (mainly for debug) */
-  unsigned int n_protocol_runs;
+  /* Number of runs completed. */
+  uint64_t n_protocol_runs;
 
   /* Filename of the state file on disk. */
   char *fname;
@@ -188,10 +188,10 @@ void sr_prepare_state_for_new_voting_period(time_t valid_after);
 
 void sr_decide_state_post_voting(smartlist_t *votes);
 
-sr_commit_t *sr_handle_received_commitment(const char *commit_pubkey,
-                                           const char *hash_alg,
-                                           const char *commitment,
-                                           const char *reveal);
+sr_commit_t * sr_handle_received_commitment(const char *commit_pubkey,
+                                            const char *hash_alg,
+                                            const char *commitment,
+                                            const char *reveal);
 
 #ifdef SHARED_RANDOM_PRIVATE
 
