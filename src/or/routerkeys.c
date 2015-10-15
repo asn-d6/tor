@@ -898,6 +898,8 @@ load_ed_keys(const or_options_t *options, time_t now)
   if (authdir_mode(options)) {
     log_warn(LD_GENERAL, "[SR] We are an authority! We need an SR key!");
 
+    /* XXX memory management */
+
     char *sr_fname =
       options_get_datadir_fname2(options, "keys", "ed25519_shared_random");
 
