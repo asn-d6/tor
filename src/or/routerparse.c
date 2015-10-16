@@ -3185,10 +3185,7 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
   /* Get SR commitments from votes */
   smartlist_t *commitment_lst = find_all_by_keyword(tokens, K_COMMITMENT);
   if (commitment_lst) {
-    /* XXX clean and free. */
-    ns->commitments = digest256map_new();
     SMARTLIST_FOREACH_BEGIN(commitment_lst, directory_token_t *, tok) {
-      sr_commit_t *rcvd_commit = NULL, *ret_commit;
       const char *commit_pubkey = tok->args[0];
       const char *hash_alg = tok->args[1];
       const char *commitment = tok->args[2];
@@ -3197,19 +3194,9 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
       if (tok->n_args > 3) { /* a reveal value might also be included */
         reveal = tok->args[3];
       }
-
-      rcvd_commit = sr_handle_received_commitment(commit_pubkey, hash_alg,
-                                                  commitment, reveal);
-      if (!rcvd_commit) {
-        log_warn(LD_DIR, "There was an issue with the received commitment XXX print msg");
-        continue; /* XXX hm. continue, break, or goto err? :) */
-      }
-
-      /* XXX check retval to make sure that there is no dup commitments */
-      ret_commit = digest256map_set(ns->commitments,
-                                    rcvd_commit->auth_identity.pubkey,
-                                    rcvd_commit);
-      tor_assert(ret_commit == NULL);
+      /* XXX: Use ed25519 shared random key for the voter key. */
+      sr_handle_received_commitment(commit_pubkey, hash_alg, commitment,
+                                    reveal, get_master_identity_key());
     } SMARTLIST_FOREACH_END(tok);
     smartlist_free(commitment_lst);
   }
