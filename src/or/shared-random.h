@@ -195,15 +195,16 @@ sr_commit_t * sr_handle_received_commitment(const char *commit_pubkey,
 
 #ifdef SHARED_RANDOM_PRIVATE
 
+/* Encode */
 STATIC int reveal_encode(sr_commit_t *commit, char *dst, size_t len);
 STATIC int commit_encode(sr_commit_t *commit, char *dst, size_t len);
+/* Decode. */
+STATIC int commit_decode(const char *encoded, sr_commit_t *commit);
+STATIC int reveal_decode(const char *encoded, sr_commit_t *commit);
 
 STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
 
 STATIC sr_commit_t *generate_sr_commitment(time_t timestamp);
-
-STATIC int parse_encoded_commit(const char *encoded, sr_commit_t *commit);
-STATIC int parse_encoded_reveal(const char *encoded, sr_commit_t *commit);
 
 STATIC int verify_commit_and_reveal(const sr_commit_t *commit);
 
