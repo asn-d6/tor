@@ -119,64 +119,10 @@ typedef struct sr_commit_t {
 /* Represent a commit conflict. See section [COMMITCONFLICT] in proposal
  * 250. A conflict is valid only for a full protocol run. */
 typedef struct sr_conflict_commit_t {
-  /* Authority ed25519 identity of the conflict commit. */
-  ed25519_public_key_t auth_identity;
-  /* First commit has been seen before the second one. */
+  /* First commit has been seen before the second one. They MUST have the
+   * same authority identity. */
   sr_commit_t *commit1, *commit2;
 } sr_conflict_commit_t;
-
-/* State of the protocol. It's also saved on disk in fname. This data
- * structure MUST be synchronized at all time with the one on disk. */
-typedef struct sr_state_t {
-  /* Number of runs completed. */
-  uint64_t n_protocol_runs;
-
-  /* Filename of the state file on disk. */
-  char *fname;
-  /* Version of the protocol. */
-  unsigned int version;
-  /* Until when this state is valid? */
-  time_t valid_until;
-  /* Protocol phase. */
-  sr_phase_t phase;
-
-  /* A map of all the receive commitments for the protocol run. This is
-   * indexed by authority identity digest. */
-  digest256map_t *commitments;
-
-  /* Current and previous shared random value. See section [SRCALC] in
-   * proposal 250 for details on how this is constructed. */
-  sr_srv_t *previous_srv;
-  sr_srv_t *current_srv;
-
-  /* List of commit conflicts seen by this authority. */
-  digest256map_t *conflicts;
-
-  /* The number of commitment rounds we've performed in this protocol run. */
-  int n_commit_rounds;
-  /* The number of reveal rounds we've performed in this protocol run. */
-  int n_reveal_rounds;
-} sr_state_t;
-
-/* Persistent state of the protocol, as saved to disk. */
-typedef struct sr_disk_state_t {
-  uint32_t magic_;
-  /* Version of the protocol. */
-  int Version;
-  /* State valid until? */
-  time_t ValidUntil;
-  /* Which protocol phase are we in? */
-  char *ProtocolPhase;
-  /* All commitments seen that are valid. */
-  config_line_t *Commitments;
-  /* All conflict seen. */
-  config_line_t *Conflicts;
-  /* Previous and current shared random value. */
-  config_line_t *SharedRandPreviousValue;
-  config_line_t *SharedRandCurrentValue;
-  /* Extra Lines for configuration we might not know. */
-  config_line_t *ExtraLines;
-} sr_disk_state_t;
 
 /* API */
 
@@ -184,15 +130,28 @@ int sr_init(int save_to_disk);
 void sr_save_and_cleanup(void);
 
 char *sr_get_string_for_vote(void);
-void sr_prepare_state_for_new_voting_period(time_t valid_after);
+void sr_prepare_new_voting_period(time_t valid_after);
 
-void sr_decide_state_post_voting(void);
+void sr_decide_post_voting(void);
+
+void sr_commit_free(sr_commit_t *commit);
+void sr_conflict_commit_free(sr_conflict_commit_t *conflict);
 
 void sr_handle_received_commitment(const char *commit_pubkey,
                                    const char *hash_alg,
                                    const char *commitment,
                                    const char *reveal,
                                    const ed25519_public_key_t *voter_key);
+
+sr_commit_t *sr_parse_commitment_line(smartlist_t *args);
+sr_conflict_commit_t *sr_parse_conflict_line(smartlist_t *args);
+
+sr_srv_status_t sr_get_srv_status_from_str(const char *name);
+const char *sr_get_srv_status_str(sr_srv_status_t status);
+
+void sr_compute_srv(void);
+
+sr_commit_t *sr_generate_our_commitment(time_t timestamp);
 
 #ifdef SHARED_RANDOM_PRIVATE
 
@@ -203,12 +162,8 @@ STATIC int commit_encode(sr_commit_t *commit, char *dst, size_t len);
 STATIC int commit_decode(const char *encoded, sr_commit_t *commit);
 STATIC int reveal_decode(const char *encoded, sr_commit_t *commit);
 
-STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
-
-STATIC sr_commit_t *generate_sr_commitment(time_t timestamp);
-
 STATIC int verify_commit_and_reveal(const sr_commit_t *commit);
 
-#endif
+#endif /* SHARED_RANDOM_PRIVATE */
 
 #endif /* TOR_SHARED_RANDOM_H */
