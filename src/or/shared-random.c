@@ -78,8 +78,8 @@ static config_var_t state_vars[] = {
   VAR("Conflict",               LINELIST_S, Conflicts, NULL),
   V(Conflicts,                  LINELIST_V, NULL),
 
-  V(SharedRandPreviousValue,    LINELIST_V, NULL),
-  V(SharedRandCurrentValue,     LINELIST_V, NULL),
+  V(SharedRandPreviousValue,    LINELIST_S, NULL),
+  V(SharedRandCurrentValue,     LINELIST_S, NULL),
   { NULL, CONFIG_TYPE_OBSOLETE, 0, NULL }
 };
 
@@ -637,25 +637,54 @@ disk_state_set(sr_disk_state_t *state)
   sr_disk_state = state;
 }
 
+/* Return -1 if the disk state is invalid that is something in there that we
+ * can't or shouldn't use. Return 0 if everything checks out. */
 static int
 disk_state_validate(sr_disk_state_t *state)
 {
-  (void) state;
-  /* TODO: */
+  time_t now;
+
+  tor_assert(state);
+
+  now = time(NULL);
+
+  /* Do we support the protocol version in the state?. */
+  if (state->Version > SR_PROTO_VERSION) {
+    goto invalid;
+  }
+  /* If the valid until time is before now, we shouldn't use that state. */
+  if (state->ValidUntil < now) {
+    goto invalid;
+  }
+  /* If our state is in a different protocol phase that we are suppose to
+   * be, we consider it invalid. */
+  {
+    sr_phase_t current_phase = get_sr_protocol_phase(now);
+    if (get_phase_from_str(state->ProtocolPhase) != current_phase) {
+      goto invalid;
+    }
+  }
+
   return 0;
+ invalid:
+  return -1;
 }
 
 static int
 disk_state_validate_cb(void *old_state, void *state, void *default_state,
                        int from_setconf, char **msg)
 {
-  /* We don't use these; only options do. Still, we need to match that
-   * signature. */
+  /* We don't use these; only options do. */
   (void) from_setconf;
   (void) default_state;
   (void) old_state;
 
-  /* TODO: Validate state file entries. */
+  /* XXX: Validate phase, version, time, commitments, conflicts and SRV
+   * format. This is called by config_dump which is just before we are about
+   * to write it to disk so we should verify the format and not parse
+   * everything again. At that point, our global memory state has been
+   * copied to the disk state so it's fair to assume it's trustable. So,
+   * only verify the format of the strings. */
   (void) state;
   (void) msg;
   return 0;
@@ -667,7 +696,7 @@ disk_state_validate_cb(void *old_state, void *state, void *default_state,
  * If successfully decoded and parsed, commit is updated and 0 is returned.
  * On error, return -1. */
 STATIC int
-parse_encoded_commit(const char *encoded, sr_commit_t *commit)
+commit_decode(const char *encoded, sr_commit_t *commit)
 {
   size_t offset = 0;
   char b64_decoded[SR_COMMIT_LEN + 1];
@@ -703,7 +732,7 @@ error:
 /* Parse the b64 blob at <b>encoded</b> containin reveal information
    and store the information in-place in <b>commit</b>. */
 STATIC int
-parse_encoded_reveal(const char *encoded, sr_commit_t *commit)
+reveal_decode(const char *encoded, sr_commit_t *commit)
 {
   char b64_decoded[SR_REVEAL_LEN + 2];
 
@@ -772,14 +801,14 @@ parse_commitment_line(smartlist_t *args)
   */
   /* Fourth argument is the commitment value base64-encoded. */
   value = smartlist_get(args, 3);
-  if (parse_encoded_commit(value, commit) < 0) {
+  if (commit_decode(value, commit) < 0) {
     goto error;
   }
 
   /* (Optional) Fifth argument is the revealed value. */
   value = smartlist_get(args, 4);
   if (value != NULL) {
-    if (parse_encoded_reveal(value, commit) < 0) {
+    if (reveal_decode(value, commit) < 0) {
       goto error;
     }
   }
@@ -852,13 +881,13 @@ parse_conflict_line(smartlist_t *args)
   /* Second argument is the first commit value base64-encoded. */
   commit1 = commit_new(&identity);
   value = smartlist_get(args, 5);
-  if (parse_encoded_commit(value, commit1) < 0) {
+  if (commit_decode(value, commit1) < 0) {
     goto error;
   }
   /* Third argument is the second commit value base64-encoded. */
   commit2 = commit_new(&identity);
   value = smartlist_get(args, 5);
-  if (parse_encoded_commit(value, commit2) < 0) {
+  if (commit_decode(value, commit2) < 0) {
     goto error;
   }
   /* Everything is parsing correctly, allocate object and return it. */
@@ -1469,50 +1498,6 @@ generate_sr_commitment(time_t timestamp)
   commit_free(commit);
   return NULL;
 }
-
-#if 0
-/** Generate the commitment/reveal value for the protocol run starting at
- *  <b>timestamp</b>. */
-static sr_commit_t *
-generate_sr_commitment_stupid(time_t timestamp)
-{
-  authority_cert_t *my_cert;
-  char fingerprint[FINGERPRINT_LEN+1];
-  sr_commit_t *commit = tor_malloc_zero(sizeof(sr_commit_t));
-  int commitment, reveal;
-
-  (void) timestamp;
-
-  if (!(my_cert = get_my_v3_authority_cert())) {
-    log_warn(LD_DIR, "Can't generate consensus without a certificate.");
-    return NULL; /* XXX error mgmt */
-  }
-  if (crypto_pk_get_fingerprint(my_cert->identity_key,
-                                fingerprint, 0) < 0) {
-    log_err(LD_DIR,"Error computing fingerprint");
-    return NULL; /* XXX error mgmt */
-  }
-
-  /* This commitment belongs to us! Set our fingerprint. */
-  commit->auth_fingerprint = tor_strdup(fingerprint);
-  /* Also set our digest */
-  crypto_pk_get_digest(my_cert->identity_key, (char *)commit->auth_digest);
-
-  commitment = crypto_rand_int(100);
-  reveal = crypto_rand_int(100);
-
-  tor_asprintf(&commit->commitment, "%d", commitment);
-  tor_asprintf(&commit->reveal, "%d", reveal);
-
-  /* This is _our_ commit so it's authoritative. */
-  commit->is_authoritative = 1;
-
-  log_warn(LD_DIR, "[SR] Generated commitment: %d / %d (identity: %s)",
-           commitment, reveal, fingerprint);
-
-  return commit;
-}
-#endif
 
 /* Return commit object from the given authority digest <b>identity</b>.
  * Return NULL if not found. */
@@ -2130,6 +2115,9 @@ commit_has_majority(const sr_commit_t *commit, smartlist_t *votes)
 
   /* Go through all the votes and count the ones that include this commit. */
   SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
+    /* XXX: Let's ignore the votes from the commit authority! Else an
+     * authority can vote multiple time the same one thus reaching majority
+     * with this... */
     if (digest256map_get(v->commitments, commit->auth_identity.pubkey)) {
       votes_for_this_commit++;
     }
