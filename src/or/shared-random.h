@@ -186,12 +186,13 @@ void sr_save_and_cleanup(void);
 char *sr_get_string_for_vote(void);
 void sr_prepare_state_for_new_voting_period(time_t valid_after);
 
-void sr_decide_state_post_voting(smartlist_t *votes);
+void sr_decide_state_post_voting(void);
 
-sr_commit_t * sr_handle_received_commitment(const char *commit_pubkey,
-                                            const char *hash_alg,
-                                            const char *commitment,
-                                            const char *reveal);
+void sr_handle_received_commitment(const char *commit_pubkey,
+                                   const char *hash_alg,
+                                   const char *commitment,
+                                   const char *reveal,
+                                   const ed25519_public_key_t *voter_key);
 
 #ifdef SHARED_RANDOM_PRIVATE
 
