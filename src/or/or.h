@@ -2568,10 +2568,6 @@ typedef struct networkstatus_t {
   /** If present, a map from descriptor digest to elements of
    * routerstatus_list. */
   digestmap_t *desc_digest_map;
-
-  /* Vote only: For each vote received, this is the list of
-   * commitments included in that vote. */
-  digest256map_t *commitments;
 } networkstatus_t;
 
 /** A set of signatures for a networkstatus consensus.  Unless otherwise
