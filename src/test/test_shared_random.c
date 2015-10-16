@@ -1,9 +1,11 @@
 #define SHARED_RANDOM_PRIVATE
+#define SHARED_RANDOM_STATE_PRIVATE
 
 #include "or.h"
 #include "test.h"
 #include "config.h"
 #include "shared-random.h"
+#include "shared-random-state.h"
 #include "routerkeys.h"
 #include "router.h"
 #include "routerparse.h"
@@ -111,7 +113,7 @@ test_generate_commitment(void *arg)
   }
 
   { /* Generate our commit/reveal */
-    our_commit = generate_sr_commitment(now);
+    our_commit = sr_generate_our_commitment(now);
     tt_assert(our_commit);
   }
 
