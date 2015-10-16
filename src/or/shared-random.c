@@ -45,6 +45,11 @@ static const char *dstate_conflict_key = "Conflict";
 static const char *dstate_prev_srv_key = "SharedRandPreviousValue";
 static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 
+/* Commits from an authority vote. This is indexed by authority shared
+ * random key and an entry is a digest map of valid commit (since commit in
+ * a vote MUST be unique). */
+static digest256map_t *voted_commits;
+
 /* XXX: These next two are duplicates or near-duplicates from config.c */
 #define VAR(name, conftype, member, initvalue)                              \
   { name, CONFIG_TYPE_ ## conftype, STRUCT_OFFSET(sr_disk_state_t, member), \
@@ -437,6 +442,25 @@ commit_add(sr_commit_t *commit, sr_state_t *state)
     log_info(LD_DIR, "Commit from authority %s has been saved.",
              commit->auth_fingerprint);
   }
+}
+
+/* Free all commit object in the given list. */
+static void
+voted_commits_free(digest256map_t *commits)
+{
+  tor_assert(commits);
+  DIGEST256MAP_FOREACH(commits, key, sr_commit_t *, c) {
+    commit_free(c);
+  } DIGEST256MAP_FOREACH_END;
+}
+
+/* Helper: deallocate a list of commit object that comes from the
+ * voted_commits map. (Used with digest256map_free(), which requires a
+ * function pointer whose argument is void *). */
+static void
+voted_commits_free_(void *p)
+{
+  voted_commits_free(p);
 }
 
 /* Free a state that was allocated with state_new(). */
@@ -1359,6 +1383,7 @@ done:
 static void
 sr_cleanup(void)
 {
+  digest256map_free(voted_commits, voted_commits_free_);
   state_free(sr_state);
   disk_state_free(sr_disk_state);
   /* Nullify our global state. */
@@ -1376,6 +1401,8 @@ sr_init(int save_to_disk)
   /* We shouldn't have those assigned. */
   tor_assert(sr_disk_state == NULL);
   tor_assert(sr_state == NULL);
+
+  voted_commits = digest256map_new();
 
   /* First, we have to try to load the state from disk. */
   ret = disk_state_load_from_disk();
@@ -2029,12 +2056,47 @@ sr_get_string_for_vote(void)
   return vote_str;
 }
 
+/* Add a commit that has just been seen in <b>voter_key<b/>'s vote to our
+ * voted list. If an entry for the voter is not found, one is created. If
+ * there is already a commit from the same authority key in the voter's
+ * list, create a conflict since this is NOT allowed. */
+static void
+add_voted_commit(sr_commit_t *commit, const ed25519_public_key_t *voter_key)
+{
+  sr_commit_t *saved_commit;
+  digest256map_t *entry;
+
+  tor_assert(commit);
+  tor_assert(voter_key);
+
+  /* Make sure we have an entry for the voter key and if not create one.
+   * We'll populare the entry after verification. */
+  entry = digest256map_get(voted_commits, voter_key->pubkey);
+  if (entry == NULL) {
+    entry = digest256map_new();
+    digest256map_set(voted_commits, voter_key->pubkey, entry);
+  }
+
+  /* An authority is allowed to commit only one value thus each vote MUST
+   * only have one commit per authority. */
+  saved_commit = digest256map_get(entry, commit->auth_identity.pubkey);
+  if (saved_commit != NULL) {
+    /* Let's create a conflict here in order to ignore this mis-behaving
+     * authority from now one. */
+    add_conflict_to_sr_state(commit, saved_commit);
+  } else {
+    /* Unique entry for now, add it indexed by the commit authority key. */
+    digest256map_set(entry, commit->auth_identity.pubkey, commit);
+  }
+}
+
 /* Given all the commitment information from a commitment line in a vote,
  * parse the line, validate it and return a newly allocated commit object
  * that contains the verified data from the vote. Return NULL on error. */
-sr_commit_t *
+void
 sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
-                              const char *commitment, const char *reveal)
+                              const char *commitment, const char *reveal,
+                              const ed25519_public_key_t *voter_key)
 {
   sr_commit_t *commit;
   smartlist_t *args;
@@ -2075,9 +2137,12 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
     goto end;
   }
 
+  /* Add the commit to our voted commit list so we can process them once we
+   * decide our state in the post voting stage. */
+  add_voted_commit(commit, voter_key);
+
 end:
   smartlist_free(args);
-  return commit;
 }
 
 
@@ -2096,34 +2161,34 @@ commitments_are_the_same(const sr_commit_t *commit_one,
   return 1;
 }
 
-/* Return True if <b>commit</b> is included in enough <b>votes</b> to be the
- * majority opinion. */
+/* Return 1 iff <b>commit</b> is included in enough votes to be the majority
+ * opinion. */
 static int
-commit_has_majority(const sr_commit_t *commit, smartlist_t *votes)
+commit_has_majority(const sr_commit_t *commit)
 {
   int n_voters = get_n_authorities(V3_DIRINFO);
   int votes_required_for_majority = (n_voters / 2) + 1;
   int votes_for_this_commit = 0;
 
   tor_assert(commit);
-  tor_assert(votes);
 
   /* Let's avoid some useless work here. Protect those CPU cycles! */
   if (commit->has_majority) {
     return 1;
   }
 
-  /* Go through all the votes and count the ones that include this commit. */
-  SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
-    /* XXX: Let's ignore the votes from the commit authority! Else an
-     * authority can vote multiple time the same one thus reaching majority
-     * with this... */
-    if (digest256map_get(v->commitments, commit->auth_identity.pubkey)) {
+  DIGEST256MAP_FOREACH(voted_commits, key, const digest256map_t *, commits) {
+    /* IMPORTANT: At this stage, we are assured that there can never be two
+     * commits from the same authority in one single vote because of our
+     * data structure type that doesn't allow it but also we make sure to
+     * flag a conflict if we found that during received commit parsing. */
+    if (digest256map_get(commits, commit->auth_identity.pubkey)) {
       votes_for_this_commit++;
     }
-  } SMARTLIST_FOREACH_END(v);
+  } DIGEST256MAP_FOREACH_END;
 
-  log_warn(LD_DIR, "[SR] \t \t Commit %s from %s. It has %d votes and it needs %d.",
+  log_warn(LD_DIR, "[SR] \t \t Commit %s from %s. "
+                   "It has %d votes and it needs %d.",
            commit->encoded_commit, commit->auth_fingerprint,
            votes_for_this_commit, votes_required_for_majority);
 
@@ -2131,7 +2196,6 @@ commit_has_majority(const sr_commit_t *commit, smartlist_t *votes)
   return votes_for_this_commit >= votes_required_for_majority;
 }
 
-#if 0
 /* We just received a commit from the vote of authority with
  * <b>identity_digest</b>. Return 1 if this commit is authorititative that
  * is, it belongs to the authority that voted it. Else return 0 if not. */
@@ -2149,19 +2213,16 @@ commit_is_authoritative(const sr_commit_t *commit,
   return !fast_memcmp(&commit->auth_identity, identity,
                       sizeof(commit->auth_identity));
 }
-#endif
 
 /* Decide if <b>commit</b> can be added to our state that is check if the
  * commit is authoritative or/and has majority. Return 1 if the commit
  * should be added to our state or 0 if not. */
 static int
 should_keep_commitment(sr_commit_t *commit,
-                       networkstatus_voter_info_t *voter,
-                       smartlist_t *votes)
+                       const ed25519_public_key_t *voter_key)
 {
   tor_assert(commit);
-  tor_assert(voter);
-  tor_assert(votes);
+  tor_assert(voter_key);
 
   /* For a commit to be added to our state, we need it to match one of the
    * two possible conditions.
@@ -2175,13 +2236,8 @@ should_keep_commitment(sr_commit_t *commit,
    * so, by consensus, we decided that this commit is usable for our shared
    * random computation and we can then also put it in our vote from that
    * point on. */
-  /* XXX: Use ed25519 identity key here of the voter. */
-  commit->is_authoritative = 1;
-#if 0
-  commit->is_authoritative = commit_is_authoritative(commit,
-                                                     voter->identity_digest);
-#endif
-  commit->has_majority = commit_has_majority(commit, votes);
+  commit->is_authoritative = commit_is_authoritative(commit, voter_key);
+  commit->has_majority = commit_has_majority(commit);
 
   /* One of those conditions is enough. */
   return commit->is_authoritative | commit->has_majority;
@@ -2193,14 +2249,12 @@ should_keep_commitment(sr_commit_t *commit,
  * line, or ignore it. */
 static void
 decide_commit_during_commit_phase(sr_commit_t *commit,
-                                  networkstatus_voter_info_t *voter,
-                                  smartlist_t *votes)
+                                  const ed25519_public_key_t *voter_key)
 {
   sr_commit_t *saved_commit;
 
   tor_assert(commit);
-  tor_assert(voter);
-  tor_assert(votes);
+  tor_assert(voter_key);
   tor_assert(sr_state->phase == SR_PHASE_COMMIT);
 
   log_warn(LD_DIR, "[SR] \t Deciding commit %s by %s",
@@ -2220,15 +2274,14 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
 
   /* Decide the state of the commit which will tell us if we can add it to
    * our state. This also updates the commit object. */
-  if (should_keep_commitment(commit, voter, votes)) {
+  if (should_keep_commitment(commit, voter_key)) {
     /* Let's not add a commit that we already have. */
     if (saved_commit == NULL) {
       add_commit_to_sr_state(commit);
     }
   } else {
-    char voter_fp[HEX_DIGEST_LEN + 1];
-    base16_encode(voter_fp, sizeof(voter_fp), voter->identity_digest,
-                  sizeof(voter->identity_digest));
+    char voter_fp[ED25519_BASE64_LEN + 1];
+    ed25519_public_to_base64(voter_fp, voter_key);
     log_warn(LD_DIR, "[SR] Commit of authority %s received from %s "
                      "is not authoritative nor has majority. Ignoring.",
              commit->auth_fingerprint, voter_fp);
@@ -2238,7 +2291,7 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
 /* We are during commit phase and we found <b>commit</b> in a
  * vote. See if it contains any reveal values that we could use. */
 static void
-decide_commit_during_reveal_phase(sr_commit_t *commit)
+decide_commit_during_reveal_phase(const sr_commit_t *commit)
 {
   sr_commit_t *saved_commit;
 
@@ -2279,23 +2332,18 @@ decide_commit_during_reveal_phase(sr_commit_t *commit)
          sizeof(saved_commit->encoded_reveal));
 }
 
-/* For all vote in <b>votes</b>, go over the every commitment and check if
- * we already have a commit from the same authority but with a different
- * value in our state and if so add the conflict to the state.  */
+/* Go over the every voted commit and check if we already have a commit from
+ * the same authority but with a different value in our state and if so add
+ * the conflict to the state.  */
 static void
-decide_conflict_from_votes(const smartlist_t *votes)
+decide_conflict_from_votes(void)
 {
-  tor_assert(votes);
-
-  SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
-    /* No commitments were present in this vote. */
-    if (v->commitments == NULL) {
-      continue;
-    }
-    DIGEST256MAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
-      sr_commit_t *saved_commit;
-
-      saved_commit = get_commit_from_state(&commit->auth_identity);
+  DIGEST256MAP_FOREACH(voted_commits, key, digest256map_t *, commits) {
+    /* For each voter, we'll make sure we don't have any conflicts for the
+     * vote they sent us. */
+    DIGEST256MAP_FOREACH(commits, c_key, sr_commit_t *, commit) {
+      sr_commit_t *saved_commit =
+        get_commit_from_state(&commit->auth_identity);
       if (saved_commit == NULL) {
         /* No conflict since we do not have it in our state. Ignore. */
         continue;
@@ -2306,38 +2354,35 @@ decide_conflict_from_votes(const smartlist_t *votes)
         add_conflict_to_sr_state(commit, saved_commit);
       }
     } DIGEST256MAP_FOREACH_END;
-  } SMARTLIST_FOREACH_END (v);
+  } DIGEST256MAP_FOREACH_END;
 }
 
 /* For all vote in <b>votes</b>, decide if the commitments should be ignored
  * or added/updated to our state. Depending on the phase here, different
  * actions are taken. */
 static void
-decide_commit_from_votes(sr_phase_t phase, smartlist_t *votes)
+decide_commit_from_votes(sr_phase_t phase)
 {
-  tor_assert(votes);
   tor_assert(phase == SR_PHASE_COMMIT || phase == SR_PHASE_REVEAL);
 
-  /* For each votes, check if we need to add it to our state or not. */
-  SMARTLIST_FOREACH_BEGIN(votes, const networkstatus_t *, v) {
-    networkstatus_voter_info_t *voter = smartlist_get(v->voters, 0);
-    /* No commitments were present in this vote. */
-    if (v->commitments == NULL) {
+  DIGEST256MAP_FOREACH(voted_commits, key, digest256map_t *, commits) {
+    /* Build our voter key to ease our life a bit. */
+    ed25519_public_key_t voter_key;
+    memcpy(voter_key.pubkey, key, sizeof(voter_key.pubkey));
+
+    /* IMPORTANT: Ignore authority vote if we have a conflict for it. Pass
+     * this point, commit can be flagged as having majority thus it's very
+     * important to ignore any authority that are mis-behaving. */
+    if (get_conflict_from_state(&voter_key)) {
       continue;
     }
-    /* XXX: Use the ed25519 authority key here. */
-#if 0
-    /* Ignore authority vote if we have a conflict for it. */
-    if (get_conflict_from_state()) {
-      continue;
-    }
-#endif
+
     /* Go over all commitments and depending on the phase decide what to do
      * with them that is keeping or updating them based on the votes. */
-    DIGEST256MAP_FOREACH(v->commitments, key, sr_commit_t *, commit) {
+    DIGEST256MAP_FOREACH(commits, c_key, sr_commit_t *, commit) {
       switch (phase) {
       case SR_PHASE_COMMIT:
-        decide_commit_during_commit_phase(commit, voter, votes);
+        decide_commit_during_commit_phase(commit, &voter_key);
         break;
       case SR_PHASE_REVEAL:
         decide_commit_during_reveal_phase(commit);
@@ -2346,13 +2391,13 @@ decide_commit_from_votes(sr_phase_t phase, smartlist_t *votes)
         tor_assert(0);
       }
     } DIGEST256MAP_FOREACH_END;
-  } SMARTLIST_FOREACH_END (v);
+  } DIGEST256MAP_FOREACH_END;
 }
 
 /** This is called in the end of each voting round. Decide which
  *  commitments/reveals to keep and write them to perm state. */
 void
-sr_decide_state_post_voting(smartlist_t *votes)
+sr_decide_state_post_voting(void)
 {
   log_warn(LD_DIR, "[SR] About to decide state (phase: %s):",
            get_phase_str(sr_state->phase));
@@ -2361,11 +2406,11 @@ sr_decide_state_post_voting(smartlist_t *votes)
    * our state. This is important because after that we will decide if we
    * keep the commitments as authoritative or decided by majority from which
    * we MUST exclude conflicts. */
-  decide_conflict_from_votes(votes);
+  decide_conflict_from_votes();
 
    /* Then we decide which commit to keep in our state considering that all
     * conflicts have been found previously. */
-  decide_commit_from_votes(sr_state->phase, votes);
+  decide_commit_from_votes(sr_state->phase);
 
   log_warn(LD_DIR, "[SR] State decided!");
 }
