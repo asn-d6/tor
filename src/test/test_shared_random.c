@@ -128,14 +128,14 @@ test_generate_commitment(void *arg)
     memcpy(&parsed_commit->auth_identity, &our_commit->auth_identity,
            sizeof(parsed_commit->auth_identity));
 
-    retval = parse_encoded_commit(commit_b64, parsed_commit);
+    retval = commit_decode(commit_b64, parsed_commit);
     tt_int_op(retval, ==, 0);
   }
 
   /* XXX Verify commit signature. */
 
   { /* Parse our own reveal */
-    retval = parse_encoded_reveal(reveal_b64, parsed_commit);
+    retval = reveal_decode(reveal_b64, parsed_commit);
     tt_int_op(retval, ==, 0);
   }
 
