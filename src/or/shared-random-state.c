@@ -244,7 +244,7 @@ conflict_add_to_state(sr_conflict_commit_t *conflict, sr_state_t *state)
                            conflict->commit1->auth_identity.pubkey,
                            conflict);
   sr_conflict_commit_free(saved);
-  log_warn(LD_DIR, "[SR] Authority %s has just triggered a conflict"
+  log_warn(LD_DIR, "[SR] Authority %s has just triggered a conflict. "
            "It will be ignored for the rest of the protocol run.",
            conflict->commit1->auth_fingerprint);
 }
@@ -330,6 +330,9 @@ state_set(sr_state_t *state)
 static void
 disk_state_free(sr_disk_state_t *state)
 {
+  if (state == NULL) {
+    return;
+  }
   config_free(&state_format, state);
   tor_free(state);
 }
@@ -820,7 +823,6 @@ disk_state_load_from_disk(void)
 
   parsed_state = disk_state_parse(disk_state);
   if (parsed_state == NULL) {
-    disk_state_free(disk_state);
     ret = -EINVAL;
     goto error;
   }
@@ -829,6 +831,7 @@ disk_state_load_from_disk(void)
   log_notice(LD_DIR, "[SR] State loaded from \"%s\"", fname);
   return 0;
 error:
+  disk_state_free(disk_state);
   return ret;
 }
 
@@ -838,11 +841,16 @@ static int
 disk_state_save_to_disk(void)
 {
   int ret;
-  char *state, *content, *fname;
+  char *state, *content = NULL, *fname = NULL;
   char tbuf[ISO_TIME_LEN + 1];
   time_t now = time(NULL);
 
-  tor_assert(sr_disk_state);
+  /* If we didn't have the opportunity to setup an internal disk state,
+   * don't bother saving something to disk. */
+  if (sr_disk_state == NULL) {
+    ret = 0;
+    goto done;
+  }
 
   /* Make sure that our disk state is up to date with our memory state
    * before saving it to disk. */
@@ -1189,6 +1197,10 @@ sr_state_init(int save_to_disk)
   ret = disk_state_load_from_disk();
   if (ret < 0) {
     switch (-ret) {
+    case EINVAL:
+      /* We have a state on disk but it contains something we couldn't parse
+       * or an invalid entry in the state file. Let's remove it since it's
+       * obviously unusable and replace it by an new fresh state below. */
     case ENOENT:
       {
         /* No state on disk so allocate our states for the first time. */
@@ -1204,8 +1216,6 @@ sr_state_init(int save_to_disk)
         }
         break;
       }
-    case EINVAL:
-      goto error;
     default:
       /* Big problem. Not possible. */
       tor_assert(0);
