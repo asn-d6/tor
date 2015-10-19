@@ -90,7 +90,7 @@ commit_log(const sr_commit_t *commit)
 {
   tor_assert(commit);
 
-  log_warn(LD_DIR, "[SR] \t Commit from %s", commit->auth_fingerprint);
+  log_warn(LD_DIR, "[SR] \t Commit for %s", commit->auth_fingerprint);
 
   if (commit->commit_ts >= 0) {
     log_warn(LD_DIR, "[SR] \t C: [TS: %u] [H(R): %s...]",
@@ -256,7 +256,7 @@ verify_received_commit(const sr_commit_t *commit)
     goto invalid;
   }
 
-  log_warn(LD_DIR, "[SR] Commit from %s has been verified successfully!",
+  log_warn(LD_DIR, "[SR] \t Commit for %s has been verified successfully!",
            commit->auth_fingerprint);
   return 0;
  invalid:
@@ -350,13 +350,13 @@ sr_parse_conflict_line(smartlist_t *args)
   }
   /* Second argument is the first commit value base64-encoded. */
   commit1 = commit_new(&identity);
-  value = smartlist_get(args, 5);
+  value = smartlist_get(args, 1);
   if (commit_decode(value, commit1) < 0) {
     goto error;
   }
   /* Third argument is the second commit value base64-encoded. */
   commit2 = commit_new(&identity);
-  value = smartlist_get(args, 5);
+  value = smartlist_get(args, 2);
   if (commit_decode(value, commit2) < 0) {
     goto error;
   }
@@ -501,7 +501,9 @@ sr_generate_our_commitment(time_t timestamp)
 
   { /* Now create the commit signature */
     uint8_t sig_msg[SR_COMMIT_SIG_BODY_LEN];
+    memset(sig_msg, 0, sizeof(sig_msg));
 
+    /* Signature message format: H(REVEAL) || TIMESTAMP */
     memcpy(sig_msg, commit->hashed_reveal, sizeof(commit->hashed_reveal));
     set_uint64(sig_msg + sizeof(commit->hashed_reveal),
                tor_htonll((uint64_t) commit->commit_ts));
@@ -869,13 +871,13 @@ add_voted_commit(sr_commit_t *commit, const ed25519_public_key_t *voter_key)
    * only have one commit per authority. */
   saved_commit = digest256map_get(entry, commit->auth_identity.pubkey);
   if (saved_commit != NULL) {
+    /* Remove from list since the conflict object needs ownership. */
+    digest256map_remove(entry, saved_commit->auth_identity.pubkey);
     /* Let's create a conflict here in order to ignore this mis-behaving
      * authority from now one. */
     sr_conflict_commit_t *conflict =
       conflict_commit_new(commit, saved_commit);
     sr_state_add_conflict(conflict);
-    /* Remove from list since the conflict needs ownership. */
-    digest256map_remove(entry, saved_commit->auth_identity.pubkey);
   } else {
     /* Unique entry for now, add it indexed by the commit authority key. */
     digest256map_set(entry, commit->auth_identity.pubkey, commit);
@@ -948,9 +950,15 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
   tor_assert(hash_alg);
   tor_assert(commitment);
 
-  log_warn(LD_DIR, "[SR] Received commit from %s", commit_pubkey);
-  log_warn(LD_DIR, "[SR] \t C: %s", commitment);
-  log_warn(LD_DIR, "[SR] \t R: %s", reveal);
+  /* XXX: debugging */
+  {
+    char voter_fp[ED25519_BASE64_LEN + 1];
+    ed25519_public_to_base64(voter_fp, voter_key);
+    log_warn(LD_DIR, "[SR] Received commit from %s", voter_fp);
+    log_warn(LD_DIR, "[SR] \t for: %s", commit_pubkey);
+    log_warn(LD_DIR, "[SR] \t C: %s", commitment);
+    log_warn(LD_DIR, "[SR] \t R: %s", reveal);
+  }
 
   /* Build a list of arguments that have the same order as the Commitment
    * line in the state. With that, we can parse it using the same function
@@ -1256,6 +1264,12 @@ sr_decide_post_voting(void)
    /* Then we decide which commit to keep in our state considering that all
     * conflicts have been found previously. */
   decide_commit_from_votes(sr_state_get_phase());
+
+  /* For last, we've just processed all of the voted commits so cleanup the
+   * map since we are post voting and we won't need them anymore. It also
+   * need to be cleaned up before the next voting period starts. */
+  digest256map_free(voted_commits, voted_commits_free_);
+  voted_commits = digest256map_new();
 
   log_warn(LD_DIR, "[SR] State decided!");
 }
