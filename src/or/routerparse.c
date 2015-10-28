@@ -146,6 +146,8 @@ typedef enum {
   K_CONSENSUS_METHOD,
   K_LEGACY_DIR_KEY,
   K_DIRECTORY_FOOTER,
+  K_SIGNING_CERT_ED,
+  K_SR_CERT_ED,
   K_COMMITMENT,
   K_CONFLICT,
   K_PACKAGE,
@@ -449,6 +451,8 @@ static token_rule_t networkstatus_token_table[] = {
   T1("known-flags",            K_KNOWN_FLAGS,      ARGS,        NO_OBJ ),
   T01("params",                K_PARAMS,           ARGS,        NO_OBJ ),
   T( "fingerprint",            K_FINGERPRINT,      CONCAT_ARGS, NO_OBJ ),
+  T01("signing-ed25519",       K_SIGNING_CERT_ED,  NO_ARGS ,    NEED_OBJ ),
+  T01("shared-random-ed25519", K_SR_CERT_ED,       NO_ARGS,     NEED_OBJ ),
   T0N("shared-rand-commitment",K_COMMITMENT,       GE(3),       NO_OBJ ),
   T0N("shared-rand-conflict"  ,K_CONFLICT,         EQ(3),       NO_OBJ ),
   T0N("package",               K_PACKAGE,          CONCAT_ARGS, NO_OBJ ),
@@ -2842,6 +2846,84 @@ networkstatus_verify_bw_weights(networkstatus_t *ns, int consensus_method)
   return valid;
 }
 
+/** We are parsing the vote document in <b>ns</b>. Given the directory
+ *  tokens for the ed25519 signing certificate and the ed25519 shared
+ *  randomness key certificate, verify their signatures and validity,
+ *  parse them and extract the ed25519 keys from them.
+ *
+ *  We are interested in the shared randomness cert and the ed25519
+ *  master key, so set them directly in <b>ns</b> for future use. */
+static int
+extract_ed25519_keys_from_vote(const directory_token_t *sign_cert_tok,
+                               const directory_token_t *sr_cert_tok,
+                               networkstatus_t *ns)
+{
+  tor_cert_t *sign_cert = NULL;
+  tor_cert_t *sr_cert = NULL;
+  time_t now = time(NULL);
+
+  tor_assert(sign_cert_tok && sr_cert_tok);
+
+  /* Do some basic validation */
+  if (strcmp(sign_cert_tok->object_type, "ED25519 CERT")) {
+    log_warn(LD_DIR, "Wrong object type on signing-ed25519");
+    goto err;
+  }
+  if (strcmp(sr_cert_tok->object_type, "ED25519 CERT")) {
+    log_warn(LD_DIR, "Wrong object type on sr-ed25519");
+    goto err;
+  }
+
+  /* Parse the signing key certificate */
+  sign_cert = tor_cert_parse((const uint8_t*)sign_cert_tok->object_body,
+                             sign_cert_tok->object_size);
+  if (!sign_cert) {
+    log_warn(LD_DIR, "Couldn't parse ed25519 signing cert");
+    goto err;
+  }
+  /* The signing cert needs to include the key that signed the cert since
+     that's the master ed25519 key of the auth! */
+  if (!sign_cert->signing_key_included) {
+    log_warn(LD_DIR, "Signing cert did not include master key!");
+    goto err;
+  }
+
+  /* Now parse the SR key certificate */
+  sr_cert = tor_cert_parse((const uint8_t*)sr_cert_tok->object_body,
+                           sr_cert_tok->object_size);
+  if (!sr_cert) {
+    log_warn(LD_DIR, "Couldn't parse ed25519 shared random cert");
+    goto err;
+  }
+
+  /* Verify signing key certificate using the master key included in the cert */
+  if (tor_cert_checksig(sign_cert, &sign_cert->signing_key, now) < 0) {
+    log_warn(LD_DIR, "Couldn't verify sig of signing cert");
+    goto err;
+  }
+
+  /* Verify SR cert using the signing key from the singing cert. */
+  if (tor_cert_checksig(sr_cert, &sign_cert->signed_key, now) < 0) {
+    log_warn(LD_DIR, "Couldn't verify sig of sr cert");
+    goto err;
+  }
+
+  log_warn(LD_GENERAL, "[SR] Saved SR key %s.",
+           hex_str((char *)sr_cert->signed_key.pubkey, ED25519_PUBKEY_LEN));
+
+  /* Everything looks valid! Save useful information in the networkstatus. */
+  ns->ed25519_shared_random_cert = sr_cert;
+  ns->ed25519_signing_key_cert = sign_cert;
+
+  return 0;
+
+ err:
+  tor_cert_free(sign_cert);
+  tor_cert_free(sr_cert);
+
+  return -1;
+}
+
 /** Parse a v3 networkstatus vote, opinion, or consensus (depending on
  * ns_type), from <b>s</b>, and return the result.  Return NULL on failure. */
 networkstatus_t *
@@ -3181,6 +3263,22 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
     if (bad) {
       log_warn(LD_DIR, "Invalid legacy key digest %s on vote.",
                escaped(tok->args[0]));
+    }
+  }
+
+  /* If this is a vote document, try to extract the shared randomness
+     ed25519 key if there is one. Make sure that a cert chain is
+     included to certify the key. */
+  if (ns->type == NS_TYPE_VOTE) {
+    directory_token_t *sign_cert_tok = find_opt_by_keyword(tokens, K_SIGNING_CERT_ED);
+    directory_token_t *sr_cert_tok = find_opt_by_keyword(tokens, K_SR_CERT_ED);
+
+    /* Get shared randomness cert if the required info is here. */
+    if (sign_cert_tok && sr_cert_tok) {
+      if (extract_ed25519_keys_from_vote(sign_cert_tok, sr_cert_tok, ns) < 0) {
+        log_warn(LD_GENERAL, "Corrupted ed25519 information in vote!");
+        goto err;
+      }
     }
   }
 
