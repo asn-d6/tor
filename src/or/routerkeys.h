@@ -42,6 +42,9 @@ const ed25519_keypair_t *get_current_auth_keypair(void);
 const struct tor_cert_st *get_current_link_cert_cert(void);
 const struct tor_cert_st *get_current_auth_key_cert(void);
 
+const ed25519_keypair_t *get_shared_random_keypair(void);
+const struct tor_cert_st *get_shared_random_key_cert(void);
+
 void get_master_rsa_crosscert(const uint8_t **cert_out,
                               size_t *size_out);
 
