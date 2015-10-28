@@ -4305,6 +4305,10 @@ typedef struct {
   /** For how long (seconds) do we declare our auth keys to be valid? */
   int TestingAuthKeyLifetime;
 
+  /* For how long do we declare our shared randomness keys to be
+   * valid (dirauth only)? */
+  int SharedRandomKeyLifetime;
+
   /** How long before signing keys expire will we try to make a new one? */
   int TestingSigningKeySlop;
   /** How long before link keys expire will we try to make a new one? */
