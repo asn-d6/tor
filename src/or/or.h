@@ -2568,6 +2568,13 @@ typedef struct networkstatus_t {
   /** If present, a map from descriptor digest to elements of
    * routerstatus_list. */
   digestmap_t *desc_digest_map;
+
+  /** Ed25519 signing key certificate, if included. This cert must
+   *  also include the ed25519 master key as the signing_key. */
+  struct tor_cert_st *ed25519_signing_key_cert;
+
+  /** Ed25519 shared random key certificate, if included. */
+  struct tor_cert_st *ed25519_shared_random_cert;
 } networkstatus_t;
 
 /** A set of signatures for a networkstatus consensus.  Unless otherwise
