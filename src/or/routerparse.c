@@ -147,6 +147,7 @@ typedef enum {
   K_LEGACY_DIR_KEY,
   K_DIRECTORY_FOOTER,
   K_COMMITMENT,
+  K_CONFLICT,
   K_PACKAGE,
 
   A_PURPOSE,
@@ -449,6 +450,7 @@ static token_rule_t networkstatus_token_table[] = {
   T01("params",                K_PARAMS,           ARGS,        NO_OBJ ),
   T( "fingerprint",            K_FINGERPRINT,      CONCAT_ARGS, NO_OBJ ),
   T0N("shared-rand-commitment",K_COMMITMENT,       GE(3),       NO_OBJ ),
+  T0N("shared-rand-conflict"  ,K_CONFLICT,         EQ(3),       NO_OBJ ),
   T0N("package",               K_PACKAGE,          CONCAT_ARGS, NO_OBJ ),
 
   CERTIFICATE_MEMBERS
@@ -3197,6 +3199,20 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
       /* XXX: Use ed25519 shared random key for the voter key. */
       sr_handle_received_commitment(commit_pubkey, hash_alg, commitment,
                                     reveal, get_master_identity_key());
+    } SMARTLIST_FOREACH_END(tok);
+    smartlist_free(commitment_lst);
+  }
+  /* Get SR conflict from votes */
+  smartlist_t *conflict_lst = find_all_by_keyword(tokens, K_CONFLICT);
+  if (conflict_lst) {
+    SMARTLIST_FOREACH_BEGIN(conflict_lst, directory_token_t *, tok) {
+      const char *auth_identity = tok->args[0];
+      const char *encoded_commit1 = tok->args[1];
+      const char *encoded_commit2 = tok->args[2];
+      /* XXX: Use ed25519 shared random key for the voter key. */
+      sr_handle_received_conflict(auth_identity, encoded_commit1,
+                                  encoded_commit2,
+                                  get_master_identity_key());
     } SMARTLIST_FOREACH_END(tok);
     smartlist_free(commitment_lst);
   }
