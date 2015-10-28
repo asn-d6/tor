@@ -648,6 +648,99 @@ static tor_cert_t *auth_key_cert = NULL;
 static uint8_t *rsa_ed_crosscert = NULL;
 static size_t rsa_ed_crosscert_len = 0;
 
+/* The ed25519 shared randomness key (dirauth-only). */
+static ed25519_keypair_t *shared_random_key = NULL;
+/* Certificate (ed25519 singing key -> ed25519 shared randomness key) */
+static tor_cert_t *shared_random_cert = NULL;
+
+#define SET_KEY(key, newval) do {               \
+    if ((key) != (newval))                      \
+      ed25519_keypair_free(key);                \
+    key = (newval);                             \
+  } while (0)
+#define SET_CERT(cert, newval) do {             \
+    if ((cert) != (newval))                     \
+      tor_cert_free(cert);                      \
+    cert = (newval);                            \
+  } while (0)
+#define EXPIRES_SOON(cert, interval)            \
+  (!(cert) || (cert)->valid_until < now + (interval))
+
+
+/** Generate an ed25519 shared randomness for this dirauth. Also
+ *  create the certificate that certifies it under <b>signing_key</b>.
+ *  After the key and cert are generated, set them up for use. */
+static int
+generate_shared_randomness_keys(const ed25519_keypair_t *signing_key,
+                                const or_options_t *options, time_t now)
+{
+  ed25519_keypair_t *shared_random = NULL;
+  tor_cert_t *sr_cert = NULL;
+  int retval = -1;
+
+  tor_assert(signing_key);
+
+  log_warn(LD_GENERAL, "[SR] We are an authority! We need an SR key!");
+
+  char *sr_fname =
+    options_get_datadir_fname2(options, "keys", "ed25519_shared_random");
+
+  /* Try to load the SR key from disk */
+  shared_random = ed_key_init_from_file(
+                                        sr_fname,
+                                        INIT_ED_KEY_NEEDCERT,
+                                        LOG_INFO,
+                                        NULL, 0, 0, CERT_TYPE_ID_SIGNING,
+                                        &sr_cert);
+
+  /* See if we need a new shared random key. Maybe the file did not exist, or
+     maybe the current one expires soon */
+  const int need_new_sr_key =
+    NULL == shared_random || EXPIRES_SOON(sr_cert, 0);
+
+  if (need_new_sr_key) {
+    uint32_t flags = (INIT_ED_KEY_CREATE|
+                      INIT_ED_KEY_REPLACE|
+                      INIT_ED_KEY_EXTRA_STRONG|
+                      INIT_ED_KEY_NEEDCERT);
+
+    log_warn(LD_GENERAL, "[SR] Seems like we need a new SR key");
+
+    shared_random = ed_key_init_from_file(sr_fname,
+                                          flags, LOG_WARN,
+                                          signing_key, now,
+                                          options->SharedRandomKeyLifetime,
+                                          CERT_TYPE_ID_SIGNING,
+                                          &sr_cert);
+
+    if (!shared_random) {
+      log_warn(LD_GENERAL, "Could not create missing SR key");
+      goto done;
+    }
+
+    /* Make sure that the right key was included in the cert */
+    tor_assert(ed25519_pubkey_eq(&sr_cert->signed_key, &shared_random->pubkey));
+  }
+
+  if (tor_cert_checksig(sr_cert, &signing_key->pubkey, 0) < 0) {
+    log_warn(LD_GENERAL, "Can't verify our own SR cert!");
+    goto done;
+  }
+
+  if (shared_random) {
+    SET_KEY(shared_random_key, shared_random);
+    SET_CERT(shared_random_cert, sr_cert);
+  }
+
+  retval = 0;
+
+ done:
+  tor_free(sr_fname);
+
+  return retval;
+}
+
+
 /**
  * Running as a server: load, reload, or refresh our ed25519 keys and
  * certificates, creating and saving new ones as needed.
@@ -668,18 +761,6 @@ load_ed_keys(const or_options_t *options, time_t now)
     log_warn(LD_OR, (msg));                     \
     goto err;                                   \
   } while (0)
-#define SET_KEY(key, newval) do {               \
-    if ((key) != (newval))                      \
-      ed25519_keypair_free(key);                \
-    key = (newval);                             \
-  } while (0)
-#define SET_CERT(cert, newval) do {             \
-    if ((cert) != (newval))                     \
-      tor_cert_free(cert);                      \
-    cert = (newval);                            \
-  } while (0)
-#define EXPIRES_SOON(cert, interval)            \
-  (!(cert) || (cert)->valid_until < now + (interval))
 
   /* XXXX support encrypted identity keys fully */
 
@@ -886,6 +967,14 @@ load_ed_keys(const or_options_t *options, time_t now)
       FAIL("Can't create auth key");
   }
 
+
+  /* If we are an authority we need an SR key. Load it or generate it!! */
+  if (authdir_mode(options) && use_signing) {
+    if (generate_shared_randomness_keys(use_signing, options, now) < 0) {
+      FAIL("Failed to generate SR keys");
+    }
+  }
+
   /* We've generated or loaded everything.  Put them in memory. */
 
  end:
@@ -1020,6 +1109,19 @@ get_current_auth_key_cert(void)
 {
   return auth_key_cert;
 }
+
+const ed25519_keypair_t *
+get_shared_random_keypair(void)
+{
+  return shared_random_key;
+}
+
+const tor_cert_t *
+get_shared_random_key_cert(void)
+{
+  return shared_random_cert;
+}
+
 
 void
 get_master_rsa_crosscert(const uint8_t **cert_out,
