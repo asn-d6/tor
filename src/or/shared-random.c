@@ -212,6 +212,16 @@ verify_commit_and_reveal(const sr_commit_t *commit)
   return -1;
 }
 
+/* We just received <b>conflict</b> in a vote. Make sure that it's valid by
+ * verifying its commit if they are from the same authority and if the
+ * signature matches for them. */
+static int
+verify_received_conflict(const sr_conflict_commit_t *conflict)
+{
+  tor_assert(conflict);
+  return 0;
+}
+
 /* We just received <b>commit</b> in a vote. Make sure that it's conforming
  * to the current protocol phase. Verify its signature and timestamp. */
 static int
@@ -272,14 +282,24 @@ STATIC int
 commit_decode(const char *encoded, sr_commit_t *commit)
 {
   size_t offset = 0;
+  /* Needs an extra byte for the base64 decode calculation matches the
+   * binary length once decoded. */
   char b64_decoded[SR_COMMIT_LEN + 1];
 
   tor_assert(encoded);
   tor_assert(commit);
 
-  /* Decode our encoded commit. */
+  if (strlen(encoded) > SR_COMMIT_BASE64_LEN) {
+    /* This means that if we base64 decode successfully the reveiced commit,
+     * we'll end up with a bigger decoded commit thus unusable. */
+    goto error;
+  }
+
+  /* Decode our encoded commit. Let's be careful here since _encoded_ is
+   * coming from the network in a dirauth vote so we expect nothing more
+   * than the base64 encoded length of a commit. */
   if (base64_decode(b64_decoded, sizeof(b64_decoded),
-                    encoded, strlen(encoded)) < 0) {
+                    encoded, SR_COMMIT_BASE64_LEN) < 0) {
     log_warn(LD_DIR, "[SR] Commit can't be decoded.");
     goto error;
   }
@@ -307,16 +327,26 @@ error:
 STATIC int
 reveal_decode(const char *encoded, sr_commit_t *commit)
 {
+  /* Needs two extra bytes for the base64 decode calculation matches the
+   * binary length once decoded. */
   char b64_decoded[SR_REVEAL_LEN + 2];
 
   tor_assert(encoded);
   tor_assert(commit);
 
-  /* Decode the encoded reveal value. */
+  if (strlen(encoded) > SR_REVEAL_BASE64_LEN) {
+    /* This means that if we base64 decode successfully the received reveal
+     * value, we'll end up with a bigger decoded value thus unusable. */
+    goto error;
+  }
+
+  /* Decode our encoded reveal. Let's be careful here since _encoded_ is
+   * coming from the network in a dirauth vote so we expect nothing more
+   * than the base64 encoded length of our reveal. */
   if (base64_decode(b64_decoded, sizeof(b64_decoded),
-                    encoded, strlen(encoded)) < 0) {
+                    encoded, SR_REVEAL_BASE64_LEN) < 0) {
     log_warn(LD_DIR, "[SR] Reveal value can't be decoded.");
-    return -1;
+    goto error;
   }
 
   commit->reveal_ts = (time_t) tor_ntohll(get_uint64(b64_decoded));
@@ -330,6 +360,8 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
   commit_log(commit);
 
   return 0;
+ error:
+  return -1;
 }
 
 /* Parse a Conflict line from our disk state and return a newly allocated
@@ -936,8 +968,8 @@ error:
 }
 
 /* Given all the commitment information from a commitment line in a vote,
- * parse the line, validate it and return a newly allocated commit object
- * that contains the verified data from the vote. Return NULL on error. */
+ * parse the line, validate it and add it to the voted commits map if it's
+ * valid so we can process all commits in post voting stage. */
 void
 sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
                               const char *commitment, const char *reveal,
@@ -983,6 +1015,9 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
    * data. Now we'll validate it. This function will make sure also to
    * validate the reveal value if one is present. */
   if (verify_received_commit(commit) < 0) {
+    /* XXX: This means we got a INVALID commit from an authority (either
+     * hers or someone else). Should we create a conflict for the authority
+     * so we ignore it for the rest of the voting period? */
     sr_commit_free(commit);
     commit = NULL;
     goto end;
@@ -991,6 +1026,60 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
   /* Add the commit to our voted commit list so we can process them once we
    * decide our state in the post voting stage. */
   add_voted_commit(commit, voter_key);
+
+end:
+  smartlist_free(args);
+}
+
+/* Given all the conflict information from a conflict line in a vote, parse
+ * the line, validate it and add it to our state if valid. */
+void
+sr_handle_received_conflict(const char *auth_identity,
+                            const char *encoded_commit1,
+                            const char *encoded_commit2,
+                            const ed25519_public_key_t *voter_key)
+{
+  sr_conflict_commit_t *conflict;
+  smartlist_t *args;
+
+  tor_assert(auth_identity);
+  tor_assert(encoded_commit1);
+  tor_assert(encoded_commit2);
+  tor_assert(voter_key);
+
+  /* XXX: debugging */
+  {
+    char voter_fp[ED25519_BASE64_LEN + 1];
+    ed25519_public_to_base64(voter_fp, voter_key);
+    log_warn(LD_DIR, "[SR] Received conflict from %s", voter_fp);
+    log_warn(LD_DIR, "[SR] \t for: %s", auth_identity);
+  }
+
+  /* Build a list of arguments that have the same order as the Conflict
+   * line in the state. With that, we can parse it using the same function
+   * that the state uses. Line format is as follow:
+   *    "shared-rand-conflict" SP identity SP commit1 SP commit2 NL
+   */
+  args = smartlist_new();
+  smartlist_add(args, (char *) auth_identity);
+  smartlist_add(args, (char *) encoded_commit1);
+  smartlist_add(args, (char *) encoded_commit2);
+  /* Parse our arguments to get a commit that we'll then verify. */
+  conflict = sr_parse_conflict_line(args);
+  if (conflict == NULL) {
+    goto end;
+  }
+  /* We now have a conflict object that has been fully populated by our vote
+   * data. Now we'll validate it. */
+  if (verify_received_conflict(conflict) < 0) {
+    /* XXX: This means we got a INVALID conflict from an authority (either
+     * hers or someone else). Should we create a conflict for the authority
+     * so we ignore it for the rest of the voting period? */
+    sr_conflict_commit_free(conflict);
+    goto end;
+  }
+  /* Ok conflict is good and verified so add it to our state. */
+  sr_state_add_conflict(conflict);
 
 end:
   smartlist_free(args);
