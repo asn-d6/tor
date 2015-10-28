@@ -28,10 +28,10 @@
 /* The signature includes the sha256 hash of the reveal + a 64bit timestamp */
 #define SR_COMMIT_SIG_BODY_LEN (DIGEST256_LEN + sizeof(uint64_t))
 /* Size of a decoded commit value in a vote or state. It consist of
-   the signature body and the signature */
+   the signature body and the signature. This is 104 bytes. */
 #define SR_COMMIT_LEN (SR_COMMIT_SIG_BODY_LEN + ED25519_SIG_LEN)
 /* Size of a decoded reveal value from a vote or state. It's a 64 bit
- * timestamp and the random number. */
+ * timestamp and the random number. This adds up to 40 bytes. */
 #define SR_REVEAL_LEN \
   (sizeof(uint64_t) + SR_RANDOM_NUMBER_LEN)
 /* Size of SRV HMAC message length. The construction is has follow:
@@ -39,14 +39,14 @@
 #define SR_SRV_HMAC_MSG_LEN \
   (SR_SRV_TOKEN_LEN + sizeof(uint8_t) + sizeof(uint8_t) + DIGEST256_LEN)
 
-/* Length of base64 encoded commit. Formula is taken from base64_encode.
- * Currently, this adds up to 96 bytes. */
+/* Length of base64 encoded commit NOT including the NULL terminated byte.
+ * Formula is taken from base64_encode_size. This adds up to 140 bytes. */
 #define SR_COMMIT_BASE64_LEN \
-  (((SR_COMMIT_LEN - 1) / 3) * 4 + 4 + 1)
-/* Length of base64 encoded reveal. Formula is taken from base64_encode.
- * Currently, this adds up to 56 bytes. */
+  (((SR_COMMIT_LEN - 1) / 3) * 4 + 4)
+/* Length of base64 encoded reveal NOT including the NULL terminated byte.
+ * Formula is taken from base64_encode_size. This adds up to 56 bytes. */
 #define SR_REVEAL_BASE64_LEN \
-  (((SR_REVEAL_LEN - 1) / 3) * 4 + 4 + 1)
+  (((SR_REVEAL_LEN - 1) / 3) * 4 + 4)
 
 /* Protocol phase. */
 typedef enum {
@@ -142,6 +142,11 @@ void sr_handle_received_commitment(const char *commit_pubkey,
                                    const char *commitment,
                                    const char *reveal,
                                    const ed25519_public_key_t *voter_key);
+
+void sr_handle_received_conflict(const char *auth_identity,
+                                 const char *encoded_commit1,
+                                 const char *encoded_commit2,
+                                 const ed25519_public_key_t *voter_key);
 
 sr_commit_t *sr_parse_commitment_line(smartlist_t *args);
 sr_conflict_commit_t *sr_parse_conflict_line(smartlist_t *args);
