@@ -529,7 +529,6 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
 
   }
 
-
   /* If we reach this point, we know that the received commitment was
      conforming to the current protocol phase (e.g. it does not
      contain a reveal value during commit phase). We also know that
@@ -1772,7 +1771,7 @@ get_vote_line_from_commit(const sr_commit_t *commit, sr_phase_t current_phase)
  * contains the shared randomness information for this phase. It's the
  * responsibility of the caller to free the string. */
 char *
-sr_get_string_for_vote(void)
+sr_get_commit_string_for_vote(void)
 {
   char *vote_str = NULL;
   smartlist_t *chunks = smartlist_new();

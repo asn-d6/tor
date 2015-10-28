@@ -638,9 +638,12 @@ ed_key_new(const ed25519_keypair_t *signing_key,
   return NULL;
 }
 
+/** The ed25519 master key for this relay. */
 static ed25519_keypair_t *master_identity_key = NULL;
+/** The ed25519 signing key for this relay. */
 static ed25519_keypair_t *master_signing_key = NULL;
 static ed25519_keypair_t *current_auth_key = NULL;
+/* Certificate (ed25519 master key -> ed25519 signing key) */
 static tor_cert_t *signing_key_cert = NULL;
 static tor_cert_t *link_cert_cert = NULL;
 static tor_cert_t *auth_key_cert = NULL;
