@@ -107,6 +107,8 @@ test_generate_commitment(void *arg)
   /* This is our own commit that we parsed */
   sr_commit_t *parsed_commit = tor_malloc_zero(sizeof(sr_commit_t));
 
+  (void) arg;
+
   {  /* Setup a minimal dirauth environment for this test  */
     or_options_t *options = get_options_mutable();
     tt_int_op(0, ==, load_ed_keys(options, now));
