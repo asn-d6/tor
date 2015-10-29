@@ -491,10 +491,8 @@ sr_generate_our_commitment(time_t timestamp)
   sr_commit_t *commit;
   const ed25519_keypair_t *signing_keypair;
 
-  /* XXX We are currently using our relay identity. In the future we
-   * should be using our shared random ed25519 key derived from the
-   * authority signing key. */
-  signing_keypair = get_master_signing_keypair();
+  /* Get our shared random keypair. */
+  signing_keypair = get_shared_random_keypair();
   tor_assert(signing_keypair);
 
   /* New commit with our identity key. */
@@ -751,6 +749,9 @@ get_vote_line_from_commit(const sr_commit_t *commit)
   sr_phase_t current_phase = sr_state_get_phase();
   static const char *commit_str_key = "shared-rand-commitment";
 
+  log_warn(LD_DIR, "Encoding commit for vote:");
+  commit_log(commit);
+
   switch (current_phase) {
   case SR_PHASE_COMMIT:
     tor_asprintf(&vote_line, "%s %s %s %s\n",
@@ -903,17 +904,19 @@ add_voted_commit(sr_commit_t *commit, const ed25519_public_key_t *voter_key)
    * only have one commit per authority. */
   saved_commit = digest256map_get(entry, commit->auth_identity.pubkey);
   if (saved_commit != NULL) {
+    /* XXX: Add conflict only if commit is different!!! */
     /* Remove from list since the conflict object needs ownership. */
-    digest256map_remove(entry, saved_commit->auth_identity.pubkey);
+    //digest256map_remove(entry, saved_commit->auth_identity.pubkey);
     /* Let's create a conflict here in order to ignore this mis-behaving
      * authority from now one. */
-    sr_conflict_commit_t *conflict =
-      conflict_commit_new(commit, saved_commit);
-    sr_state_add_conflict(conflict);
+    //sr_conflict_commit_t *conflict =
+    //  conflict_commit_new(commit, saved_commit);
+    //sr_state_add_conflict(conflict);
   } else {
     /* Unique entry for now, add it indexed by the commit authority key. */
     digest256map_set(entry, commit->auth_identity.pubkey, commit);
   }
+
 }
 
 /* Parse a Commitment line from our disk state and return a newly allocated
@@ -1186,10 +1189,12 @@ should_keep_commitment(sr_commit_t *commit,
  * <b>voter_fingerprint</b>. All the other received votes are found in
  * <b>votes</b>. Decide whether we should keep this commit, issue a conflict
  * line, or ignore it. */
-static void
+static int
 decide_commit_during_commit_phase(sr_commit_t *commit,
                                   const ed25519_public_key_t *voter_key)
 {
+  /* Indicate if we kept the commit for our state or not. */
+  int commit_kept = 0;
   sr_commit_t *saved_commit;
 
   tor_assert(commit);
@@ -1216,6 +1221,7 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
     /* Let's not add a commit that we already have. */
     if (saved_commit == NULL) {
       sr_state_add_commit(commit);
+      commit_kept = 1;
     }
   } else {
     char voter_fp[ED25519_BASE64_LEN + 1];
@@ -1224,6 +1230,7 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
                      "is not authoritative nor has majority. Ignoring.",
              commit->auth_fingerprint, voter_fp);
   }
+  return commit_kept;
 }
 
 /* We are during commit phase and we found <b>commit</b> in a
@@ -1322,10 +1329,14 @@ decide_commit_from_votes(sr_phase_t phase)
 
     /* Go over all commitments and depending on the phase decide what to do
      * with them that is keeping or updating them based on the votes. */
-    DIGEST256MAP_FOREACH(commits, c_key, sr_commit_t *, commit) {
+    DIGEST256MAP_FOREACH_MODIFY(commits, c_key, sr_commit_t *, commit) {
       switch (phase) {
       case SR_PHASE_COMMIT:
-        decide_commit_during_commit_phase(commit, &voter_key);
+        if (decide_commit_during_commit_phase(commit, &voter_key)) {
+          /* Commit has been added to our state so remove it from this map
+           * so we transfer ownership to the state. */
+          MAP_DEL_CURRENT(c_key);
+        }
         break;
       case SR_PHASE_REVEAL:
         decide_commit_during_reveal_phase(commit);
