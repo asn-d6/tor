@@ -15,6 +15,7 @@
 #include "policies.h"
 #include "rephist.h"
 #include "router.h"
+#include "routerkeys.h"
 #include "routerlist.h"
 #include "routerparse.h"
 #include "entrynodes.h" /* needed for guardfraction methods */
@@ -61,6 +62,70 @@ static char *make_consensus_method_list(int low, int high, const char *sep);
  * Voting
  * =====*/
 
+/** Return a heap-allocated string that contains the shared randomness
+ *  key that we should include in our votes. Also include the whole
+ *  cert chain that binds this key down to the ed25519 identity key. */
+static char *
+get_sr_cert_chain_str(void)
+{
+  char *sr_cert_chain_str = NULL;
+  smartlist_t *chunks = smartlist_new();
+
+  /* First we need to find all the certificates we need */
+
+  { /* Get our (ed25519 master key -> ed25519 signing key) certificate */
+    char ed_cert_base64[256]; /* XXX is this enough? */
+    const tor_cert_t *signing_key_cert = get_master_signing_key_cert();
+
+    if (base64_encode(ed_cert_base64, sizeof(ed_cert_base64),
+                      (const char*)signing_key_cert->encoded,
+                      signing_key_cert->encoded_len,
+                      BASE64_ENCODE_MULTILINE) < 0) {
+      log_err(LD_BUG,"Couldn't base64-encode signing key certificate!");
+      goto done;
+    }
+
+    smartlist_add_asprintf(chunks, "signing-ed25519\n"
+                           "-----BEGIN ED25519 CERT-----\n"
+                           "%s"
+                           "-----END ED25519 CERT-----\n",
+                           ed_cert_base64);
+  }
+
+  { /* Get our (ed25519 signing key -> ed25519 sr key) certificate */
+    char ed_cert_base64[256];
+    const tor_cert_t *shared_random_cert = get_shared_random_key_cert();
+
+    if (!shared_random_cert) {
+      log_warn(LD_GENERAL, "Couldn't get our own SR cert.");
+      goto done;
+    }
+
+    if (base64_encode(ed_cert_base64, sizeof(ed_cert_base64),
+                      (const char*)shared_random_cert->encoded,
+                      shared_random_cert->encoded_len,
+                      BASE64_ENCODE_MULTILINE) < 0) {
+      log_err(LD_BUG,"Couldn't base64-encode sr key certificate!");
+      goto done;
+    }
+
+    smartlist_add_asprintf(chunks, "shared-random-ed25519\n"
+                           "-----BEGIN ED25519 CERT-----\n"
+                           "%s"
+                           "-----END ED25519 CERT-----\n",
+                           ed_cert_base64);
+  }
+
+  /* Concatenate the certs and we are ready to go. */
+  sr_cert_chain_str = smartlist_join_strings(chunks, "\n", 0, NULL);
+
+ done:
+  SMARTLIST_FOREACH(chunks, char *, cp, tor_free(cp));
+  smartlist_free(chunks);
+
+  return sr_cert_chain_str;
+}
+
 /** Return a new string containing the string representation of the vote in
  * <b>v3_ns</b>, signed with our v3 signing key <b>private_signing_key</b>.
  * For v3 authorities. */
@@ -76,6 +141,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
   uint32_t addr;
   char *client_versions_line = NULL, *server_versions_line = NULL;
   char *shared_random_vote_str = NULL;
+  char *shared_random_cert_chain_str = NULL;
   networkstatus_voter_info_t *voter;
   char *status = NULL;
 
@@ -116,7 +182,18 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
     packages = tor_strdup("");
   }
 
-  shared_random_vote_str = sr_get_string_for_vote();
+  { /* Get shared randomness info for votes */
+    /* Get shared random key & cert chain */
+    shared_random_cert_chain_str = get_sr_cert_chain_str();
+    if (!shared_random_cert_chain_str) {
+      log_warn(LD_GENERAL, "Failed to get the SR cert chain! Skipping.");
+    }
+
+    /* Now get shared random commitments/reveals */
+    if (shared_random_cert_chain_str) {
+      shared_random_vote_str = sr_get_commit_string_for_vote();
+    }
+  }
 
   {
     char published[ISO_TIME_LEN+1];
@@ -158,6 +235,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  "params %s\n"
                  "dir-source %s %s %s %s %d %d\n"
                  "contact %s\n"
+                 "%s" /* shared random cert chain */
                  "%s", /* shared randomness information */
                  v3_ns->type == NS_TYPE_VOTE ? "vote" : "opinion",
                  methods,
@@ -172,6 +250,8 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  voter->nickname, fingerprint, voter->address,
                  fmt_addr32(addr), voter->dir_port, voter->or_port,
                  voter->contact,
+                 shared_random_cert_chain_str ?
+                           shared_random_cert_chain_str : "",
                  shared_random_vote_str ? shared_random_vote_str : "");
 
     tor_free(params);
@@ -179,6 +259,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
     tor_free(flag_thresholds);
     tor_free(methods);
     tor_free(shared_random_vote_str);
+    tor_free(shared_random_cert_chain_str);
 
     if (!tor_digest_is_zero(voter->legacy_id_digest)) {
       char fpbuf[HEX_DIGEST_LEN+1];
