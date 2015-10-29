@@ -136,6 +136,8 @@ void sr_decide_post_voting(void);
 
 void sr_commit_free(sr_commit_t *commit);
 void sr_conflict_commit_free(sr_conflict_commit_t *conflict);
+int sr_verify_commit(const sr_commit_t *commit);
+int sr_verify_conflict(const sr_conflict_commit_t *conflict);
 
 void sr_handle_received_commitment(const char *commit_pubkey,
                                    const char *hash_alg,
