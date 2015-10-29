@@ -129,7 +129,7 @@ typedef struct sr_conflict_commit_t {
 int sr_init(int save_to_disk);
 void sr_save_and_cleanup(void);
 
-char *sr_get_string_for_vote(void);
+char *sr_get_commit_string_for_vote(void);
 void sr_prepare_new_voting_period(time_t valid_after);
 
 void sr_decide_post_voting(void);
