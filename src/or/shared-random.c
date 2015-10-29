@@ -219,7 +219,14 @@ static int
 verify_received_conflict(const sr_conflict_commit_t *conflict)
 {
   tor_assert(conflict);
+
+  if (!sr_verify_conflict(conflict)) {
+    goto invalid;
+  }
+
   return 0;
+ invalid:
+  return -1;
 }
 
 /* We just received <b>commit</b> in a vote. Make sure that it's conforming
@@ -228,18 +235,11 @@ static int
 verify_received_commit(const sr_commit_t *commit)
 {
   int have_reveal;
-  uint8_t sig_msg[SR_COMMIT_SIG_BODY_LEN];
 
   tor_assert(commit);
 
-  /* Let's verify the signature of the commitment. */
-  memcpy(sig_msg, commit->hashed_reveal, sizeof(commit->hashed_reveal));
-  set_uint64(sig_msg + sizeof(commit->hashed_reveal),
-             tor_htonll((uint64_t) commit->commit_ts));
-  if (ed25519_checksig(&commit->commit_signature, sig_msg,
-                       SR_COMMIT_SIG_BODY_LEN, &commit->auth_identity) != 0) {
-    log_warn(LD_DIR, "[SR] Commit signature from %s is invalid!",
-             commit->auth_fingerprint);
+  /* Verify commit signature. */
+  if (!sr_verify_commit(commit)) {
     goto invalid;
   }
 
@@ -274,7 +274,7 @@ verify_received_commit(const sr_commit_t *commit)
 }
 
 /* Parse the encoded commit. The format is:
- *    base64-encode(TIMESTAMP || H(REVEAL) || SIGNATURE)
+ *    base64-encode( H(REVEAL) || TIMESTAMP || SIGNATURE)
  *
  * If successfully decoded and parsed, commit is updated and 0 is returned.
  * On error, return -1. */
@@ -304,14 +304,13 @@ commit_decode(const char *encoded, sr_commit_t *commit)
     goto error;
   }
 
-  /* First is the timestamp. */
-  commit->commit_ts = (time_t) tor_ntohll(get_uint64(b64_decoded));
-  offset += sizeof(uint64_t);
-  /* Next is the hash of the reveal value. */
-  memcpy(commit->hashed_reveal, b64_decoded + offset,
-         sizeof(commit->hashed_reveal));
-  /* Next is the signature of the commit. */
+  /* First is the hashed reaveal. */
+  memcpy(commit->hashed_reveal, b64_decoded, sizeof(commit->hashed_reveal));
   offset += sizeof(commit->hashed_reveal);
+  /* Next is timestamp. */
+  commit->commit_ts = (time_t) tor_ntohll(get_uint64(b64_decoded + offset));
+  offset += sizeof(uint64_t);
+  /* Finally is the signature of the commit. */
   memcpy(&commit->commit_signature.sig, b64_decoded + offset,
          sizeof(commit->commit_signature.sig));
   /* Copy the base64 blob to the commit. Useful for voting. */
@@ -430,7 +429,7 @@ reveal_encode(sr_commit_t *commit, char *dst, size_t len)
 
 /* Encode the given commit object to dst which is a buffer large enough to
  * put the base64-encoded commit. The format is as follow:
- *     COMMIT = base64-encode( TIMESTAMP || H(REVEAL) || SIGNATURE )
+ *     COMMIT = base64-encode( H(REVEAL) || TIMESTAMP || SIGNATURE )
  */
 STATIC int
 commit_encode(sr_commit_t *commit, char *dst, size_t len)
@@ -442,17 +441,17 @@ commit_encode(sr_commit_t *commit, char *dst, size_t len)
   tor_assert(dst);
 
   memset(buf, 0, sizeof(buf));
-  /* First is the timestamp. */
-  set_uint64(buf, tor_htonll((uint64_t) commit->commit_ts));
-  /* The hash of the reveal is next. */
-  offset += sizeof(uint64_t);
-  memcpy(buf + offset, commit->hashed_reveal,
+  /* First is the hashed reveal. */
+  memcpy(buf, commit->hashed_reveal,
          sizeof(commit->hashed_reveal));
-  /* Finally, the signature. */
   offset += sizeof(commit->hashed_reveal);
+  /* The timestamp is next. */
+  set_uint64(buf + offset, tor_htonll((uint64_t) commit->commit_ts));
+  offset += sizeof(uint64_t);
+  /* Finally, the signature. */
   memcpy(buf + offset, commit->commit_signature.sig,
          sizeof(commit->commit_signature.sig));
-  /* Let's clean the buffer and then encode it. */
+  /* Clean the buffer and then encode it. */
   memset(dst, 0, len);
   return base64_encode(dst, len, buf, sizeof(buf), 0);
 }
@@ -879,6 +878,21 @@ sr_get_commit_string_for_vote(void)
   return vote_str;
 }
 
+/* Return 1 iff the two commits have the same commitment values. This
+ * function does not care about reveal values. */
+static int
+commitments_are_the_same(const sr_commit_t *commit_one,
+                         const sr_commit_t *commit_two)
+{
+  tor_assert(commit_one);
+  tor_assert(commit_two);
+
+  if (strcmp(commit_one->encoded_commit, commit_two->encoded_commit)) {
+    return 0;
+  }
+  return 1;
+}
+
 /* Add a commit that has just been seen in <b>voter_key<b/>'s vote to our
  * voted list. If an entry for the voter is not found, one is created. If
  * there is already a commit from the same authority key in the voter's
@@ -904,19 +918,21 @@ add_voted_commit(sr_commit_t *commit, const ed25519_public_key_t *voter_key)
    * only have one commit per authority. */
   saved_commit = digest256map_get(entry, commit->auth_identity.pubkey);
   if (saved_commit != NULL) {
-    /* XXX: Add conflict only if commit is different!!! */
-    /* Remove from list since the conflict object needs ownership. */
-    //digest256map_remove(entry, saved_commit->auth_identity.pubkey);
-    /* Let's create a conflict here in order to ignore this mis-behaving
-     * authority from now one. */
-    //sr_conflict_commit_t *conflict =
-    //  conflict_commit_new(commit, saved_commit);
-    //sr_state_add_conflict(conflict);
+    /* Since commit are carried on at each voting period, let's make sure we
+     * have the same commit and if not, add a conflict. */
+    if (!commitments_are_the_same(commit, saved_commit)) {
+      /* Remove from list since the conflict object needs ownership. */
+      digest256map_remove(entry, saved_commit->auth_identity.pubkey);
+      /* Let's create a conflict here in order to ignore this mis-behaving
+       * authority from now one. */
+      sr_conflict_commit_t *conflict =
+        conflict_commit_new(commit, saved_commit);
+      sr_state_add_conflict(conflict);
+    }
   } else {
     /* Unique entry for now, add it indexed by the commit authority key. */
     digest256map_set(entry, commit->auth_identity.pubkey, commit);
   }
-
 }
 
 /* Parse a Commitment line from our disk state and return a newly allocated
@@ -1020,7 +1036,8 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
   if (verify_received_commit(commit) < 0) {
     /* XXX: This means we got a INVALID commit from an authority (either
      * hers or someone else). Should we create a conflict for the authority
-     * so we ignore it for the rest of the voting period? */
+     * that sent us this commit (voter_key) so we ignore it for the rest of
+     * the voting period? */
     sr_commit_free(commit);
     commit = NULL;
     goto end;
@@ -1086,21 +1103,6 @@ sr_handle_received_conflict(const char *auth_identity,
 
 end:
   smartlist_free(args);
-}
-
-/* Return 1 iff the two commits have the same commitment values. This
- * function does not care about reveal values. */
-static int
-commitments_are_the_same(const sr_commit_t *commit_one,
-                         const sr_commit_t *commit_two)
-{
-  tor_assert(commit_one);
-  tor_assert(commit_two);
-
-  if (strcmp(commit_one->encoded_commit, commit_two->encoded_commit)) {
-    return 0;
-  }
-  return 1;
 }
 
 /* Return 1 iff <b>commit</b> is included in enough votes to be the majority
@@ -1346,6 +1348,42 @@ decide_commit_from_votes(sr_phase_t phase)
       }
     } DIGEST256MAP_FOREACH_END;
   } DIGEST256MAP_FOREACH_END;
+}
+
+/* Return 1 iff the conflict commits can be verified using the commit
+ * authority fingerprint. Else return 0. */
+int
+sr_verify_conflict(const sr_conflict_commit_t *conflict)
+{
+  tor_assert(conflict);
+
+  return sr_verify_commit(conflict->commit1) &
+    sr_verify_commit(conflict->commit2);
+}
+
+/* Return 1 iff the commit signature can be verified using the commit
+ * authority fingerprint. Else return 0. */
+int
+sr_verify_commit(const sr_commit_t *commit)
+{
+  uint8_t sig_msg[SR_COMMIT_SIG_BODY_LEN];
+
+  tor_assert(commit);
+
+  /* Let's verify the signature of the commitment. Format is:
+   *    H(REVEAL) || TIMESTAMP */
+  memcpy(sig_msg, commit->hashed_reveal, sizeof(commit->hashed_reveal));
+  set_uint64(sig_msg + sizeof(commit->hashed_reveal),
+             tor_htonll((uint64_t) commit->commit_ts));
+  if (ed25519_checksig(&commit->commit_signature, sig_msg,
+                       SR_COMMIT_SIG_BODY_LEN, &commit->auth_identity) != 0) {
+    log_warn(LD_DIR, "[SR] Commit signature from %s is invalid!",
+             commit->auth_fingerprint);
+    goto invalid;
+  }
+  return 1;
+ invalid:
+  return 0;
 }
 
 /* This is called in the end of each voting round. Decide which
