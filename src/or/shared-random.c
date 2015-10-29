@@ -839,7 +839,7 @@ get_srv_vote_line(void)
  * contains the shared randomness information for this phase. It's the
  * responsibility of the caller to free the string. */
 char *
-sr_get_string_for_vote(void)
+sr_get_commit_string_for_vote(void)
 {
   char *vote_str = NULL;
   digest256map_t *state_commits, *state_conflicts;
