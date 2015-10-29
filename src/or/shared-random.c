@@ -1386,6 +1386,24 @@ sr_verify_commit(const sr_commit_t *commit)
   return 0;
 }
 
+/* Return a heap-allocated string that should be put in the consensus and
+ * contains the shared randomness values. It's the responsibility of the
+ * caller to free the string. */
+char *
+sr_get_srv_string(void)
+{
+  char *srv_str;
+  smartlist_t *srv_lines = get_srv_vote_line();
+
+  srv_str = smartlist_join_strings(srv_lines, "", 0, NULL);
+  SMARTLIST_FOREACH(srv_lines, char *, s, tor_free(s));
+  smartlist_free(srv_lines);
+  /* XXX: debugging. */
+  log_warn(LD_DIR, "[SR] Shared random value for the consensus:");
+  log_warn(LD_DIR, "[SR] \t %s", srv_str);
+  return srv_str;
+}
+
 /* This is called in the end of each voting round. Decide which
  * commitments/reveals to keep and write them to perm state. */
 void
