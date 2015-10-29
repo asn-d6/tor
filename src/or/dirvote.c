@@ -1378,6 +1378,14 @@ networkstatus_compute_consensus(smartlist_t *votes,
     smartlist_add(chunks, tor_strdup("\n"));
   }
 
+  if (consensus_method >= MIN_METHOD_FOR_SHARED_RANDOM) {
+    /* Add the shared random value. */
+    char *srv_lines = sr_get_srv_string();
+    if (srv_lines != NULL) {
+      smartlist_add(chunks, srv_lines);
+    }
+  }
+
   /* Sort the votes. */
   smartlist_sort(votes, compare_votes_by_authority_id_);
   /* Add the authority sections. */
