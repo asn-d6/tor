@@ -465,8 +465,10 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
     if (commit == NULL) {
       goto error;
     }
-    /* XXX: We should probably verify the commit here. */
-
+    /* Commit was decoded correctly, let's verify it. */
+    if (!sr_verify_commit(commit)) {
+      goto error;
+    }
     /* Add commit to our state pointer. */
     commit_add_to_state(commit, state);
 
@@ -511,9 +513,10 @@ disk_state_parse_conflicts(sr_state_t *state, sr_disk_state_t *disk_state)
     if (conflict == NULL) {
       goto error;
     }
-
-    /* XXX: Verify the conflict here? */
-
+    /* Conflict was decoded correctly, let's verify it. */
+    if (!sr_verify_conflict(conflict)) {
+      goto error;
+    }
     /* Add conflict to our state pointer. */
     conflict_add_to_state(conflict, state);
 
