@@ -157,6 +157,7 @@ sr_srv_status_t sr_get_srv_status_from_str(const char *name);
 const char *sr_get_srv_status_str(sr_srv_status_t status);
 
 void sr_compute_srv(void);
+char *sr_get_srv_string(void);
 
 sr_commit_t *sr_generate_our_commitment(time_t timestamp);
 
