@@ -3274,6 +3274,8 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
   /* Get SR commitments from votes */
   smartlist_t *commitment_lst = find_all_by_keyword(tokens, K_COMMITMENT);
   if (commitment_lst) {
+    const ed25519_public_key_t *voter_key =
+      &ns->ed25519_shared_random_cert->signed_key;
     SMARTLIST_FOREACH_BEGIN(commitment_lst, directory_token_t *, tok) {
       const char *commit_pubkey = tok->args[0];
       const char *hash_alg = tok->args[1];
@@ -3283,23 +3285,22 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
       if (tok->n_args > 3) { /* a reveal value might also be included */
         reveal = tok->args[3];
       }
-      /* XXX: Use ed25519 shared random key for the voter key. */
       sr_handle_received_commitment(commit_pubkey, hash_alg, commitment,
-                                    reveal, get_master_identity_key());
+                                    reveal, voter_key);
     } SMARTLIST_FOREACH_END(tok);
     smartlist_free(commitment_lst);
   }
   /* Get SR conflict from votes */
   smartlist_t *conflict_lst = find_all_by_keyword(tokens, K_CONFLICT);
   if (conflict_lst) {
+    const ed25519_public_key_t *voter_key =
+      &ns->ed25519_shared_random_cert->signed_key;
     SMARTLIST_FOREACH_BEGIN(conflict_lst, directory_token_t *, tok) {
       const char *auth_identity = tok->args[0];
       const char *encoded_commit1 = tok->args[1];
       const char *encoded_commit2 = tok->args[2];
-      /* XXX: Use ed25519 shared random key for the voter key. */
       sr_handle_received_conflict(auth_identity, encoded_commit1,
-                                  encoded_commit2,
-                                  get_master_identity_key());
+                                  encoded_commit2, voter_key);
     } SMARTLIST_FOREACH_END(tok);
     smartlist_free(commitment_lst);
   }
