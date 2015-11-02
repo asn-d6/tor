@@ -266,7 +266,7 @@ verify_received_commit(const sr_commit_t *commit)
   tor_assert(commit);
 
   /* Verify commit signature. */
-  if (!sr_verify_commit(commit)) {
+  if (!sr_verify_commit_sig(commit)) {
     goto invalid;
   }
 
@@ -1384,14 +1384,14 @@ sr_verify_conflict(const sr_conflict_commit_t *conflict)
 {
   tor_assert(conflict);
 
-  return sr_verify_commit(conflict->commit1) &
-    sr_verify_commit(conflict->commit2);
+  return sr_verify_commit_sig(conflict->commit1) &
+    sr_verify_commit_sig(conflict->commit2);
 }
 
 /* Return 1 iff the commit signature can be verified using the commit
  * authority fingerprint. Else return 0. */
 int
-sr_verify_commit(const sr_commit_t *commit)
+sr_verify_commit_sig(const sr_commit_t *commit)
 {
   uint8_t sig_msg[SR_COMMIT_SIG_BODY_LEN];
 
@@ -1417,7 +1417,7 @@ sr_verify_commit(const sr_commit_t *commit)
  * contains the shared randomness values. It's the responsibility of the
  * caller to free the string. */
 char *
-sr_get_srv_string(void)
+sr_get_consensus_srv_string(void)
 {
   char *srv_str;
   smartlist_t *srv_lines = get_srv_vote_line();
