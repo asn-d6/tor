@@ -456,7 +456,7 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
     args = smartlist_new();
     smartlist_split_string(args, line->value, " ",
                            SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 0);
-    if (smartlist_len(args) < 4) {
+    if (smartlist_len(args) < 3) {
       log_warn(LD_DIR, "Too few arguments to Commitment. Line: \"%s\"",
                line->value);
       goto error;
@@ -664,10 +664,9 @@ disk_state_put_commit_line(sr_commit_t *commit, config_line_t *line)
     /* Add extra whitespace so we can format the line correctly. */
     tor_asprintf(&reveal_str, " %s", commit->encoded_reveal);
   }
-  tor_asprintf(&line->value, "%s %s %s %s%s",
+  tor_asprintf(&line->value, "%s %s %s%s",
                crypto_digest_algorithm_get_name(commit->alg),
                commit->auth_fingerprint,
-               commit->has_majority ? "1" : "0",
                commit->encoded_commit,
                reveal_str != NULL ? reveal_str : "");
   tor_free(reveal_str);
@@ -950,19 +949,11 @@ new_reveal_phase(void)
 
   log_warn(LD_DIR, "[SR] Transition to reveal phase!");
 
-  /* Remove commitments that do NOT have majority. */
+  /* XXX is this useful anymore with majority disabled? */
   DIGEST256MAP_FOREACH_MODIFY(sr_state->commitments, key, sr_commit_t *,
                               commit) {
     sr_conflict_commit_t *conflict;
 
-    if (!commit->has_majority) {
-      log_warn(LD_DIR, "[SR] Commit from %s has NO majority. Cleaning",
-               commit->auth_fingerprint);
-      sr_commit_free(commit);
-      MAP_DEL_CURRENT(key);
-      /* Commit is out, we are done here. */
-      continue;
-    }
     /* Safety net, we shouldn't have a commit from an authority that also
      * has a conflict for the same authority. If so, this is a BUG so log it
      * and clean it. */
@@ -1153,10 +1144,9 @@ sr_state_add_commit(sr_commit_t *commit)
   commit_add_to_state(commit, sr_state);
 
   log_warn(LD_DIR, "[SR] \t Commit from %s has been added to our state. "
-                   "It's %sauthoritative and has %smajority",
+                   "It's %sauthoritative.",
            commit->auth_fingerprint,
-           commit->is_authoritative ? "" : "NOT ",
-           commit->has_majority ? "" : "NO ");
+           commit->is_authoritative ? "" : "NOT ");
 }
 
 /* Remove a commit entry identified by <b>key</b> from our state. */

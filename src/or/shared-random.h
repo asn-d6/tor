@@ -77,8 +77,6 @@ typedef struct sr_commit_t {
   /* Hashing algorithm used for the value. Depends on the version of the
    * protocol located in the state. */
   digest_algorithm_t alg;
-  /* Is this commit has reached majority? */
-  unsigned int has_majority:1;
   /* Is this commit an authoritative commit that is a vote from a directory
    * authority received from that authority. */
   unsigned int is_authoritative:1;
