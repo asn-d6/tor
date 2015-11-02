@@ -1379,7 +1379,7 @@ networkstatus_compute_consensus(smartlist_t *votes,
 
   if (consensus_method >= MIN_METHOD_FOR_SHARED_RANDOM) {
     /* Add the shared random value. */
-    char *srv_lines = sr_get_srv_string();
+    char *srv_lines = sr_get_consensus_srv_string();
     if (srv_lines != NULL) {
       smartlist_add(chunks, srv_lines);
     }
