@@ -28,6 +28,7 @@
 #include "test.h"
 #include "test_dir_common.h"
 #include "torcert.h"
+#include "shared-random-state.h"
 
 static void
 test_dir_nicknames(void *arg)
@@ -1778,6 +1779,18 @@ test_a_networkstatus(
   tt_assert(!dir_common_authority_pk_init(&cert1, &cert2, &cert3,
                                           &sign_skey_1, &sign_skey_2,
                                           &sign_skey_3));
+  sr_state_init(0);
+
+  /* Parse certificates and keys. */
+  cert1 = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
+  tt_assert(cert1);
+  cert2 = authority_cert_parse_from_string(AUTHORITY_CERT_2, NULL);
+  tt_assert(cert2);
+  cert3 = authority_cert_parse_from_string(AUTHORITY_CERT_3, NULL);
+  tt_assert(cert3);
+  sign_skey_1 = crypto_pk_new();
+  sign_skey_2 = crypto_pk_new();
+  sign_skey_3 = crypto_pk_new();
   sign_skey_leg1 = pk_generate(4);
 
   tt_assert(!dir_common_construct_vote_1(&vote, cert1, sign_skey_1, vrs_gen,
