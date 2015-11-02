@@ -77,6 +77,11 @@ get_sr_cert_chain_str(void)
     char ed_cert_base64[256]; /* XXX is this enough? */
     const tor_cert_t *signing_key_cert = get_master_signing_key_cert();
 
+    if (!signing_key_cert) {
+      log_warn(LD_GENERAL, "Couldn't get our own signing key cert.");
+      goto done;
+    }
+
     if (base64_encode(ed_cert_base64, sizeof(ed_cert_base64),
                       (const char*)signing_key_cert->encoded,
                       signing_key_cert->encoded_len,
