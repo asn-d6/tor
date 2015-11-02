@@ -26,18 +26,17 @@
 /* Length of the random number (in bytes). */
 #define SR_RANDOM_NUMBER_LEN 32
 /* The signature includes the sha256 hash of the reveal + a 64bit timestamp */
-#define SR_COMMIT_SIG_BODY_LEN (DIGEST256_LEN + sizeof(uint64_t))
+#define SR_COMMIT_SIG_BODY_LEN (DIGEST256_LEN + 8)
 /* Size of a decoded commit value in a vote or state. It consist of
    the signature body and the signature. This is 104 bytes. */
 #define SR_COMMIT_LEN (SR_COMMIT_SIG_BODY_LEN + ED25519_SIG_LEN)
 /* Size of a decoded reveal value from a vote or state. It's a 64 bit
  * timestamp and the random number. This adds up to 40 bytes. */
-#define SR_REVEAL_LEN \
-  (sizeof(uint64_t) + SR_RANDOM_NUMBER_LEN)
+#define SR_REVEAL_LEN (8 + SR_RANDOM_NUMBER_LEN)
 /* Size of SRV HMAC message length. The construction is has follow:
  *  "shared-random" | INT_8(reveal_num) | INT_8(version) | PREV_SRV */
 #define SR_SRV_HMAC_MSG_LEN \
-  (SR_SRV_TOKEN_LEN + sizeof(uint8_t) + sizeof(uint8_t) + DIGEST256_LEN)
+  (SR_SRV_TOKEN_LEN + 1 + 1 + DIGEST256_LEN)
 
 /* Length of base64 encoded commit NOT including the NULL terminated byte.
  * Formula is taken from base64_encode_size. This adds up to 140 bytes. */
