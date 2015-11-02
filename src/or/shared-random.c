@@ -3,8 +3,35 @@
 
 /**
  * \file shared-random.c
+ *
  * \brief Functions and data structure needed to accomplish the shared
  * random protocol as defined in proposal #250.
+ *
+ * \details
+ *
+ * This file implements the dirauth-only commit-and-reveal protocol specified by
+ * proposal #250. The protocol has two phases (sr_phase_t): the commitment phase
+ * and the reveal phase.
+ *
+ * The rough procedure is:
+ *
+ *      1) In the beginning of the commitment phase, dirauths generate a
+ *         commitment/reveal value for the current protocol run (see
+ *         new_protocol_run()).
+ *
+ *      2) Dirauths publish commitment/reveal values in their votes depending on
+ *         the current phase (see sr_get_commit_string_for_vote()).
+ *
+ *      3) After all votes have been received, dirauths decide which
+ *         commitments/reveals to keep (see sr_decide_post_voting()).
+ *
+ *      4) In the end of the reveal phase, dirauths compute the random value of
+ *         the day using the active reveal values (see sr_compute_srv()).
+ *
+ * To better support rebooting authorities we save the current state of the
+ * shared random protocol in disk so that authorities can resume on the protocol
+ * if they have to reboot.
+ *
  **/
 
 #define SHARED_RANDOM_PRIVATE
