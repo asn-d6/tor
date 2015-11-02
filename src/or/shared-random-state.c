@@ -1185,6 +1185,18 @@ sr_state_save(void)
   disk_state_save_to_disk();
 }
 
+#ifdef TOR_UNIT_TESTS
+/** Set the current phase of the protocol to reveal.
+ *  Used only by unit tests. */
+void
+set_sr_phase_to_reveal(void)
+{
+  tor_assert(sr_state);
+
+  sr_state->phase = SR_PHASE_REVEAL;
+}
+#endif
+
 /* Initialize the disk and memory state. Return 0 on success else a negative
  * value on error. */
 int
