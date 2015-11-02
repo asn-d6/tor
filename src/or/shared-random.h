@@ -167,7 +167,7 @@ STATIC int commit_encode(sr_commit_t *commit, char *dst, size_t len);
 STATIC int commit_decode(const char *encoded, sr_commit_t *commit);
 STATIC int reveal_decode(const char *encoded, sr_commit_t *commit);
 
-STATIC int verify_commit_and_reveal(const sr_commit_t *commit);
+STATIC int verify_received_commit(const sr_commit_t *commit);
 
 #endif /* SHARED_RANDOM_PRIVATE */
 

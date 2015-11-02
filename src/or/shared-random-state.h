@@ -87,4 +87,9 @@ STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
 
 #endif /* SHARED_RANDOM_STATE_PRIVATE */
 
+#ifdef TOR_UNIT_TESTS
+STATIC void set_sr_phase_to_reveal(void);
+#endif
+
+
 #endif /* TOR_SHARED_RANDOM_STATE_H */
