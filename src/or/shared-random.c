@@ -191,7 +191,7 @@ voted_commits_free_(void *p)
 /* Make sure that the commitment and reveal information in <b>commit</b>
  * match. If they match return 0, return -1 otherwise. This function MUST be
  * used everytime we receive a new reveal value. */
-STATIC int
+static int
 verify_commit_and_reveal(const sr_commit_t *commit)
 {
   tor_assert(commit);
@@ -258,7 +258,7 @@ verify_received_conflict(const sr_conflict_commit_t *conflict)
 
 /* We just received <b>commit</b> in a vote. Make sure that it's conforming
  * to the current protocol phase. Verify its signature and timestamp. */
-static int
+STATIC int
 verify_received_commit(const sr_commit_t *commit)
 {
   int have_reveal;
