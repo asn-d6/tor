@@ -136,7 +136,7 @@ void sr_decide_post_voting(void);
 
 void sr_commit_free(sr_commit_t *commit);
 void sr_conflict_commit_free(sr_conflict_commit_t *conflict);
-int sr_verify_commit(const sr_commit_t *commit);
+int sr_verify_commit_sig(const sr_commit_t *commit);
 int sr_verify_conflict(const sr_conflict_commit_t *conflict);
 
 void sr_handle_received_commitment(const char *commit_pubkey,
@@ -157,7 +157,7 @@ sr_srv_status_t sr_get_srv_status_from_str(const char *name);
 const char *sr_get_srv_status_str(sr_srv_status_t status);
 
 void sr_compute_srv(void);
-char *sr_get_srv_string(void);
+char *sr_get_consensus_srv_string(void);
 
 sr_commit_t *sr_generate_our_commitment(time_t timestamp);
 
