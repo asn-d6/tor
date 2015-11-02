@@ -308,6 +308,7 @@ verify_received_commit(const sr_commit_t *commit)
 STATIC int
 commit_decode(const char *encoded, sr_commit_t *commit)
 {
+  int decoded_len = 0;
   size_t offset = 0;
   /* Needs an extra byte for the base64 decode calculation matches the
    * binary length once decoded. */
@@ -325,9 +326,15 @@ commit_decode(const char *encoded, sr_commit_t *commit)
   /* Decode our encoded commit. Let's be careful here since _encoded_ is
    * coming from the network in a dirauth vote so we expect nothing more
    * than the base64 encoded length of a commit. */
-  if (base64_decode(b64_decoded, sizeof(b64_decoded),
-                    encoded, SR_COMMIT_BASE64_LEN) < 0) {
-    log_warn(LD_DIR, "[SR] Commit can't be decoded.");
+  decoded_len = base64_decode(b64_decoded, sizeof(b64_decoded),
+                              encoded, SR_COMMIT_BASE64_LEN);
+  if (decoded_len < 0) {
+    log_warn(LD_DIR, "[SR] Commitment can't be decoded.");
+    goto error;
+  }
+
+  if (decoded_len < SR_COMMIT_LEN) {
+    log_warn(LD_DIR, "[SR] Commitment too small.");
     goto error;
   }
 
@@ -353,6 +360,7 @@ error:
 STATIC int
 reveal_decode(const char *encoded, sr_commit_t *commit)
 {
+  int decoded_len = 0;
   /* Needs two extra bytes for the base64 decode calculation matches the
    * binary length once decoded. */
   char b64_decoded[SR_REVEAL_LEN + 2];
@@ -369,9 +377,15 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
   /* Decode our encoded reveal. Let's be careful here since _encoded_ is
    * coming from the network in a dirauth vote so we expect nothing more
    * than the base64 encoded length of our reveal. */
-  if (base64_decode(b64_decoded, sizeof(b64_decoded),
-                    encoded, SR_REVEAL_BASE64_LEN) < 0) {
+  decoded_len = base64_decode(b64_decoded, sizeof(b64_decoded),
+                              encoded, SR_REVEAL_BASE64_LEN);
+  if (decoded_len < 0) {
     log_warn(LD_DIR, "[SR] Reveal value can't be decoded.");
+    goto error;
+  }
+
+  if (decoded_len < SR_REVEAL_LEN) {
+    log_warn(LD_DIR, "[SR] Reveal value too small.");
     goto error;
   }
 
@@ -386,6 +400,7 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
   commit_log(commit);
 
   return 0;
+
  error:
   return -1;
 }
