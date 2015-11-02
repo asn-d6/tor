@@ -980,6 +980,8 @@ is_phase_transition(sr_phase_t next_phase)
 sr_phase_t
 sr_state_get_phase(void)
 {
+  tor_assert(sr_state);
+
   return sr_state->phase;
 }
 
@@ -987,6 +989,8 @@ sr_state_get_phase(void)
 sr_srv_t *
 sr_state_get_previous_srv(void)
 {
+  tor_assert(sr_state);
+
   return sr_state->previous_srv;
 }
 
@@ -995,6 +999,8 @@ void
 sr_state_set_previous_srv(sr_srv_t *srv)
 {
   tor_assert(srv);
+  tor_assert(sr_state);
+
   sr_state->previous_srv = srv;
 }
 
@@ -1002,6 +1008,8 @@ sr_state_set_previous_srv(sr_srv_t *srv)
 sr_srv_t *
 sr_state_get_current_srv(void)
 {
+  tor_assert(sr_state);
+
   return sr_state->current_srv;
 }
 
@@ -1010,6 +1018,8 @@ void
 sr_state_set_current_srv(sr_srv_t *srv)
 {
   tor_assert(srv);
+  tor_assert(sr_state);
+
   sr_state->current_srv = srv;
 }
 
