@@ -24,35 +24,11 @@ test_get_sr_protocol_phase(void *arg)
   tt_int_op(retval, ==, 0);
 
   {
-    retval = parse_rfc1123_time("Wed, 20 Apr 2015 12:00:00 UTC", &the_time);
-    tt_int_op(retval, ==, 0);
-
-    phase = get_sr_protocol_phase(the_time);
-    tt_int_op(phase, ==, SR_PHASE_COMMIT);
-  }
-
-  {
-    retval = parse_rfc1123_time("Wed, 20 Apr 2015 12:00:01 UTC", &the_time);
-    tt_int_op(retval, ==, 0);
-
-    phase = get_sr_protocol_phase(the_time);
-    tt_int_op(phase, ==, SR_PHASE_COMMIT);
-  }
-
-  {
-    retval = parse_rfc1123_time("Wed, 20 Apr 2015 13:00:00 UTC", &the_time);
-    tt_int_op(retval, ==, 0);
-
-    phase = get_sr_protocol_phase(the_time);
-    tt_int_op(phase, ==, SR_PHASE_COMMIT);
-  }
-
-  {
     retval = parse_rfc1123_time("Wed, 20 Apr 2015 23:59:00 UTC", &the_time);
     tt_int_op(retval, ==, 0);
 
     phase = get_sr_protocol_phase(the_time);
-    tt_int_op(phase, ==, SR_PHASE_COMMIT);
+    tt_int_op(phase, ==, SR_PHASE_REVEAL);
   }
 
   {
@@ -60,7 +36,7 @@ test_get_sr_protocol_phase(void *arg)
     tt_int_op(retval, ==, 0);
 
     phase = get_sr_protocol_phase(the_time);
-    tt_int_op(phase, ==, SR_PHASE_REVEAL);
+    tt_int_op(phase, ==, SR_PHASE_COMMIT);
   }
 
   {
@@ -68,11 +44,35 @@ test_get_sr_protocol_phase(void *arg)
     tt_int_op(retval, ==, 0);
 
     phase = get_sr_protocol_phase(the_time);
-    tt_int_op(phase, ==, SR_PHASE_REVEAL);
+    tt_int_op(phase, ==, SR_PHASE_COMMIT);
   }
 
   {
     retval = parse_rfc1123_time("Wed, 20 Apr 2015 11:59:00 UTC", &the_time);
+    tt_int_op(retval, ==, 0);
+
+    phase = get_sr_protocol_phase(the_time);
+    tt_int_op(phase, ==, SR_PHASE_COMMIT);
+  }
+
+  {
+    retval = parse_rfc1123_time("Wed, 20 Apr 2015 12:00:00 UTC", &the_time);
+    tt_int_op(retval, ==, 0);
+
+    phase = get_sr_protocol_phase(the_time);
+    tt_int_op(phase, ==, SR_PHASE_REVEAL);
+  }
+
+  {
+    retval = parse_rfc1123_time("Wed, 20 Apr 2015 12:00:01 UTC", &the_time);
+    tt_int_op(retval, ==, 0);
+
+    phase = get_sr_protocol_phase(the_time);
+    tt_int_op(phase, ==, SR_PHASE_REVEAL);
+  }
+
+  {
+    retval = parse_rfc1123_time("Wed, 20 Apr 2015 13:00:00 UTC", &the_time);
     tt_int_op(retval, ==, 0);
 
     phase = get_sr_protocol_phase(the_time);
