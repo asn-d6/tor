@@ -111,6 +111,7 @@ test_generate_commitment(void *arg)
 
   {  /* Setup a minimal dirauth environment for this test  */
     or_options_t *options = get_options_mutable();
+    options->AuthoritativeDir = 1;
     tt_int_op(0, ==, load_ed_keys(options, now));
   }
 

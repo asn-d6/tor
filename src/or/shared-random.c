@@ -1383,6 +1383,10 @@ sr_get_consensus_srv_string(void)
   char *srv_str;
   smartlist_t *srv_lines = get_srv_vote_line();
 
+  if (!srv_lines) {
+    return NULL;
+  }
+
   srv_str = smartlist_join_strings(srv_lines, "", 0, NULL);
   SMARTLIST_FOREACH(srv_lines, char *, s, tor_free(s));
   smartlist_free(srv_lines);
