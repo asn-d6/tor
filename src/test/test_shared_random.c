@@ -113,6 +113,9 @@ test_generate_commitment(void *arg)
     or_options_t *options = get_options_mutable();
     options->AuthoritativeDir = 1;
     tt_int_op(0, ==, load_ed_keys(options, now));
+
+    sr_state_init(0);
+    set_sr_phase_to_reveal();
   }
 
   { /* Generate our commit/reveal */
@@ -137,15 +140,13 @@ test_generate_commitment(void *arg)
     tt_int_op(retval, ==, 0);
   }
 
-  /* XXX Verify commit signature. */
-
   { /* Parse our own reveal */
     retval = reveal_decode(reveal_b64, parsed_commit);
     tt_int_op(retval, ==, 0);
   }
 
   { /* Verify the commit with the reveal */
-    retval = verify_commit_and_reveal(parsed_commit);
+    retval = verify_received_commit(parsed_commit);
     tt_int_op(retval, ==, 0);
   }
 
