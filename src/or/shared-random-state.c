@@ -46,13 +46,12 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 /* Our persistent state magic number. Yes we got the 42s! */
 #define SR_DISK_STATE_MAGIC 42424242
 
-/* Shared randomness protocol starts at 12:00 UTC */
-#define SHARED_RANDOM_START_HOUR 12
-/* Each SR round lasts 1 hour */
-#define SHARED_RANDOM_TIME_INTERVAL 1
+/* Shared randomness protocol starts at 00:00 UTC */
+#define SHARED_RANDOM_START_HOUR 00
+/* A protocol round is completed after N seconds */
+#define SHARED_RANDOM_VOTING_INTERVAL 3600
 /* Each protocol phase has 12 rounds  */
 /* XXX: Only for testing faster! To fix. */
-//#define SHARED_RANDOM_N_ROUNDS 12
 #define SHARED_RANDOM_N_ROUNDS 3
 
 static int
@@ -161,73 +160,32 @@ get_valid_until_time(void)
   return valid_until;
 }
 
-/* Return the current protocol phase on a testing network. */
-static time_t
-get_testing_network_protocol_phase(void)
-{
-  /* XXX In this function we assume that in a testing network all dirauths
-     started together. Otherwise their phases will get desynched!!! */
 
-  /* XXX: This can be called when allocating a new state so in this case we
-   * are starting up thus in commit phase. */
-  if (sr_state == NULL) {
-    return SR_PHASE_COMMIT;
-  }
-
-  /* On testing network, instead of messing with time, we simply count the
-   * number of rounds and switch phase when we reach the right amount of
-   * rounds */
-  if (sr_state->phase == SR_PHASE_COMMIT) {
-    /* Check if we've done all commitment rounds and we are moving to reveal */
-    if (sr_state->n_commit_rounds == SHARED_RANDOM_N_ROUNDS) {
-      return SR_PHASE_REVEAL; /* we switched to reveal phase */
-    } else {
-      return SR_PHASE_COMMIT; /* still more rounds to go on commit phase */
-    }
-  } else { /* phase is reveal */
-    /* Check if we've done all reveal rounds and we are moving to commitment */
-    if (sr_state->n_reveal_rounds == SHARED_RANDOM_N_ROUNDS) {
-      return SR_PHASE_COMMIT; /* we switched to commit phase */
-    } else {
-      return SR_PHASE_REVEAL; /* still more rounds to go on reveal phase */
-    }
-  }
-
-  tor_assert(0); /* should never get here */
-}
-
-/* Given the consensus 'valid-after' time, return the protocol phase we
- * should be in. */
+/* Given the consensus 'valid-after' time, return the protocol phase we should
+ * be in. */
 STATIC sr_phase_t
 get_sr_protocol_phase(time_t valid_after)
 {
-  sr_phase_t phase;
-  struct tm tm;
+  int total_periods = SHARED_RANDOM_N_ROUNDS * 2;
+  int voting_interval;
+  int current_slot;
 
-  /* Testing network requires special handling (since voting happens every few
-     seconds). */
+  /* Get the active voting interval. */
   if (get_options()->TestingTorNetwork) {
-    return get_testing_network_protocol_phase();
+    voting_interval = get_options()->V3AuthVotingInterval;
+  } else {
+    voting_interval = SHARED_RANDOM_VOTING_INTERVAL;
   }
 
-  /* Break down valid_after to secs/mins/hours */
-  tor_gmtime_r(&valid_after, &tm);
+  /* Split time into slots of size 'voting_interval'. See which slot we are
+     currently into, and find which phase it corresponds to. */
+  current_slot = (valid_after / voting_interval) % total_periods;
 
-  { /* Now get the phase */
-    int hour_commit_phase_begins = SHARED_RANDOM_START_HOUR;
-
-    int hour_commit_phase_ends = hour_commit_phase_begins +
-      SHARED_RANDOM_TIME_INTERVAL * SHARED_RANDOM_N_ROUNDS;
-
-    if (tm.tm_hour >= hour_commit_phase_begins &&
-        tm.tm_hour < hour_commit_phase_ends) {
-      phase = SR_PHASE_COMMIT;
-    } else {
-      phase = SR_PHASE_REVEAL;
-    }
+  if (current_slot < SHARED_RANDOM_N_ROUNDS) {
+    return SR_PHASE_COMMIT;
+  } else {
+    return SR_PHASE_REVEAL;
   }
-
-  return phase;
 }
 
 /* Add a <b>conflict</b> object to the given <b>state</b>. */
@@ -1076,8 +1034,6 @@ sr_state_update(time_t valid_after)
     tor_assert(sr_state->n_reveal_rounds == 0);
     sr_state->n_commit_rounds++;
   } else {
-    /* invariant check: we've completed commit phase */
-    tor_assert(sr_state->n_commit_rounds == SHARED_RANDOM_N_ROUNDS);
     sr_state->n_reveal_rounds++;
   }
 
