@@ -27,6 +27,7 @@
 #include "routerset.h"
 #include "test.h"
 #include "torcert.h"
+#include "shared-random-state.h"
 
 static void
 test_dir_nicknames(void *arg)
@@ -1900,6 +1901,8 @@ test_a_networkstatus(
   tt_assert(vrs_gen);
   tt_assert(rs_test);
   tt_assert(vrs_test);
+
+  sr_state_init(0);
 
   /* Parse certificates and keys. */
   cert1 = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
