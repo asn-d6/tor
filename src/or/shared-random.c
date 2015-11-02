@@ -989,18 +989,14 @@ sr_parse_commitment_line(smartlist_t *args)
   /* Allocate commit since we have a valid identity now. */
   commit = commit_new(&pubkey);
 
-  /* Third argument is the majority value. 0 or 1. */
+  /* Third argument is the commitment value base64-encoded. */
   value = smartlist_get(args, 2);
-  commit->has_majority = !!strcmp(value, "0");
-
-  /* Fourth argument is the commitment value base64-encoded. */
-  value = smartlist_get(args, 3);
   if (commit_decode(value, commit) < 0) {
     goto error;
   }
 
-  /* (Optional) Fifth argument is the revealed value. */
-  value = smartlist_get(args, 4);
+  /* (Optional) Fourth argument is the revealed value. */
+  value = smartlist_get(args, 3);
   if (value != NULL) {
     if (reveal_decode(value, commit) < 0) {
       goto error;
@@ -1041,13 +1037,12 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
   /* Build a list of arguments that have the same order as the Commitment
    * line in the state. With that, we can parse it using the same function
    * that the state uses. Line format is as follow:
-   *    "shared-rand-commitment" SP algname SP identity SP majority SP
+   *    "shared-rand-commitment" SP algname SP identity SP
    *                             commitment-value [SP revealed-value] NL
    */
   args = smartlist_new();
   smartlist_add(args, (char *) hash_alg);
   smartlist_add(args, (char *) commit_pubkey);
-  smartlist_add(args, (char *) "0"); /* Majority field set to 0. */
   smartlist_add(args, (char *) commitment);
   if (reveal != NULL) {
     smartlist_add(args, (char *) reveal);
@@ -1132,41 +1127,6 @@ end:
   smartlist_free(args);
 }
 
-/* Return 1 iff <b>commit</b> is included in enough votes to be the majority
- * opinion. */
-static int
-commit_has_majority(const sr_commit_t *commit)
-{
-  int n_voters = get_n_authorities(V3_DIRINFO);
-  int votes_required_for_majority = (n_voters / 2) + 1;
-  int votes_for_this_commit = 0;
-
-  tor_assert(commit);
-
-  /* Let's avoid some useless work here. Protect those CPU cycles! */
-  if (commit->has_majority) {
-    return 1;
-  }
-
-  DIGEST256MAP_FOREACH(voted_commits, key, const digest256map_t *, commits) {
-    /* IMPORTANT: At this stage, we are assured that there can never be two
-     * commits from the same authority in one single vote because of our
-     * data structure type that doesn't allow it but also we make sure to
-     * flag a conflict if we found that during received commit parsing. */
-    if (digest256map_get(commits, commit->auth_identity.pubkey)) {
-      votes_for_this_commit++;
-    }
-  } DIGEST256MAP_FOREACH_END;
-
-  log_warn(LD_DIR, "[SR] \t \t Commit %s from %s. "
-                   "It has %d votes and it needs %d.",
-           commit->encoded_commit, commit->auth_fingerprint,
-           votes_for_this_commit, votes_required_for_majority);
-
-  /* Did we reached at least majority ? */
-  return votes_for_this_commit >= votes_required_for_majority;
-}
-
 /* We just received a commit from the vote of authority with
  * <b>identity_digest</b>. Return 1 if this commit is authorititative that
  * is, it belongs to the authority that voted it. Else return 0 if not. */
@@ -1185,9 +1145,9 @@ commit_is_authoritative(const sr_commit_t *commit,
                       sizeof(commit->auth_identity));
 }
 
-/* Decide if <b>commit</b> can be added to our state that is check if the
- * commit is authoritative or/and has majority. Return 1 if the commit
- * should be added to our state or 0 if not. */
+/* Decide if <b>commit</b> can be added to our state that is check if the commit
+ * is authoritative. Return 1 if the commit should be added to our state or 0 if
+ * not. */
 static int
 should_keep_commitment(sr_commit_t *commit,
                        const ed25519_public_key_t *voter_key)
@@ -1195,23 +1155,11 @@ should_keep_commitment(sr_commit_t *commit,
   tor_assert(commit);
   tor_assert(voter_key);
 
-  /* For a commit to be added to our state, we need it to match one of the
-   * two possible conditions.
-   *
-   * First, if the commit is authoritative that is it's the voter's commit.
-   * The reason to keep it is that we put those authoritative commits in our
-   * vote to try to reach majority which is basically telling the world
-   * we've seen a commit from a specific authority.
-   *
-   * Second, if the commit has been seen by the majority of authorities. If
-   * so, by consensus, we decided that this commit is usable for our shared
-   * random computation and we can then also put it in our vote from that
-   * point on. */
+  /* For a commit to be added to our state, we need it to be authoritative, that
+   * is it's the voter's commit. */
   commit->is_authoritative = commit_is_authoritative(commit, voter_key);
-  commit->has_majority = commit_has_majority(commit);
 
-  /* One of those conditions is enough. */
-  return commit->is_authoritative | commit->has_majority;
+  return commit->is_authoritative;
 }
 
 /* We are during commit phase and we found <b>commit</b> in a vote of
@@ -1256,7 +1204,7 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
     char voter_fp[ED25519_BASE64_LEN + 1];
     ed25519_public_to_base64(voter_fp, voter_key);
     log_warn(LD_DIR, "[SR] Commit of authority %s received from %s "
-                     "is not authoritative nor has majority. Ignoring.",
+                     "is not authoritative. Ignoring.",
              commit->auth_fingerprint, voter_fp);
   }
   return commit_kept;
@@ -1287,7 +1235,7 @@ decide_commit_during_reveal_phase(const sr_commit_t *commit)
   /* Get the commit from our state. If it's not found, it's possible that we
    * didn't get a commit from the commit phase but we now see the reveal
    * from someone else. In this case, we ignore it since we didn't rule that
-   * this commit had majority. */
+   * this commit should be kept. */
   saved_commit = sr_state_get_commit(&commit->auth_identity);
   if (saved_commit == NULL) {
     return;
@@ -1349,9 +1297,7 @@ decide_commit_from_votes(sr_phase_t phase)
     ed25519_public_key_t voter_key;
     memcpy(voter_key.pubkey, key, sizeof(voter_key.pubkey));
 
-    /* IMPORTANT: Ignore authority vote if we have a conflict for it. Pass
-     * this point, commit can be flagged as having majority thus it's very
-     * important to ignore any authority that are mis-behaving. */
+    /* IMPORTANT: Ignore authority vote if we have a conflict for it. */
     if (sr_state_get_conflict(&voter_key)) {
       continue;
     }
@@ -1438,10 +1384,9 @@ sr_decide_post_voting(void)
 {
   log_warn(LD_DIR, "[SR] Deciding stage post voting.");
 
-  /* First step is to find if we have any conflicts and if so add them to
-   * our state. This is important because after that we will decide if we
-   * keep the commitments as authoritative or decided by majority from which
-   * we MUST exclude conflicts. */
+  /* First step is to find if we have any conflicts and if so add them to our
+   * state. This is important because after that we will decide if we keep the
+   * commitments as authoritative from which we MUST exclude conflicts. */
   decide_conflict_from_votes();
 
    /* Then we decide which commit to keep in our state considering that all
