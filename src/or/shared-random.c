@@ -1063,12 +1063,8 @@ decide_commit_during_reveal_phase(const sr_commit_t *commit)
   /* Don't set the reveal value if we already have one. */
   if (tor_mem_is_zero(saved_commit->encoded_reveal,
                       sizeof(saved_commit->encoded_reveal))) {
-    log_warn(LD_DIR, "[SR] \t \t Reveal value learned %s (for commit %s)",
-             commit->encoded_reveal, commit->encoded_commit);
-    strncpy(saved_commit->encoded_reveal, commit->encoded_reveal,
-            sizeof(saved_commit->encoded_reveal));
+    sr_state_set_commit_reveal(saved_commit, commit->encoded_reveal);
   }
-  /* XXX: update disk state. */
 }
 
 /* For all vote in <b>votes</b>, decide if the commitments should be ignored
