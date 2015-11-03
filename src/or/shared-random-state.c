@@ -920,10 +920,8 @@ sr_state_add_commit(sr_commit_t *commit)
   /* Add the commit to our global state. */
   commit_add_to_state(commit, sr_state);
 
-  log_warn(LD_DIR, "[SR] \t Commit from %s has been added to our state. "
-                   "It's %sauthoritative.",
-           commit->auth_fingerprint,
-           commit->is_authoritative ? "" : "NOT ");
+  log_warn(LD_DIR, "[SR] \t Commit from %s has been added to our state.",
+           commit->auth_fingerprint);
 }
 
 /* Remove a commit entry identified by <b>key</b> from our state. */
