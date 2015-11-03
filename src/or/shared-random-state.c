@@ -32,7 +32,6 @@ static sr_disk_state_t *sr_disk_state = NULL;
 
 /* Disk state file keys. */
 static const char *dstate_commit_key = "Commitment";
-static const char *dstate_conflict_key = "Conflict";
 static const char *dstate_prev_srv_key = "SharedRandPreviousValue";
 static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 
@@ -66,8 +65,6 @@ static config_var_t state_vars[] = {
 
   VAR("Commitment",             LINELIST_S, Commitments, NULL),
   V(Commitments,                LINELIST_V, NULL),
-  VAR("Conflict",               LINELIST_S, Conflicts, NULL),
-  V(Conflicts,                  LINELIST_V, NULL),
 
   V(SharedRandPreviousValue,    LINELIST_S, NULL),
   V(SharedRandCurrentValue,     LINELIST_S, NULL),
@@ -188,28 +185,9 @@ get_sr_protocol_phase(time_t valid_after)
   }
 }
 
-/* Add a <b>conflict</b> object to the given <b>state</b>. */
-static void
-conflict_add_to_state(sr_conflict_commit_t *conflict, sr_state_t *state)
-{
-  sr_conflict_commit_t *saved;
-
-  tor_assert(conflict);
-  tor_assert(state);
-
-  /* Replace current value if any and free the old one if any. */
-  saved = digest256map_set(state->conflicts,
-                           conflict->commit1->auth_identity.pubkey,
-                           conflict);
-  sr_conflict_commit_free(saved);
-  log_warn(LD_DIR, "[SR] Authority %s has just triggered a conflict. "
-           "It will be ignored for the rest of the protocol run.",
-           conflict->commit1->auth_fingerprint);
-}
-
 /* Add the given <b>commit</b> to <b>state</b>. It MUST be a valid commit
  * and there shouldn't be a commit from the same authority in the state
- * already else conflict verification hasn't been done prior. */
+ * already else verification hasn't been done prior. */
 static void
 commit_add_to_state(sr_commit_t *commit, sr_state_t *state)
 {
@@ -231,15 +209,6 @@ commit_free_(void *p)
   sr_commit_free(p);
 }
 
-/* Helper: deallocate a conflict commit object. (Used with
- * digest256map_free(), which requires a function pointer whose argument is
- * void *). */
-static void
-conflict_commit_free_(void *p)
-{
-  sr_conflict_commit_free(p);
-}
-
 /* Free a state that was allocated with state_new(). */
 static void
 state_free(sr_state_t *state)
@@ -249,7 +218,6 @@ state_free(sr_state_t *state)
   }
   tor_free(state->fname);
   digest256map_free(state->commitments, commit_free_);
-  digest256map_free(state->conflicts, conflict_commit_free_);
   tor_free(state);
 }
 
@@ -267,7 +235,6 @@ state_new(const char *fname)
   new_state->fname = tor_strdup(fname);
   new_state->version = SR_PROTO_VERSION;
   new_state->commitments = digest256map_new();
-  new_state->conflicts = digest256map_new();
   new_state->phase = get_sr_protocol_phase(time(NULL));
   new_state->valid_until = get_valid_until_time();
   return new_state;
@@ -314,13 +281,10 @@ disk_state_new(void)
     tor_malloc_zero(sizeof(*line));
   line->key = tor_strdup(dstate_cur_srv_key);
 
-  /* Init Commitments and Conflicts line. */
+  /* Init Commitments line. */
   line = new_state->Commitments =
     tor_malloc_zero(sizeof(*line));
   line->key = tor_strdup(dstate_commit_key);
-  line = new_state->Conflicts =
-    tor_malloc_zero(sizeof(*line));
-  line->key = tor_strdup(dstate_conflict_key);
 
   /* Init config format. */
   config_init(&state_format, new_state);
@@ -380,7 +344,7 @@ disk_state_validate_cb(void *old_state, void *state, void *default_state,
   (void) default_state;
   (void) old_state;
 
-  /* XXX: Validate phase, version, time, commitments, conflicts and SRV
+  /* XXX: Validate phase, version, time, commitments and SRV
    * format. This is called by config_dump which is just before we are about
    * to write it to disk so we should verify the format and not parse
    * everything again. At that point, our global memory state has been
@@ -429,54 +393,6 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
     }
     /* Add commit to our state pointer. */
     commit_add_to_state(commit, state);
-
-    SMARTLIST_FOREACH(args, char *, cp, tor_free(cp));
-    smartlist_free(args);
-  }
-
-  return 0;
-error:
-  smartlist_free(args);
-  return -1;
-}
-
-/* Parse Conflict line(s) in the disk state and translate them to the the
- * memory state. Return 0 on success else -1 on error. */
-static int
-disk_state_parse_conflicts(sr_state_t *state, sr_disk_state_t *disk_state)
-{
-  config_line_t *line;
-  smartlist_t *args = NULL;
-
-  tor_assert(state);
-  tor_assert(disk_state);
-
-  for (line = disk_state->Conflicts; line; line = line->next) {
-    sr_conflict_commit_t *conflict = NULL;
-
-    if (strcasecmp(line->key, dstate_conflict_key) ||
-        line->value == NULL) {
-      /* Ignore any lines that are not conflicts. */
-      continue;
-    }
-    args = smartlist_new();
-    smartlist_split_string(args, line->value, " ",
-                           SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 0);
-    if (smartlist_len(args) < 3) {
-      log_warn(LD_DIR, "Too few arguments to Conflict. Line: \"%s\"",
-               line->value);
-      goto error;
-    }
-    conflict = sr_parse_conflict_line(args);
-    if (conflict == NULL) {
-      goto error;
-    }
-    /* Conflict was decoded correctly, let's verify it. */
-    if (!sr_verify_conflict(conflict)) {
-      goto error;
-    }
-    /* Add conflict to our state pointer. */
-    conflict_add_to_state(conflict, state);
 
     SMARTLIST_FOREACH(args, char *, cp, tor_free(cp));
     smartlist_free(args);
@@ -579,32 +495,11 @@ disk_state_parse(sr_disk_state_t *new_disk_state)
   if (disk_state_parse_commits(new_state, new_disk_state) < 0) {
     goto error;
   }
-  /* Parse the conflicts. */
-  if (disk_state_parse_conflicts(new_state, new_disk_state) < 0) {
-    goto error;
-  }
   /* Great! This new state contains everything we had on disk. */
   return new_state;
 error:
   state_free(new_state);
   return NULL;
-}
-
-/* From a valid conflict object and an allocated config line, set the line's
- * value to the state string representation of a conflict. */
-static void
-disk_state_put_conflict_line(sr_conflict_commit_t *conflict,
-                             config_line_t *line)
-{
-  tor_assert(conflict);
-  tor_assert(line);
-
-  /* We can construct a reveal string if the random number exists meaning
-   * it's ours or we got it during the reveal phase. */
-  tor_asprintf(&line->value, "%s %s %s",
-               conflict->commit1->auth_fingerprint,
-               conflict->commit1->encoded_commit,
-               conflict->commit2->encoded_commit);
 }
 
 /* From a valid commit object and an allocated config line, set the line's
@@ -655,7 +550,6 @@ static void
 disk_state_reset(void)
 {
   config_free_lines(sr_disk_state->Commitments);
-  config_free_lines(sr_disk_state->Conflicts);
   config_free_lines(sr_disk_state->SharedRandPreviousValue);
   config_free_lines(sr_disk_state->SharedRandCurrentValue);
   config_free_lines(sr_disk_state->ExtraLines);
@@ -703,16 +597,6 @@ disk_state_update(void)
     *next = line = tor_malloc_zero(sizeof(*line));
     line->key = tor_strdup(dstate_commit_key);
     disk_state_put_commit_line(commit, line);
-    next = &(line->next);
-  } DIGEST256MAP_FOREACH_END;
-
-  /* Parse the conflict and construct config line(s). */
-  next = &sr_disk_state->Conflicts;
-  DIGEST256MAP_FOREACH(sr_state->conflicts, key,
-                       sr_conflict_commit_t *, conflict) {
-    *next = line = tor_malloc_zero(sizeof(*line));
-    line->key = tor_strdup(dstate_conflict_key);
-    disk_state_put_conflict_line(conflict, line);
     next = &(line->next);
   } DIGEST256MAP_FOREACH_END;
 }
@@ -876,14 +760,9 @@ new_protocol_run(time_t valid_after)
   log_warn(LD_DIR, "[SR] Protocol run #%" PRIu64 " starting!",
            sr_state->n_protocol_runs);
 
-  /* We are in a new protocol run so cleanup commitments and conflicts. */
+  /* We are in a new protocol run so cleanup commitments. */
   DIGEST256MAP_FOREACH_MODIFY(sr_state->commitments, key, sr_commit_t *, c) {
     sr_commit_free(c);
-    MAP_DEL_CURRENT(key);
-  } DIGEST256MAP_FOREACH_END;
-  DIGEST256MAP_FOREACH_MODIFY(sr_state->conflicts, key,
-                              sr_conflict_commit_t *, c) {
-    sr_conflict_commit_free(c);
     MAP_DEL_CURRENT(key);
   } DIGEST256MAP_FOREACH_END;
 
@@ -895,35 +774,6 @@ new_protocol_run(time_t valid_after)
      * commitment won't be in our state. */
     commit_add_to_state(our_commitment, sr_state);
   }
-}
-
-/* Transition from the commit phase to the reveal phase by sanitizing our
- * state and making sure it's coherent to get in the reveal phase. */
-static void
-new_reveal_phase(void)
-{
-  tor_assert(sr_state->phase != SR_PHASE_REVEAL);
-  tor_assert(sr_state->n_reveal_rounds == 0);
-
-  log_warn(LD_DIR, "[SR] Transition to reveal phase!");
-
-  /* XXX is this useful anymore with majority disabled? */
-  DIGEST256MAP_FOREACH_MODIFY(sr_state->commitments, key, sr_commit_t *,
-                              commit) {
-    sr_conflict_commit_t *conflict;
-
-    /* Safety net, we shouldn't have a commit from an authority that also
-     * has a conflict for the same authority. If so, this is a BUG so log it
-     * and clean it. */
-    conflict = sr_state_get_conflict(&commit->auth_identity);
-    if (conflict != NULL) {
-      log_warn(LD_DIR, "[SR] BUG: Commit found for authority %s "
-                       "but we have a conflict for this authority.",
-               commit->auth_fingerprint);
-      sr_commit_free(commit);
-      MAP_DEL_CURRENT(key);
-    }
-  } DIGEST256MAP_FOREACH_END;
 }
 
 /* Return 1 iff the <b>next_phase</b> is a phase transition from the current
@@ -988,13 +838,6 @@ sr_state_get_commits(void)
   return sr_state->commitments;
 }
 
-/* Return a pointer to the conflict map from our state. */
-digest256map_t *
-sr_state_get_conflicts(void)
-{
-  return sr_state->conflicts;
-}
-
 /* Update the current SR state as needed for the upcoming voting round at
  * <b>valid_after</b>. Don't call this function twice in the same voting
  * period. */
@@ -1017,7 +860,6 @@ sr_state_update(time_t valid_after)
       break;
     case SR_PHASE_REVEAL:
       /* We were in the commit phase thus now in reveal. */
-      new_reveal_phase();
       break;
     }
     /* Set the new phase for this round */
@@ -1061,39 +903,8 @@ sr_state_get_commit(const ed25519_public_key_t *identity)
   return digest256map_get(sr_state->commitments, identity->pubkey);
 }
 
-/* Return conflict object from the given authority digest <b>identity</b>.
- * Return NULL if not found. */
-sr_conflict_commit_t *
-sr_state_get_conflict(const ed25519_public_key_t *identity)
-{
-  tor_assert(identity);
-  return digest256map_get(sr_state->conflicts, identity->pubkey);
-}
-
-/* Add a conflict to the state using the different commits <b>c1</b> and
- * <b>c2</b>. If a conflict already exists, update it with those values. */
-void
-sr_state_add_conflict(sr_conflict_commit_t *conflict)
-{
-  sr_conflict_commit_t *saved;
-
-  tor_assert(conflict);
-  tor_assert(conflict->commit1);
-  tor_assert(conflict->commit2);
-
-  /* It's possible to add a conflict for an authority that already has a
-   * conflict in our state so we update the entry with the latest one. */
-  saved = digest256map_set(sr_state->conflicts,
-                           conflict->commit1->auth_identity.pubkey,
-                           conflict);
-  if (saved != conflict) {
-    sr_conflict_commit_free(saved);
-  }
-}
-
-/* Add <b>commit</b> to the permanent state. Make sure there are no
- * conflicts. The given commit is duped so the caller should free the memory
- * if needed upon return. */
+/* Add <b>commit</b> to the permanent state. The given commit is duped so
+ * the caller should free the memory if needed upon return. */
 void
 sr_state_add_commit(sr_commit_t *commit)
 {

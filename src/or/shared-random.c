@@ -136,40 +136,6 @@ commit_log(const sr_commit_t *commit)
   }
 }
 
-/* Allocate a new conflict commit object. If <b>identity</b> is given, it's
- * copied into the object. The commits pointer <b>c1</b> and <b>c2</b> are
- * set in the object as is, they are NOT dup. This means that the caller
- * MUST not free the commits and should consider the conflict object having
- * a reference on them. This never returns NULL. */
-static sr_conflict_commit_t *
-conflict_commit_new(sr_commit_t *c1, sr_commit_t *c2)
-{
-  sr_conflict_commit_t *conflict = tor_malloc_zero(sizeof(*conflict));
-
-  tor_assert(c1);
-  tor_assert(c2);
-
-  /* This is should NEVER happen else code flow issue. */
-  int key_are_equal = tor_memeq(&c1->auth_identity, &c2->auth_identity,
-                                sizeof(c1->auth_identity));
-  tor_assert(key_are_equal);
-  conflict->commit1 = c1;
-  conflict->commit2 = c2;
-  return conflict;
-}
-
-/* Free a conflict commit object. */
-void
-sr_conflict_commit_free(sr_conflict_commit_t *conflict)
-{
-  if (conflict == NULL) {
-    return;
-  }
-  sr_commit_free(conflict->commit1);
-  sr_commit_free(conflict->commit2);
-  tor_free(conflict);
-}
-
 /* Free all commit object in the given list. */
 static void
 voted_commits_free(digest256map_t *commits)
@@ -233,23 +199,6 @@ verify_commit_and_reveal(const sr_commit_t *commit)
       commit_log(commit);
       goto invalid;
     }
-  }
-
-  return 0;
- invalid:
-  return -1;
-}
-
-/* We just received <b>conflict</b> in a vote. Make sure that it's valid by
- * verifying its commit if they are from the same authority and if the
- * signature matches for them. */
-static int
-verify_received_conflict(const sr_conflict_commit_t *conflict)
-{
-  tor_assert(conflict);
-
-  if (!sr_verify_conflict(conflict)) {
-    goto invalid;
   }
 
   return 0;
@@ -404,44 +353,6 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
 
  error:
   return -1;
-}
-
-/* Parse a Conflict line from our disk state and return a newly allocated
- * conflict commit object. NULL is returned on error. */
-sr_conflict_commit_t *
-sr_parse_conflict_line(smartlist_t *args)
-{
-  char *value;
-  ed25519_public_key_t identity;
-  sr_commit_t *commit1 = NULL, *commit2 = NULL;
-  sr_conflict_commit_t *conflict = NULL;
-
-  /* First argument is the authority identity. */
-  value = smartlist_get(args, 0);
-  if (ed25519_public_from_base64(&identity, value) < 0) {
-    log_warn(LD_DIR, "Conflict line identity is not recognized.");
-    goto error;
-  }
-  /* Second argument is the first commit value base64-encoded. */
-  commit1 = commit_new(&identity);
-  value = smartlist_get(args, 1);
-  if (commit_decode(value, commit1) < 0) {
-    goto error;
-  }
-  /* Third argument is the second commit value base64-encoded. */
-  commit2 = commit_new(&identity);
-  value = smartlist_get(args, 2);
-  if (commit_decode(value, commit2) < 0) {
-    goto error;
-  }
-  /* Everything is parsing correctly, allocate object and return it. */
-  conflict = conflict_commit_new(commit1, commit2);
-  return conflict;
-error:
-  sr_conflict_commit_free(conflict);
-  sr_commit_free(commit1);
-  sr_commit_free(commit2);
-  return NULL;
 }
 
 /* Encode a reveal element using a given commit object to dst which is a
@@ -824,24 +735,6 @@ get_vote_line_from_commit(const sr_commit_t *commit)
   return vote_line;
 }
 
-/* Given <b>conflict</b> give the line that we should place in our votes.
- * It's the responsibility of the caller to free the string. */
-static char *
-get_vote_line_from_conflict(const sr_conflict_commit_t *conflict)
-{
-  char *line = NULL;
-  static const char *conflict_str_key = "shared-rand-conflict";
-
-  tor_assert(conflict);
-
-  tor_asprintf(&line, "%s %s %s %s\n",
-               conflict_str_key,
-               conflict->commit1->auth_fingerprint,
-               conflict->commit1->encoded_commit,
-               conflict->commit2->encoded_commit);
-  return line;
-}
-
 /* Return a smartlist for which each element is the SRV line that should be
  * put in a vote or consensus. Caller must free the string elements in the
  * list once done with it. */
@@ -885,7 +778,7 @@ char *
 sr_get_commit_string_for_vote(void)
 {
   char *vote_str = NULL;
-  digest256map_t *state_commits, *state_conflicts;
+  digest256map_t *state_commits;
   smartlist_t *chunks = smartlist_new();
 
   log_warn(LD_DIR, "[SR] Sending out vote string:");
@@ -897,15 +790,6 @@ sr_get_commit_string_for_vote(void)
     char *line = get_vote_line_from_commit(commit);
     smartlist_add(chunks, line);
     log_warn(LD_DIR, "[SR] \t Commit: %s", line);
-  } DIGEST256MAP_FOREACH_END;
-
-  /* Add conflict(s) to our vote. */
-  state_conflicts = sr_state_get_conflicts();
-  DIGEST256MAP_FOREACH(state_conflicts, key,
-                       const sr_conflict_commit_t *, conflict) {
-    char *line = get_vote_line_from_conflict(conflict);
-    smartlist_add(chunks, line);
-    log_warn(LD_DIR, "[SR] \t Conflict: %s", line);
   } DIGEST256MAP_FOREACH_END;
 
   /* Add the SRV values to the string. */
@@ -939,7 +823,7 @@ commitments_are_the_same(const sr_commit_t *commit_one,
 /* Add a commit that has just been seen in <b>voter_key<b/>'s vote to our
  * voted list. If an entry for the voter is not found, one is created. If
  * there is already a commit from the same authority key in the voter's
- * list, create a conflict since this is NOT allowed. */
+ * list, ignore it and notice log. */
 static void
 add_voted_commit(sr_commit_t *commit, const ed25519_public_key_t *voter_key)
 {
@@ -962,15 +846,12 @@ add_voted_commit(sr_commit_t *commit, const ed25519_public_key_t *voter_key)
   saved_commit = digest256map_get(entry, commit->auth_identity.pubkey);
   if (saved_commit != NULL) {
     /* Since commit are carried on at each voting period, let's make sure we
-     * have the same commit and if not, add a conflict. */
+     * have the same commit and if not, ignore and log. */
     if (!commitments_are_the_same(commit, saved_commit)) {
-      /* Remove from list since the conflict object needs ownership. */
-      digest256map_remove(entry, saved_commit->auth_identity.pubkey);
-      /* Let's create a conflict here in order to ignore this mis-behaving
-       * authority from now one. */
-      sr_conflict_commit_t *conflict =
-        conflict_commit_new(commit, saved_commit);
-      sr_state_add_conflict(conflict);
+      log_warn(LD_DIR, "[SR] Two different commits from authority %s"
+                       "Ignoring the latest one. This could happen if "
+                       "an authority rebooted and lost its sr-state.",
+               commit->auth_fingerprint);
     }
   } else {
     /* Unique entry for now, add it indexed by the commit authority key. */
@@ -1072,72 +953,13 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
    * data. Now we'll validate it. This function will make sure also to
    * validate the reveal value if one is present. */
   if (verify_received_commit(commit) < 0) {
-    /* XXX: This means we got a INVALID commit from an authority (either
-     * hers or someone else). Should we create a conflict for the authority
-     * that sent us this commit (voter_key) so we ignore it for the rest of
-     * the voting period? */
     sr_commit_free(commit);
-    commit = NULL;
     goto end;
   }
 
   /* Add the commit to our voted commit list so we can process them once we
    * decide our state in the post voting stage. */
   add_voted_commit(commit, voter_key);
-
-end:
-  smartlist_free(args);
-}
-
-/* Given all the conflict information from a conflict line in a vote, parse
- * the line, validate it and add it to our state if valid. */
-void
-sr_handle_received_conflict(const char *auth_identity,
-                            const char *encoded_commit1,
-                            const char *encoded_commit2,
-                            const ed25519_public_key_t *voter_key)
-{
-  sr_conflict_commit_t *conflict;
-  smartlist_t *args;
-
-  tor_assert(auth_identity);
-  tor_assert(encoded_commit1);
-  tor_assert(encoded_commit2);
-  tor_assert(voter_key);
-
-  /* XXX: debugging */
-  {
-    char voter_fp[ED25519_BASE64_LEN + 1];
-    ed25519_public_to_base64(voter_fp, voter_key);
-    log_warn(LD_DIR, "[SR] Received conflict from %s", voter_fp);
-    log_warn(LD_DIR, "[SR] \t for: %s", auth_identity);
-  }
-
-  /* Build a list of arguments that have the same order as the Conflict
-   * line in the state. With that, we can parse it using the same function
-   * that the state uses. Line format is as follow:
-   *    "shared-rand-conflict" SP identity SP commit1 SP commit2 NL
-   */
-  args = smartlist_new();
-  smartlist_add(args, (char *) auth_identity);
-  smartlist_add(args, (char *) encoded_commit1);
-  smartlist_add(args, (char *) encoded_commit2);
-  /* Parse our arguments to get a commit that we'll then verify. */
-  conflict = sr_parse_conflict_line(args);
-  if (conflict == NULL) {
-    goto end;
-  }
-  /* We now have a conflict object that has been fully populated by our vote
-   * data. Now we'll validate it. */
-  if (verify_received_conflict(conflict) < 0) {
-    /* XXX: This means we got a INVALID conflict from an authority (either
-     * hers or someone else). Should we create a conflict for the authority
-     * so we ignore it for the rest of the voting period? */
-    sr_conflict_commit_free(conflict);
-    goto end;
-  }
-  /* Ok conflict is good and verified so add it to our state. */
-  sr_state_add_conflict(conflict);
 
 end:
   smartlist_free(args);
@@ -1180,8 +1002,7 @@ should_keep_commitment(sr_commit_t *commit,
 
 /* We are during commit phase and we found <b>commit</b> in a vote of
  * <b>voter_fingerprint</b>. All the other received votes are found in
- * <b>votes</b>. Decide whether we should keep this commit, issue a conflict
- * line, or ignore it. */
+ * <b>votes</b>. Decide whether we should keep this commit or ignore it. */
 static int
 decide_commit_during_commit_phase(sr_commit_t *commit,
                                   const ed25519_public_key_t *voter_key)
@@ -1200,8 +1021,8 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
    * use the saved commit else use the new one. */
   saved_commit = sr_state_get_commit(&commit->auth_identity);
   if (saved_commit != NULL) {
-    /* They can not be different commits at this point since we've
-     * already processed all conflicts. */
+    /* We can't have different commit at this stage since the addition of a
+     * commit to the voted map make it impossible. */
     int same_commits = commitments_are_the_same(commit, saved_commit);
     tor_assert(same_commits);
     /* From now on, uses the commit found in our state. */
@@ -1256,8 +1077,7 @@ decide_commit_during_reveal_phase(const sr_commit_t *commit)
   if (saved_commit == NULL) {
     return;
   }
-  /* They can not be different commits at this point since we've
-   * already processed all conflicts. */
+  /* They can not be different commits at this point. */
   int same_commits = commitments_are_the_same(commit, saved_commit);
   tor_assert(same_commits);
 
@@ -1269,54 +1089,18 @@ decide_commit_during_reveal_phase(const sr_commit_t *commit)
          sizeof(saved_commit->encoded_reveal));
 }
 
-/* Go over the every voted commit and check if we already have a commit from
- * the same authority but with a different value in our state and if so add
- * the conflict to the state.  */
-static void
-decide_conflict_from_votes(void)
-{
-  DIGEST256MAP_FOREACH(voted_commits, key, digest256map_t *, commits) {
-    /* For each voter, we'll make sure we don't have any conflicts for the
-     * vote they sent us. */
-    DIGEST256MAP_FOREACH_MODIFY(commits, c_key, sr_commit_t *, commit) {
-      sr_commit_t *saved_commit =
-        sr_state_get_commit(&commit->auth_identity);
-      if (saved_commit == NULL) {
-        /* No conflict since we do not have it in our state. Ignore. */
-        continue;
-      }
-      /* Is it a different commit from our state? If yes, add a conflict to
-       * the state. */
-      if (!commitments_are_the_same(commit, saved_commit)) {
-        sr_conflict_commit_t *conflict = conflict_commit_new(commit,
-                                                             saved_commit);
-        sr_state_add_conflict(conflict);
-        /* We must remove those commits since they are now owned by the
-         * conflict object. */
-        MAP_DEL_CURRENT(c_key);
-        sr_state_remove_commit(&saved_commit->auth_identity);
-      }
-    } DIGEST256MAP_FOREACH_END;
-  } DIGEST256MAP_FOREACH_END;
-}
-
 /* For all vote in <b>votes</b>, decide if the commitments should be ignored
  * or added/updated to our state. Depending on the phase here, different
  * actions are taken. */
 static void
-decide_commit_from_votes(sr_phase_t phase)
+decide_commit_from_votes(void)
 {
-  tor_assert(phase == SR_PHASE_COMMIT || phase == SR_PHASE_REVEAL);
+  sr_phase_t phase = sr_state_get_phase();
 
   DIGEST256MAP_FOREACH(voted_commits, key, digest256map_t *, commits) {
     /* Build our voter key to ease our life a bit. */
     ed25519_public_key_t voter_key;
     memcpy(voter_key.pubkey, key, sizeof(voter_key.pubkey));
-
-    /* IMPORTANT: Ignore authority vote if we have a conflict for it. */
-    if (sr_state_get_conflict(&voter_key)) {
-      continue;
-    }
 
     /* Go over all commitments and depending on the phase decide what to do
      * with them that is keeping or updating them based on the votes. */
@@ -1337,17 +1121,6 @@ decide_commit_from_votes(sr_phase_t phase)
       }
     } DIGEST256MAP_FOREACH_END;
   } DIGEST256MAP_FOREACH_END;
-}
-
-/* Return 1 iff the conflict commits can be verified using the commit
- * authority fingerprint. Else return 0. */
-int
-sr_verify_conflict(const sr_conflict_commit_t *conflict)
-{
-  tor_assert(conflict);
-
-  return sr_verify_commit_sig(conflict->commit1) &
-    sr_verify_commit_sig(conflict->commit2);
 }
 
 /* Return 1 iff the commit signature can be verified using the commit
@@ -1404,14 +1177,9 @@ sr_decide_post_voting(void)
 {
   log_warn(LD_DIR, "[SR] Deciding stage post voting.");
 
-  /* First step is to find if we have any conflicts and if so add them to our
-   * state. This is important because after that we will decide if we keep the
-   * commitments as authoritative from which we MUST exclude conflicts. */
-  decide_conflict_from_votes();
-
-   /* Then we decide which commit to keep in our state considering that all
-    * conflicts have been found previously. */
-  decide_commit_from_votes(sr_state_get_phase());
+   /* Decide which commit to keep in our state for the voted commits we just
+    * received. */
+  decide_commit_from_votes();
 
   /* For last, we've just processed all of the voted commits so cleanup the
    * map since we are post voting and we won't need them anymore. It also
