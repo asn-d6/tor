@@ -76,9 +76,6 @@ typedef struct sr_commit_t {
   /* Hashing algorithm used for the value. Depends on the version of the
    * protocol located in the state. */
   digest_algorithm_t alg;
-  /* Is this commit an authoritative commit that is a vote from a directory
-   * authority received from that authority. */
-  unsigned int is_authoritative:1;
   /* Signature of the commit that has been verified against the
    * identity and thus valid. */
   ed25519_signature_t signature;
