@@ -48,9 +48,9 @@
 /* String representation of a shared random value status. */
 static const char *srv_status_str[] = { "fresh", "non-fresh" };
 
-/* Commits from an authority vote. This is indexed by authority shared
- * random key and an entry is a digest map of valid commit (since commit in
- * a vote MUST be unique). */
+/* Authoritative commit from an authority's vote. This is indexed by shared
+ * random key and an entry is the authority commit that is obviously
+ * authoritative once added to this map. */
 static digest256map_t *voted_commits;
 
 /* Return a string representation of a srv status. */
@@ -138,12 +138,10 @@ commit_log(const sr_commit_t *commit)
 
 /* Free all commit object in the given list. */
 static void
-voted_commits_free(digest256map_t *commits)
+voted_commits_free(sr_commit_t *commit)
 {
-  tor_assert(commits);
-  DIGEST256MAP_FOREACH(commits, key, sr_commit_t *, c) {
-    sr_commit_free(c);
-  } DIGEST256MAP_FOREACH_END;
+  tor_assert(commit);
+  sr_commit_free(commit);
 }
 
 /* Helper: deallocate a list of commit object that comes from the
@@ -505,9 +503,6 @@ sr_generate_our_commitment(time_t timestamp)
     goto error;
   }
 
-  /* This is _our_ commit so it's authoritative. */
-  commit->is_authoritative = 1;
-
   log_warn(LD_DIR, "[SR] Generated our commitment:");
   commit_log(commit);
   return commit;
@@ -820,30 +815,49 @@ commitments_are_the_same(const sr_commit_t *commit_one,
   return 1;
 }
 
-/* Add a commit that has just been seen in <b>voter_key<b/>'s vote to our
- * voted list. If an entry for the voter is not found, one is created. If
- * there is already a commit from the same authority key in the voter's
- * list, ignore it and notice log. */
-static void
-add_voted_commit(sr_commit_t *commit, const ed25519_public_key_t *voter_key)
+/* We just received a commit from the vote of authority with
+ * <b>identity_digest</b>. Return 1 if this commit is authorititative that
+ * is, it belongs to the authority that voted it. Else return 0 if not. */
+static int
+commit_is_authoritative(const sr_commit_t *commit,
+                        const ed25519_public_key_t *identity)
 {
-  sr_commit_t *saved_commit;
-  digest256map_t *entry;
+  tor_assert(commit);
+  tor_assert(identity);
 
+  return !fast_memcmp(&commit->auth_identity, identity,
+                      sizeof(commit->auth_identity));
+}
+
+/* Decide if <b>commit</b> can be added to our state that is check if the
+ * commit is authoritative. Return 1 if the commit should be added to our
+ * state or 0 if not. If it's authoritative, the commit is flagged
+ * accordingly. */
+static int
+should_keep_commitment(sr_commit_t *commit,
+                       const ed25519_public_key_t *voter_key)
+{
   tor_assert(commit);
   tor_assert(voter_key);
 
-  /* Make sure we have an entry for the voter key and if not create one.
-   * We'll populare the entry after verification. */
-  entry = digest256map_get(voted_commits, voter_key->pubkey);
-  if (entry == NULL) {
-    entry = digest256map_new();
-    digest256map_set(voted_commits, voter_key->pubkey, entry);
-  }
+  /* For a commit to be added to our state, we need it to be authoritative, that
+   * is it's the voter's commit. */
+  return commit_is_authoritative(commit, voter_key);
+}
 
-  /* An authority is allowed to commit only one value thus each vote MUST
-   * only have one commit per authority. */
-  saved_commit = digest256map_get(entry, commit->auth_identity.pubkey);
+/* Add an authoritative commit that has just been received in a vote.  If an
+ * entry for the authority is not found, one is created. If there is already
+ * a commit from it, ignore it and log it. */
+static void
+add_voted_commit(sr_commit_t *commit)
+{
+  sr_commit_t *saved_commit;
+
+  tor_assert(commit);
+
+  /* An authority is allowed to commit only one value. */
+  saved_commit = digest256map_get(voted_commits,
+                                  commit->auth_identity.pubkey);
   if (saved_commit != NULL) {
     /* Since commit are carried on at each voting period, let's make sure we
      * have the same commit and if not, ignore and log. */
@@ -855,7 +869,7 @@ add_voted_commit(sr_commit_t *commit, const ed25519_public_key_t *voter_key)
     }
   } else {
     /* Unique entry for now, add it indexed by the commit authority key. */
-    digest256map_set(entry, commit->auth_identity.pubkey, commit);
+    digest256map_set(voted_commits, commit->auth_identity.pubkey, commit);
   }
 }
 
@@ -906,9 +920,10 @@ error:
   return NULL;
 }
 
-/* Given all the commitment information from a commitment line in a vote,
- * parse the line, validate it and add it to the voted commits map if it's
- * valid so we can process all commits in post voting stage. */
+/* Entry point from the voting process that is this is called when a
+ * commitment is seen in a vote so it can be added to our state. Parse the
+ * line, validate it and add it to the voted commits map if it's valid so we
+ * can process all commits in post voting stage. */
 void
 sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
                               const char *commitment, const char *reveal,
@@ -920,11 +935,12 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
   tor_assert(commit_pubkey);
   tor_assert(hash_alg);
   tor_assert(commitment);
+  /* XXX: debugging. */
+  char voter_fp[ED25519_BASE64_LEN + 1];
+  ed25519_public_to_base64(voter_fp, voter_key);
 
   /* XXX: debugging */
   {
-    char voter_fp[ED25519_BASE64_LEN + 1];
-    ed25519_public_to_base64(voter_fp, voter_key);
     log_warn(LD_DIR, "[SR] Received commit from %s", voter_fp);
     log_warn(LD_DIR, "[SR] \t for: %s", commit_pubkey);
     log_warn(LD_DIR, "[SR] \t C: %s", commitment);
@@ -956,63 +972,38 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
     sr_commit_free(commit);
     goto end;
   }
+  /* Check if this commit can be stored in our state. It's important to
+   * never add a commit to the voted map unless it qualifies to be kept in
+   * our state post voting. */
+  if (!should_keep_commitment(commit, voter_key)) {
+    /* XXX: debugging. */
+    log_warn(LD_DIR, "[SR] Commit of authority %s received from %s "
+             "is not authoritative. Ignoring.",
+             commit->auth_fingerprint, voter_fp);
+    sr_commit_free(commit);
+    goto end;
+  }
 
-  /* Add the commit to our voted commit list so we can process them once we
-   * decide our state in the post voting stage. */
-  add_voted_commit(commit, voter_key);
+  /* Add the authoritative commit to our voted commit map so we can process
+   * them once we decide our state in the post voting stage. */
+  add_voted_commit(commit);
 
 end:
   smartlist_free(args);
 }
 
-/* We just received a commit from the vote of authority with
- * <b>identity_digest</b>. Return 1 if this commit is authorititative that
- * is, it belongs to the authority that voted it. Else return 0 if not. */
+/* We are during commit phase and we found <b>commit</b> in a vote. Decide
+ * whether we should keep this commit or ignore it. Return 1 iff the commit
+ * was added to our state or 0 if not. This is important because if the
+ * commit was kept, our state takes ownership of the object. */
 static int
-commit_is_authoritative(const sr_commit_t *commit,
-                        const ed25519_public_key_t *identity)
-{
-  tor_assert(commit);
-  tor_assert(identity);
-
-  /* Let's avoid some useless work here. Protect those CPU cycles! */
-  if (commit->is_authoritative) {
-    return 1;
-  }
-  return !fast_memcmp(&commit->auth_identity, identity,
-                      sizeof(commit->auth_identity));
-}
-
-/* Decide if <b>commit</b> can be added to our state that is check if the commit
- * is authoritative. Return 1 if the commit should be added to our state or 0 if
- * not. */
-static int
-should_keep_commitment(sr_commit_t *commit,
-                       const ed25519_public_key_t *voter_key)
-{
-  tor_assert(commit);
-  tor_assert(voter_key);
-
-  /* For a commit to be added to our state, we need it to be authoritative, that
-   * is it's the voter's commit. */
-  commit->is_authoritative = commit_is_authoritative(commit, voter_key);
-
-  return commit->is_authoritative;
-}
-
-/* We are during commit phase and we found <b>commit</b> in a vote of
- * <b>voter_fingerprint</b>. All the other received votes are found in
- * <b>votes</b>. Decide whether we should keep this commit or ignore it. */
-static int
-decide_commit_during_commit_phase(sr_commit_t *commit,
-                                  const ed25519_public_key_t *voter_key)
+decide_commit_during_commit_phase(sr_commit_t *commit)
 {
   /* Indicate if we kept the commit for our state or not. */
   int commit_kept = 0;
   sr_commit_t *saved_commit;
 
   tor_assert(commit);
-  tor_assert(voter_key);
 
   log_warn(LD_DIR, "[SR] \t Deciding commit %s by %s",
            commit->encoded_commit, commit->auth_fingerprint);
@@ -1021,29 +1012,17 @@ decide_commit_during_commit_phase(sr_commit_t *commit,
    * use the saved commit else use the new one. */
   saved_commit = sr_state_get_commit(&commit->auth_identity);
   if (saved_commit != NULL) {
-    /* We can't have different commit at this stage since the addition of a
-     * commit to the voted map make it impossible. */
+    /* Safety net. We can't have different commit at this stage since the
+     * addition of a second commit to the voted map is impossible. */
     int same_commits = commitments_are_the_same(commit, saved_commit);
     tor_assert(same_commits);
-    /* From now on, uses the commit found in our state. */
-    commit = saved_commit;
+    goto end;
   }
+  /* Add commit to our state since it's the first time we see it. */
+  sr_state_add_commit(commit);
+  commit_kept = 1;
 
-  /* Decide the state of the commit which will tell us if we can add it to
-   * our state. This also updates the commit object. */
-  if (should_keep_commitment(commit, voter_key)) {
-    /* Let's not add a commit that we already have. */
-    if (saved_commit == NULL) {
-      sr_state_add_commit(commit);
-      commit_kept = 1;
-    }
-  } else {
-    char voter_fp[ED25519_BASE64_LEN + 1];
-    ed25519_public_to_base64(voter_fp, voter_key);
-    log_warn(LD_DIR, "[SR] Commit of authority %s received from %s "
-                     "is not authoritative. Ignoring.",
-             commit->auth_fingerprint, voter_fp);
-  }
+ end:
   return commit_kept;
 }
 
@@ -1058,6 +1037,7 @@ decide_commit_during_reveal_phase(const sr_commit_t *commit)
 
   int have_reveal = !tor_mem_is_zero(commit->encoded_reveal,
                                      sizeof(commit->encoded_reveal));
+  /* XXX: debugging. */
   log_warn(LD_DIR, "[SR] \t Commit %s (%s) by %s",
            commit->encoded_commit,
            have_reveal ? commit->encoded_reveal : "NOREVEAL",
@@ -1070,23 +1050,25 @@ decide_commit_during_reveal_phase(const sr_commit_t *commit)
   }
 
   /* Get the commit from our state. If it's not found, it's possible that we
-   * didn't get a commit from the commit phase but we now see the reveal
-   * from someone else. In this case, we ignore it since we didn't rule that
-   * this commit should be kept. */
+   * didn't get a commit during the commit phase. In this case, we ignore it
+   * since we didn't rule that this commit should be kept. */
   saved_commit = sr_state_get_commit(&commit->auth_identity);
   if (saved_commit == NULL) {
     return;
   }
-  /* They can not be different commits at this point. */
+  /* Safety net. They can not be different commits at this point. */
   int same_commits = commitments_are_the_same(commit, saved_commit);
   tor_assert(same_commits);
 
-  /* If we already have a commitment by this authority, and our saved
-   * commit doesn't have a reveal value, add it. */
-  log_warn(LD_DIR, "[SR] \t \t Ah, learned reveal %s for commit %s",
-           commit->encoded_reveal, commit->encoded_commit);
-  strncpy(saved_commit->encoded_reveal, commit->encoded_reveal,
-         sizeof(saved_commit->encoded_reveal));
+  /* Don't set the reveal value if we already have one. */
+  if (tor_mem_is_zero(saved_commit->encoded_reveal,
+                      sizeof(saved_commit->encoded_reveal))) {
+    log_warn(LD_DIR, "[SR] \t \t Reveal value learned %s (for commit %s)",
+             commit->encoded_reveal, commit->encoded_commit);
+    strncpy(saved_commit->encoded_reveal, commit->encoded_reveal,
+            sizeof(saved_commit->encoded_reveal));
+  }
+  /* XXX: update disk state. */
 }
 
 /* For all vote in <b>votes</b>, decide if the commitments should be ignored
@@ -1095,31 +1077,24 @@ decide_commit_during_reveal_phase(const sr_commit_t *commit)
 static void
 decide_commit_from_votes(void)
 {
-  sr_phase_t phase = sr_state_get_phase();
+  /* For each commit, decide if we keep it or not depending on the phase. */
+  DIGEST256MAP_FOREACH_MODIFY(voted_commits, key, sr_commit_t *, commit) {
+    sr_phase_t phase = sr_state_get_phase();
 
-  DIGEST256MAP_FOREACH(voted_commits, key, digest256map_t *, commits) {
-    /* Build our voter key to ease our life a bit. */
-    ed25519_public_key_t voter_key;
-    memcpy(voter_key.pubkey, key, sizeof(voter_key.pubkey));
-
-    /* Go over all commitments and depending on the phase decide what to do
-     * with them that is keeping or updating them based on the votes. */
-    DIGEST256MAP_FOREACH_MODIFY(commits, c_key, sr_commit_t *, commit) {
-      switch (phase) {
-      case SR_PHASE_COMMIT:
-        if (decide_commit_during_commit_phase(commit, &voter_key)) {
-          /* Commit has been added to our state so remove it from this map
-           * so we transfer ownership to the state. */
-          MAP_DEL_CURRENT(c_key);
-        }
-        break;
-      case SR_PHASE_REVEAL:
-        decide_commit_during_reveal_phase(commit);
-        break;
-      default:
-        tor_assert(0);
+    switch (phase) {
+    case SR_PHASE_COMMIT:
+      if (decide_commit_during_commit_phase(commit)) {
+        /* Commit has been added to our state so remove it from this map
+         * so we transfer ownership to the state. */
+        MAP_DEL_CURRENT(key);
       }
-    } DIGEST256MAP_FOREACH_END;
+      break;
+    case SR_PHASE_REVEAL:
+      decide_commit_during_reveal_phase(commit);
+      break;
+    default:
+      tor_assert(0);
+    }
   } DIGEST256MAP_FOREACH_END;
 }
 
