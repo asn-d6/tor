@@ -113,14 +113,6 @@ typedef struct sr_commit_t {
   char encoded_reveal[SR_REVEAL_BASE64_LEN + 1];
 } sr_commit_t;
 
-/* Represent a commit conflict. See section [COMMITCONFLICT] in proposal
- * 250. A conflict is valid only for a full protocol run. */
-typedef struct sr_conflict_commit_t {
-  /* First commit has been seen before the second one. They MUST have the
-   * same authority identity. */
-  sr_commit_t *commit1, *commit2;
-} sr_conflict_commit_t;
-
 /* API */
 
 int sr_init(int save_to_disk);
@@ -132,9 +124,7 @@ void sr_prepare_new_voting_period(time_t valid_after);
 void sr_decide_post_voting(void);
 
 void sr_commit_free(sr_commit_t *commit);
-void sr_conflict_commit_free(sr_conflict_commit_t *conflict);
 int sr_verify_commit_sig(const sr_commit_t *commit);
-int sr_verify_conflict(const sr_conflict_commit_t *conflict);
 
 void sr_handle_received_commitment(const char *commit_pubkey,
                                    const char *hash_alg,
@@ -142,13 +132,7 @@ void sr_handle_received_commitment(const char *commit_pubkey,
                                    const char *reveal,
                                    const ed25519_public_key_t *voter_key);
 
-void sr_handle_received_conflict(const char *auth_identity,
-                                 const char *encoded_commit1,
-                                 const char *encoded_commit2,
-                                 const ed25519_public_key_t *voter_key);
-
 sr_commit_t *sr_parse_commitment_line(smartlist_t *args);
-sr_conflict_commit_t *sr_parse_conflict_line(smartlist_t *args);
 
 sr_srv_status_t sr_get_srv_status_from_str(const char *name);
 const char *sr_get_srv_status_str(sr_srv_status_t status);
