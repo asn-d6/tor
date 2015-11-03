@@ -9,9 +9,9 @@
  *
  * \details
  *
- * This file implements the dirauth-only commit-and-reveal protocol specified by
- * proposal #250. The protocol has two phases (sr_phase_t): the commitment phase
- * and the reveal phase.
+ * This file implements the dirauth-only commit-and-reveal protocol
+ * specified by proposal #250. The protocol has two phases (sr_phase_t): the
+ * commitment phase and the reveal phase.
  *
  * The rough procedure is:
  *
@@ -19,18 +19,19 @@
  *         commitment/reveal value for the current protocol run (see
  *         new_protocol_run()).
  *
- *      2) Dirauths publish commitment/reveal values in their votes depending on
- *         the current phase (see sr_get_commit_string_for_vote()).
+ *      2) Dirauths publish commitment/reveal values in their votes
+ *         depending on the current phase (see
+ *         sr_get_commit_string_for_vote()).
  *
  *      3) After all votes have been received, dirauths decide which
  *         commitments/reveals to keep (see sr_decide_post_voting()).
  *
- *      4) In the end of the reveal phase, dirauths compute the random value of
- *         the day using the active reveal values (see sr_compute_srv()).
+ *      4) In the end of the reveal phase, dirauths compute the random value
+ *         of the day using the active reveal values (see sr_compute_srv()).
  *
  * To better support rebooting authorities we save the current state of the
- * shared random protocol in disk so that authorities can resume on the protocol
- * if they have to reboot.
+ * shared random protocol in disk so that authorities can resume on the
+ * protocol if they have to reboot.
  *
  **/
 
@@ -343,7 +344,7 @@ commit_decode(const char *encoded, sr_commit_t *commit)
   offset += sizeof(commit->hashed_reveal);
   /* Next is timestamp. */
   commit->commit_ts = (time_t) tor_ntohll(get_uint64(b64_decoded + offset));
-  offset += sizeof(uint64_t);
+  offset += 8;
   /* Finally is the signature of the commit. */
   memcpy(&commit->commit_signature.sig, b64_decoded + offset,
          sizeof(commit->commit_signature.sig));
@@ -391,7 +392,7 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
 
   commit->reveal_ts = (time_t) tor_ntohll(get_uint64(b64_decoded));
   /* Copy the last part, the random value. */
-  memcpy(commit->random_number, b64_decoded + sizeof(uint64_t),
+  memcpy(commit->random_number, b64_decoded + 8,
          sizeof(commit->random_number));
   /* Also copy the whole message to use during verification */
   strncpy(commit->encoded_reveal, encoded, sizeof(commit->encoded_reveal));
@@ -461,7 +462,7 @@ reveal_encode(sr_commit_t *commit, char *dst, size_t len)
   memset(buf, 0, sizeof(buf));
 
   set_uint64(buf, tor_htonll((uint64_t) commit->commit_ts));
-  offset += sizeof(uint64_t);
+  offset += 8;
   memcpy(buf + offset, commit->random_number,
          sizeof(commit->random_number));
   /* Let's clean the buffer and then encode it. */
@@ -489,7 +490,7 @@ commit_encode(sr_commit_t *commit, char *dst, size_t len)
   offset += sizeof(commit->hashed_reveal);
   /* The timestamp is next. */
   set_uint64(buf + offset, tor_htonll((uint64_t) commit->commit_ts));
-  offset += sizeof(uint64_t);
+  offset += 8;
   /* Finally, the signature. */
   memcpy(buf + offset, commit->commit_signature.sig,
          sizeof(commit->commit_signature.sig));
@@ -643,9 +644,9 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   memcpy(msg, SR_SRV_TOKEN, SR_SRV_TOKEN_LEN);
   offset += SR_SRV_TOKEN_LEN;
   set_uint8(msg + offset, reveal_num);
-  offset += sizeof(uint8_t);
+  offset += 1;
   set_uint8(msg + offset, SR_PROTO_VERSION);
-  offset += sizeof(uint8_t);
+  offset += 1;
   if (previous_srv != NULL) {
     memcpy(msg + offset, previous_srv->value,
            sizeof(previous_srv->value));
