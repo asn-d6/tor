@@ -28,8 +28,6 @@ typedef struct sr_state_t {
   /* A map of all the receive commitments for the protocol run. This is
    * indexed by authority identity digest. */
   digest256map_t *commitments;
-  /* List of commit conflicts seen by this authority. */
-  digest256map_t *conflicts;
 
   /* Current and previous shared random value. See section [SRCALC] in
    * proposal 250 for details on how this is constructed. */
@@ -48,8 +46,6 @@ typedef struct sr_disk_state_t {
   char *ProtocolPhase;
   /* All commitments seen that are valid. */
   config_line_t *Commitments;
-  /* All conflict seen. */
-  config_line_t *Conflicts;
   /* Previous and current shared random value. */
   config_line_t *SharedRandPreviousValue;
   config_line_t *SharedRandCurrentValue;
@@ -67,12 +63,8 @@ void sr_state_set_previous_srv(sr_srv_t *srv);
 void sr_state_set_current_srv(sr_srv_t *srv);
 
 digest256map_t *sr_state_get_commits(void);
-digest256map_t *sr_state_get_conflicts(void);
 
 sr_commit_t *sr_state_get_commit(const ed25519_public_key_t *identity);
-sr_conflict_commit_t *sr_state_get_conflict(
-                                 const ed25519_public_key_t *identity);
-void sr_state_add_conflict(sr_conflict_commit_t *conflict);
 void sr_state_add_commit(sr_commit_t *commit);
 void sr_state_remove_commit(const ed25519_public_key_t *key);
 

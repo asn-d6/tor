@@ -451,7 +451,6 @@ static token_rule_t networkstatus_token_table[] = {
   T01("signing-ed25519",       K_SIGNING_CERT_ED,  NO_ARGS ,    NEED_OBJ ),
   T01("shared-random-ed25519", K_SR_CERT_ED,       NO_ARGS,     NEED_OBJ ),
   T0N("shared-rand-commitment",K_COMMITMENT,       GE(3),       NO_OBJ ),
-  T0N("shared-rand-conflict"  ,K_CONFLICT,         EQ(3),       NO_OBJ ),
   T0N("package",               K_PACKAGE,          CONCAT_ARGS, NO_OBJ ),
 
   CERTIFICATE_MEMBERS
@@ -3287,20 +3286,6 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
       }
       sr_handle_received_commitment(commit_pubkey, hash_alg, commitment,
                                     reveal, voter_key);
-    } SMARTLIST_FOREACH_END(tok);
-    smartlist_free(commitment_lst);
-  }
-  /* Get SR conflict from votes */
-  smartlist_t *conflict_lst = find_all_by_keyword(tokens, K_CONFLICT);
-  if (conflict_lst) {
-    const ed25519_public_key_t *voter_key =
-      &ns->ed25519_shared_random_cert->signed_key;
-    SMARTLIST_FOREACH_BEGIN(conflict_lst, directory_token_t *, tok) {
-      const char *auth_identity = tok->args[0];
-      const char *encoded_commit1 = tok->args[1];
-      const char *encoded_commit2 = tok->args[2];
-      sr_handle_received_conflict(auth_identity, encoded_commit1,
-                                  encoded_commit2, voter_key);
     } SMARTLIST_FOREACH_END(tok);
     smartlist_free(commitment_lst);
   }
