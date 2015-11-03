@@ -784,22 +784,148 @@ is_phase_transition(sr_phase_t next_phase)
   return sr_state->phase != next_phase;
 }
 
+/* Helper function: This handles the GET state action using an
+ * <b>obj_type</b> and <b>data</b> needed for the action. */
+static void *
+state_query_get_(sr_state_object_t obj_type, void *data)
+{
+  void *obj = NULL;
+
+  switch (obj_type) {
+  case SR_STATE_OBJ_COMMIT:
+  {
+    ed25519_public_key_t *identity = data;
+    obj = digest256map_get(sr_state->commitments, identity->pubkey);
+    break;
+  }
+  case SR_STATE_OBJ_COMMITS:
+    obj = sr_state->commitments;
+    break;
+  case SR_STATE_OBJ_CURSRV:
+    obj = sr_state->current_srv;
+    break;
+  case SR_STATE_OBJ_PREVSRV:
+    obj = sr_state->previous_srv;
+    break;
+  case SR_STATE_OBJ_PHASE:
+    obj = &sr_state->phase;
+    break;
+  default:
+    tor_assert(0);
+  }
+  return obj;
+}
+
+/* Helper function: This handles the PUT state action using an
+ * <b>obj_type</b> and <b>data</b> needed for the action. */
+static void
+state_query_put_(sr_state_object_t obj_type, void *data)
+{
+  tor_assert(data);
+
+  switch (obj_type) {
+  case SR_STATE_OBJ_COMMIT:
+  {
+    sr_commit_t *commit = data;
+    commit_add_to_state(commit, sr_state);
+    break;
+  }
+  case SR_STATE_OBJ_CURSRV:
+    sr_state->current_srv = (sr_srv_t *) data;
+    break;
+  case SR_STATE_OBJ_PREVSRV:
+    sr_state->previous_srv = (sr_srv_t *) data;
+    break;
+  /* It's not allowed to change the phase nor the full commitments map from
+   * the state. The phase is decided during a strict process post voting and
+   * the commits should be put individually. */
+  case SR_STATE_OBJ_PHASE:
+  case SR_STATE_OBJ_COMMITS:
+  default:
+    tor_assert(0);
+  }
+}
+
+/* Helper function: This handles the DEL state action using an
+ * <b>obj_type</b> and <b>data</b> needed for the action. */
+static void
+state_query_del_(sr_state_object_t obj_type, void *data)
+{
+  tor_assert(data);
+
+  switch (obj_type) {
+  case SR_STATE_OBJ_COMMIT:
+  {
+    const ed25519_public_key_t *identity = data;
+    digest256map_remove(sr_state->commitments, identity->pubkey);
+    break;
+  }
+  /* The following object are _NOT_ suppose to be removed. */
+  case SR_STATE_OBJ_CURSRV:
+  case SR_STATE_OBJ_PREVSRV:
+  case SR_STATE_OBJ_PHASE:
+  case SR_STATE_OBJ_COMMITS:
+  default:
+    tor_assert(0);
+  }
+}
+
+/* Query state using an <b>action</b> for an object type <b>obj_type</b>.
+ * The <b>data</b> pointer needs to point to an object that the action needs
+ * to use and if anything is required to be returned, it is stored in
+ * <b>out</b>.
+ *
+ * This mechanism exists so we have one single point where we synchronized
+ * our memory state with our disk state for every actions that changes it.
+ * We then trigger a write on disk immediately.
+ *
+ * This should be the only entry point to our memory state. It's used by all
+ * our state accessors and should be in the future. */
+static void
+state_query(sr_state_action_t action, sr_state_object_t obj_type,
+            void *data, void **out)
+{
+  switch (action) {
+  case SR_STATE_ACTION_GET:
+    *out = state_query_get_(obj_type, data);
+    break;
+  case SR_STATE_ACTION_PUT:
+    state_query_put_(obj_type, data);
+    break;
+  case SR_STATE_ACTION_DEL:
+    state_query_del_(obj_type, data);
+    break;
+  case SR_STATE_ACTION_SAVE:
+    /* Only trigger a disk state save. */
+    break;
+  default:
+    tor_assert(0);
+  }
+
+  /* If the action actually changes the state, immediately save it to disk.
+   * The following will sync the state -> disk state and then save it. */
+  if (action != SR_STATE_ACTION_GET) {
+    disk_state_save_to_disk();
+  }
+}
+
 /* Return the phase we are currently in according to our state. */
 sr_phase_t
 sr_state_get_phase(void)
 {
-  tor_assert(sr_state);
-
-  return sr_state->phase;
+  void *ptr;
+  state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_PHASE, NULL, &ptr);
+  return *(sr_phase_t *) ptr;
 }
 
 /* Return the previous SRV value from our state. Value CAN be NULL. */
 sr_srv_t *
 sr_state_get_previous_srv(void)
 {
-  tor_assert(sr_state);
-
-  return sr_state->previous_srv;
+  sr_srv_t *srv;
+  state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_PREVSRV, NULL,
+              (void *) &srv);
+  return srv;
 }
 
 /* Set the current SRV value from our state. Value CAN be NULL. */
@@ -807,18 +933,18 @@ void
 sr_state_set_previous_srv(sr_srv_t *srv)
 {
   tor_assert(srv);
-  tor_assert(sr_state);
-
-  sr_state->previous_srv = srv;
+  state_query(SR_STATE_ACTION_PUT, SR_STATE_OBJ_PREVSRV, (void *) srv,
+              NULL);
 }
 
 /* Return the current SRV value from our state. Value CAN be NULL. */
 sr_srv_t *
 sr_state_get_current_srv(void)
 {
-  tor_assert(sr_state);
-
-  return sr_state->current_srv;
+  sr_srv_t *srv;
+  state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_CURSRV, NULL,
+              (void *) &srv);
+  return srv;
 }
 
 /* Set the current SRV value from our state. Value CAN be NULL. */
@@ -826,16 +952,19 @@ void
 sr_state_set_current_srv(sr_srv_t *srv)
 {
   tor_assert(srv);
-  tor_assert(sr_state);
-
-  sr_state->current_srv = srv;
+  state_query(SR_STATE_ACTION_PUT, SR_STATE_OBJ_CURSRV, (void *) srv,
+              NULL);
 }
 
-/* Return a pointer to the commits map from our state. */
+/* Return a pointer to the commits map from our state. CANNOT be NULL. */
 digest256map_t *
 sr_state_get_commits(void)
 {
-  return sr_state->commitments;
+  digest256map_t *commits;
+  state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_COMMITS,
+              NULL, (void *) &commits);
+  tor_assert(commits);
+  return commits;
 }
 
 /* Update the current SR state as needed for the upcoming voting round at
@@ -881,7 +1010,7 @@ sr_state_update(time_t valid_after)
 
   /* Everything is up to date in our state, make sure our permanent disk
    * state is also updated and written to disk. */
-  disk_state_save_to_disk();
+  sr_state_save();
 
   { /* Some logging. */
     char tbuf[ISO_TIME_LEN + 1];
@@ -899,12 +1028,17 @@ sr_state_update(time_t valid_after)
 sr_commit_t *
 sr_state_get_commit(const ed25519_public_key_t *identity)
 {
+  sr_commit_t *commit;
+
   tor_assert(identity);
-  return digest256map_get(sr_state->commitments, identity->pubkey);
+
+  state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_COMMIT,
+              (void *) identity, (void *) &commit);
+  return commit;
 }
 
-/* Add <b>commit</b> to the permanent state. The given commit is duped so
- * the caller should free the memory if needed upon return. */
+/* Add <b>commit</b> to the permanent state. The commit object ownership is
+ * transfered to the state so the caller MUST not free it. */
 void
 sr_state_add_commit(sr_commit_t *commit)
 {
@@ -916,9 +1050,12 @@ sr_state_add_commit(sr_commit_t *commit)
   if (saved_commit != NULL) {
     /* MUST be same pointer else there is a code flow issue. */
     tor_assert(saved_commit == commit);
+    /* No point of adding it again. */
+    return;
   }
-  /* Add the commit to our global state. */
-  commit_add_to_state(commit, sr_state);
+  /* Put the commit to the global state. */
+  state_query(SR_STATE_ACTION_PUT, SR_STATE_OBJ_COMMIT,
+              (void *) commit, NULL);
 
   log_warn(LD_DIR, "[SR] \t Commit from %s has been added to our state.",
            commit->auth_fingerprint);
@@ -929,7 +1066,23 @@ void
 sr_state_remove_commit(const ed25519_public_key_t *key)
 {
   tor_assert(key);
-  digest256map_remove(sr_state->commitments, key->pubkey);
+  state_query(SR_STATE_ACTION_DEL, SR_STATE_OBJ_COMMIT, (void *) key, NULL);
+}
+
+/* Set the <b>reveal</b> value in <b>commit</b>. This commit MUST come from
+ * our current state. Once modified, the disk state is updated. */
+void
+sr_state_set_commit_reveal(sr_commit_t *commit, const char *encoded_reveal)
+{
+  tor_assert(commit);
+  tor_assert(encoded_reveal);
+
+  strncpy(commit->encoded_reveal, encoded_reveal,
+          sizeof(commit->encoded_reveal));
+  state_query(SR_STATE_ACTION_SAVE, 0, NULL, NULL);
+  /* XXX: debugging. */
+  log_warn(LD_DIR, "[SR] \t \t Reveal value learned %s (for commit %s)",
+           commit->encoded_reveal, commit->encoded_commit);
 }
 
 /* Cleanup and free our disk and memory state. */
@@ -947,7 +1100,8 @@ sr_state_free(void)
 void
 sr_state_save(void)
 {
-  disk_state_save_to_disk();
+  /* Query a SAVE action on our current state so it's synced and saved. */
+  state_query(SR_STATE_ACTION_SAVE, 0, NULL, NULL);
 }
 
 #ifdef TOR_UNIT_TESTS
