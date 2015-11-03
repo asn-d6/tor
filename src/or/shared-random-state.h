@@ -6,6 +6,28 @@
 
 #include "shared-random.h"
 
+/* Action that can be performed on the state for any objects. */
+typedef enum {
+  SR_STATE_ACTION_GET   = 1,
+  SR_STATE_ACTION_PUT   = 2,
+  SR_STATE_ACTION_DEL   = 3,
+  SR_STATE_ACTION_SAVE  = 4,
+} sr_state_action_t;
+
+/* Object in the state that can be queried through the state API. */
+typedef enum {
+  /* Will return a single commit using an authority key. */
+  SR_STATE_OBJ_COMMIT   = 1,
+  /* Returns the entire list of commits from the state. */
+  SR_STATE_OBJ_COMMITS  = 2,
+  /* Return the current SRV object pointer. */
+  SR_STATE_OBJ_CURSRV   = 3,
+  /* Return the previous SRV object pointer. */
+  SR_STATE_OBJ_PREVSRV  = 4,
+  /* Return the phase. */
+  SR_STATE_OBJ_PHASE    = 5,
+} sr_state_object_t;
+
 /* State of the protocol. It's also saved on disk in fname. This data
  * structure MUST be synchronized at all time with the one on disk. */
 typedef struct sr_state_t {
@@ -67,6 +89,8 @@ digest256map_t *sr_state_get_commits(void);
 sr_commit_t *sr_state_get_commit(const ed25519_public_key_t *identity);
 void sr_state_add_commit(sr_commit_t *commit);
 void sr_state_remove_commit(const ed25519_public_key_t *key);
+void sr_state_set_commit_reveal(sr_commit_t *commit,
+                                const char *encoded_reveal);
 
 void sr_state_update(time_t valid_after);
 int sr_state_init(int save_to_disk);
