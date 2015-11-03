@@ -66,8 +66,8 @@ static config_var_t state_vars[] = {
   VAR("Commitment",             LINELIST_S, Commitments, NULL),
   V(Commitments,                LINELIST_V, NULL),
 
-  V(SharedRandPreviousValue,    LINELIST_S, NULL),
-  V(SharedRandCurrentValue,     LINELIST_S, NULL),
+  V(SharedRandPreviousValue,    LINELIST_V, NULL),
+  V(SharedRandCurrentValue,     LINELIST_V, NULL),
   { NULL, CONFIG_TYPE_OBSOLETE, 0, NULL }
 };
 
@@ -741,11 +741,8 @@ new_protocol_run(time_t valid_after)
   /* Only compute the srv at the end of the reveal phase. */
   if (sr_state->phase == SR_PHASE_REVEAL && !is_booting_up()) {
     /* We are about to compute a new shared random value that will be set in
-     * our state as the current value so swap the current to the previous
-     * value right now. */
-    tor_free(sr_state->previous_srv);
-    sr_state->previous_srv = sr_state->current_srv;
-    sr_state->current_srv = NULL;
+     * our state as the current value so rotate values. */
+    sr_state_rotate_srv();
     /* Compute the shared randomness value of the day. */
     sr_compute_srv();
   }
@@ -772,7 +769,7 @@ new_protocol_run(time_t valid_after)
     /* Add our commitment to our state. In case we are unable to create one
      * (highly unlikely), we won't vote for this protocol run since our
      * commitment won't be in our state. */
-    commit_add_to_state(our_commitment, sr_state);
+    sr_state_add_commit(our_commitment);
   }
 }
 
@@ -821,12 +818,11 @@ state_query_get_(sr_state_object_t obj_type, void *data)
 static void
 state_query_put_(sr_state_object_t obj_type, void *data)
 {
-  tor_assert(data);
-
   switch (obj_type) {
   case SR_STATE_OBJ_COMMIT:
   {
     sr_commit_t *commit = data;
+    tor_assert(commit);
     commit_add_to_state(commit, sr_state);
     break;
   }
@@ -932,7 +928,6 @@ sr_state_get_previous_srv(void)
 void
 sr_state_set_previous_srv(sr_srv_t *srv)
 {
-  tor_assert(srv);
   state_query(SR_STATE_ACTION_PUT, SR_STATE_OBJ_PREVSRV, (void *) srv,
               NULL);
 }
@@ -951,9 +946,22 @@ sr_state_get_current_srv(void)
 void
 sr_state_set_current_srv(sr_srv_t *srv)
 {
-  tor_assert(srv);
   state_query(SR_STATE_ACTION_PUT, SR_STATE_OBJ_CURSRV, (void *) srv,
               NULL);
+}
+
+/* Rotate SRV value by freeing the previous value, assigning the current
+ * value to the previous one and nullifying the current one. */
+void
+sr_state_rotate_srv(void)
+{
+  /* Get a pointer to the previous SRV so we can free it after rotation. */
+  sr_srv_t *previous_srv = sr_state_get_previous_srv();
+  /* Set previous SRV with the current one. */
+  sr_state_set_previous_srv(sr_state_get_current_srv());
+  /* Nullify the current srv. */
+  sr_state_set_current_srv(NULL);
+  tor_free(previous_srv);
 }
 
 /* Return a pointer to the commits map from our state. CANNOT be NULL. */
@@ -1008,11 +1016,7 @@ sr_state_update(time_t valid_after)
     sr_state->n_reveal_rounds++;
   }
 
-  /* Everything is up to date in our state, make sure our permanent disk
-   * state is also updated and written to disk. */
-  sr_state_save();
-
-  { /* Some logging. */
+  { /* XXX: debugging. */
     char tbuf[ISO_TIME_LEN + 1];
     format_iso_time(tbuf, valid_after);
     log_warn(LD_DIR, "[SR] ------------------------------");

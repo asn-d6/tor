@@ -633,9 +633,10 @@ sr_compute_srv(void)
    * cover all cases. While writing this I'm still unsure of those. */
   reveal_num = digest256map_size(state_commits);
   tor_assert(reveal_num < UINT8_MAX);
-  /* No reveal values means that we are booting up in the reveal phase thus
-   * we shouldn't try to compute a shared random value. */
-  if (reveal_num == 0) {
+
+  /* One single value means that it's only ours so do not compute a disaster
+   * shared random value. */
+  if (reveal_num == 1) {
     goto end;
   }
   /* Make sure we have enough reveal values and if not, generate the
