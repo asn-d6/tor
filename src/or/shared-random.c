@@ -89,7 +89,8 @@ sr_get_srv_status_from_str(const char *name)
  * that MUST be provided. The digest algorithm is set to the default one
  * that is supported. The rest is uninitialized. This never returns NULL. */
 static sr_commit_t *
-commit_new(const ed25519_public_key_t *identity)
+commit_new(const ed25519_public_key_t *identity,
+           const char *rsa_identity_fpr)
 {
   sr_commit_t *commit = tor_malloc_zero(sizeof(*commit));
   commit->alg = SR_DIGEST_ALG;
@@ -97,6 +98,7 @@ commit_new(const ed25519_public_key_t *identity)
   memcpy(&commit->auth_identity, identity, sizeof(commit->auth_identity));
   /* This call can't fail. */
   ed25519_public_to_base64(commit->auth_fingerprint, identity);
+  strlcpy(commit->rsa_identity_fpr, rsa_identity_fpr, sizeof(commit->rsa_identity_fpr));
   return commit;
 }
 
@@ -118,7 +120,9 @@ commit_log(const sr_commit_t *commit)
 {
   tor_assert(commit);
 
-  log_warn(LD_DIR, "[SR] \t Commit for %s", commit->auth_fingerprint);
+  log_warn(LD_DIR, "[SR] \t Commit of %s [RSA: %s]",
+           commit->auth_fingerprint,
+           commit->rsa_identity_fpr);
 
   if (commit->commit_ts >= 0) {
     log_warn(LD_DIR, "[SR] \t C: [TS: %u] [H(R): %s...]",
@@ -437,17 +441,32 @@ sr_save_and_cleanup(void)
  *  at <b>timestamp</b>. If <b>my_cert</b> is provided use it as our
  *  authority certificate (used in unittests). */
 sr_commit_t *
-sr_generate_our_commitment(time_t timestamp)
+sr_generate_our_commitment(time_t timestamp, authority_cert_t *my_rsa_cert)
 {
-  sr_commit_t *commit;
+  sr_commit_t *commit = NULL;
+  char fingerprint[FINGERPRINT_LEN+1];
   const ed25519_keypair_t *signing_keypair;
 
   /* Get our shared random keypair. */
   signing_keypair = get_shared_random_keypair();
   tor_assert(signing_keypair);
 
+  /* Get our RSA identity fingerprint */
+  {
+    if (!my_rsa_cert) {
+      my_rsa_cert = get_my_v3_authority_cert();
+      if (!my_rsa_cert) {
+        goto error;
+      }
+    }
+
+    if (crypto_pk_get_fingerprint(my_rsa_cert->identity_key, fingerprint, 0) < 0) {
+      goto error;
+    }
+  }
+
   /* New commit with our identity key. */
-  commit = commit_new(&signing_keypair->pubkey);
+  commit = commit_new(&signing_keypair->pubkey, fingerprint);
 
   /* Generate the reveal random value */
   if (crypto_rand((char *) commit->random_number,
@@ -882,6 +901,7 @@ sr_parse_commitment_line(smartlist_t *args)
   char *value;
   ed25519_public_key_t pubkey;
   digest_algorithm_t alg;
+  const char *rsa_identity_fpr;
   sr_commit_t *commit = NULL;
 
   /* First argument is the algorithm. */
@@ -892,23 +912,27 @@ sr_parse_commitment_line(smartlist_t *args)
              value);
     goto error;
   }
-  /* Second arg is the authority identity. */
+  /* Second arg is the authority ed25519 identity. */
   value = smartlist_get(args, 1);
   if (ed25519_public_from_base64(&pubkey, value) < 0) {
     log_warn(LD_DIR, "Commitment line identity is not recognized.");
     goto error;
   }
-  /* Allocate commit since we have a valid identity now. */
-  commit = commit_new(&pubkey);
 
-  /* Third argument is the commitment value base64-encoded. */
-  value = smartlist_get(args, 2);
+  /* Third argument is the RSA fingerprint of the auth */
+  rsa_identity_fpr = smartlist_get(args, 2);
+
+  /* Allocate commit since we have a valid identity now. */
+  commit = commit_new(&pubkey, rsa_identity_fpr);
+
+  /* Fourth argument is the commitment value base64-encoded. */
+  value = smartlist_get(args, 3);
   if (commit_decode(value, commit) < 0) {
     goto error;
   }
 
-  /* (Optional) Fourth argument is the revealed value. */
-  value = smartlist_get(args, 3);
+  /* (Optional) Fifth argument is the revealed value. */
+  value = smartlist_get(args, 4);
   if (value != NULL) {
     if (reveal_decode(value, commit) < 0) {
       goto error;
@@ -928,7 +952,8 @@ error:
 void
 sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
                               const char *commitment, const char *reveal,
-                              const ed25519_public_key_t *voter_key)
+                              const ed25519_public_key_t *voter_key,
+                              char *rsa_identity_fpr)
 {
   sr_commit_t *commit;
   smartlist_t *args;
@@ -957,6 +982,7 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
   args = smartlist_new();
   smartlist_add(args, (char *) hash_alg);
   smartlist_add(args, (char *) commit_pubkey);
+  smartlist_add(args, (char *) rsa_identity_fpr);
   smartlist_add(args, (char *) commitment);
   if (reveal != NULL) {
     smartlist_add(args, (char *) reveal);
