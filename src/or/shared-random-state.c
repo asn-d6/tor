@@ -61,7 +61,6 @@ disk_state_validate_cb(void *old_state, void *state, void *default_state,
 static config_var_t state_vars[] = {
   V(Version,                    INT, "1"),
   V(ValidUntil,                 ISOTIME, NULL),
-  V(ProtocolPhase,              STRING, NULL),
 
   VAR("Commitment",             LINELIST_S, Commitments, NULL),
   V(Commitments,                LINELIST_V, NULL),
@@ -321,14 +320,6 @@ disk_state_validate(sr_disk_state_t *state)
   if (state->ValidUntil < now) {
     goto invalid;
   }
-  /* If our state is in a different protocol phase that we are suppose to
-   * be, we consider it invalid. */
-  {
-    sr_phase_t current_phase = get_sr_protocol_phase(now);
-    if (get_phase_from_str(state->ProtocolPhase) != current_phase) {
-      goto invalid;
-    }
-  }
 
   return 0;
  invalid:
@@ -553,8 +544,6 @@ disk_state_reset(void)
   config_free_lines(sr_disk_state->SharedRandPreviousValue);
   config_free_lines(sr_disk_state->SharedRandCurrentValue);
   config_free_lines(sr_disk_state->ExtraLines);
-  tor_free(sr_disk_state->ProtocolPhase);
-  sr_disk_state->ProtocolPhase = NULL;
   memset(sr_disk_state, 0, sizeof(*sr_disk_state));
   sr_disk_state->magic_ = SR_DISK_STATE_MAGIC;
 }
@@ -575,7 +564,6 @@ disk_state_update(void)
    * construct something. */
   sr_disk_state->Version = sr_state->version;
   sr_disk_state->ValidUntil = sr_state->valid_until;
-  sr_disk_state->ProtocolPhase = tor_strdup(get_phase_str(sr_state->phase));
 
   /* Shared random values. */
   if (sr_state->previous_srv != NULL) {
