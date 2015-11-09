@@ -83,6 +83,58 @@ test_get_sr_protocol_phase(void *arg)
   ;
 }
 
+static void
+test_get_state_valid_until_time(void *arg)
+{
+  time_t current_time;
+  time_t valid_until_time;
+  char tbuf[ISO_TIME_LEN + 1];
+  int retval;
+
+  (void) arg;
+
+  {
+    /* Get the valid until time if called at 00:00:01 */
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:01 UTC", &current_time);
+    tt_int_op(retval, ==, 0);
+    valid_until_time = get_state_valid_until_time(current_time);
+
+    /* Compare it with the correct result */
+    format_iso_time(tbuf, valid_until_time);
+    tt_str_op("2015-04-21 00:00:00", OP_EQ, tbuf);
+  }
+
+  {
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 19:22:00 UTC", &current_time);
+    tt_int_op(retval, ==, 0);
+    valid_until_time = get_state_valid_until_time(current_time);
+
+    format_iso_time(tbuf, valid_until_time);
+    tt_str_op("2015-04-21 00:00:00", OP_EQ, tbuf);
+  }
+
+  {
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 23:59:00 UTC", &current_time);
+    tt_int_op(retval, ==, 0);
+    valid_until_time = get_state_valid_until_time(current_time);
+
+    format_iso_time(tbuf, valid_until_time);
+    tt_str_op("2015-04-21 00:00:00", OP_EQ, tbuf);
+  }
+
+  {
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:00 UTC", &current_time);
+    tt_int_op(retval, ==, 0);
+    valid_until_time = get_state_valid_until_time(current_time);
+
+    format_iso_time(tbuf, valid_until_time);
+    tt_str_op("2015-04-21 00:00:00", OP_EQ, tbuf);
+  }
+
+ done:
+  ;
+}
+
 extern const char AUTHORITY_CERT_1[];
 
 
@@ -158,6 +210,8 @@ struct testcase_t sr_tests[] = {
   { "get_sr_protocol_phase", test_get_sr_protocol_phase, TT_FORK,
     NULL, NULL },
   { "generate_commitment", test_generate_commitment, TT_FORK,
+    NULL, NULL },
+  { "get_state_valid_until_time", test_get_state_valid_until_time, TT_FORK,
     NULL, NULL },
   END_OF_TESTCASES
 };
