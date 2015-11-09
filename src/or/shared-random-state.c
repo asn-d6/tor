@@ -370,7 +370,7 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
     args = smartlist_new();
     smartlist_split_string(args, line->value, " ",
                            SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 0);
-    if (smartlist_len(args) < 3) {
+    if (smartlist_len(args) < 4) {
       log_warn(LD_DIR, "Too few arguments to Commitment. Line: \"%s\"",
                line->value);
       goto error;
@@ -509,9 +509,10 @@ disk_state_put_commit_line(sr_commit_t *commit, config_line_t *line)
     /* Add extra whitespace so we can format the line correctly. */
     tor_asprintf(&reveal_str, " %s", commit->encoded_reveal);
   }
-  tor_asprintf(&line->value, "%s %s %s%s",
+  tor_asprintf(&line->value, "%s %s %s %s%s",
                crypto_digest_algorithm_get_name(commit->alg),
                commit->auth_fingerprint,
+               commit->rsa_identity_fpr,
                commit->encoded_commit,
                reveal_str != NULL ? reveal_str : "");
   tor_free(reveal_str);
@@ -753,7 +754,7 @@ new_protocol_run(time_t valid_after)
   } DIGEST256MAP_FOREACH_END;
 
   /* Generate fresh commitments for this protocol run */
-  our_commitment = sr_generate_our_commitment(valid_after);
+  our_commitment = sr_generate_our_commitment(valid_after, NULL);
   if (our_commitment) {
     /* Add our commitment to our state. In case we are unable to create one
      * (highly unlikely), we won't vote for this protocol run since our
