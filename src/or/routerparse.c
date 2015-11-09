@@ -3284,8 +3284,17 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
   /* Get SR commitments from votes */
   smartlist_t *commitment_lst = find_all_by_keyword(tokens, K_COMMITMENT);
   if (commitment_lst) {
+    char rsa_identity_fpr[FINGERPRINT_LEN + 1];
+
+    /* Get the ed25519 identity key of this voter */
     const ed25519_public_key_t *voter_key =
       &ns->ed25519_shared_random_cert->signed_key;
+    /* Get the RSA identity fingerprint of this voter */
+    crypto_pk_t *rsa_identity_key = ns->cert->identity_key;
+    if (crypto_pk_get_fingerprint(rsa_identity_key, rsa_identity_fpr, 0) < 0) {
+      goto err;
+    }
+
     SMARTLIST_FOREACH_BEGIN(commitment_lst, directory_token_t *, tok) {
       const char *commit_pubkey = tok->args[0];
       const char *hash_alg = tok->args[1];
@@ -3296,7 +3305,8 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
         reveal = tok->args[3];
       }
       sr_handle_received_commitment(commit_pubkey, hash_alg, commitment,
-                                    reveal, voter_key);
+                                    reveal,
+                                    voter_key, rsa_identity_fpr);
     } SMARTLIST_FOREACH_END(tok);
     smartlist_free(commitment_lst);
   }
