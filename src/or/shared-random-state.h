@@ -100,6 +100,8 @@ void sr_state_free(void);
 
 STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
 
+STATIC time_t get_state_valid_until_time(time_t now);
+
 #endif /* SHARED_RANDOM_STATE_PRIVATE */
 
 #ifdef TOR_UNIT_TESTS
