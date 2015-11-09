@@ -64,8 +64,6 @@ typedef struct sr_disk_state_t {
   int Version;
   /* State valid until? */
   time_t ValidUntil;
-  /* Which protocol phase are we in? */
-  char *ProtocolPhase;
   /* All commitments seen that are valid. */
   config_line_t *Commitments;
   /* Previous and current shared random value. */
