@@ -50,8 +50,7 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 /* A protocol round is completed after N seconds */
 #define SHARED_RANDOM_VOTING_INTERVAL 3600
 /* Each protocol phase has 12 rounds  */
-/* XXX: Only for testing faster! To fix. */
-#define SHARED_RANDOM_N_ROUNDS 3
+#define SHARED_RANDOM_N_ROUNDS 12
 
 static int
 disk_state_validate_cb(void *old_state, void *state, void *default_state,
@@ -120,38 +119,38 @@ get_phase_from_str(const char *name)
   return phase;
 }
 
-/* Using the time right now as this function is called, return the shared
- * random state valid until time that is to the next protocol run. */
-static time_t
-get_valid_until_time(void)
+/* Return the time we should expire the state file created at <b>now</b>.
+ * We expire the state file in the beginning of the next protocol run. */
+STATIC time_t
+get_state_valid_until_time(time_t now)
 {
-  char tbuf[ISO_TIME_LEN + 1];
-  time_t valid_until, now = time(NULL);
-  struct tm tm;
+  int total_rounds = SHARED_RANDOM_N_ROUNDS * 2;
+  int current_round, voting_interval, rounds_left, beginning_of_current_round;
+  time_t valid_until;
 
-  tor_gmtime_r(&now, &tm);
-  {
-    /* Compute the hour difference and if positive, the value is the amount
-     * of hours missing before hitting the mark. Else, it's the next day at
-     * the start hour. */
-    int diff_hour = SHARED_RANDOM_START_HOUR - tm.tm_hour;
-    if (diff_hour <= 0) {
-      /* We are passed that hour. Add one because hour starts at 0. */
-      tm.tm_hour = SHARED_RANDOM_START_HOUR + 1;
-      tm.tm_mday += 1;
-    } else {
-      /* Add one here because hour starts at 0 for struct tm. */
-      tm.tm_hour += diff_hour + 1;
-    }
-    tm.tm_min = 0;
-    tm.tm_sec = 0;
-    tm.tm_isdst = 0;
+  /* Get the active voting interval. */
+  if (get_options()->TestingTorNetwork) {
+    voting_interval = get_options()->V3AuthVotingInterval;
+  } else {
+    voting_interval = SHARED_RANDOM_VOTING_INTERVAL;
   }
-  valid_until = mktime(&tm);
-  /* This should really not happen else serious issue. */
-  tor_assert(valid_until != -1);
-  format_iso_time(tbuf, valid_until);
-  log_debug(LD_DIR, "[SR] Valid until time for state set to %s.", tbuf);
+
+  /* Find the time the current round started. */
+  beginning_of_current_round = now - (now % voting_interval);
+
+  /* Find how many rounds are left till the end of the protocol run */
+  current_round = (now / voting_interval) % total_rounds;
+  rounds_left = total_rounds - current_round;
+
+  /* To find the valid-until time now, take the start time of the current round
+     and add to it the time it takes for the leftover rounds to complete. */
+  valid_until = beginning_of_current_round + (rounds_left * voting_interval);
+
+  { /* Logging */
+    char tbuf[ISO_TIME_LEN + 1];
+    format_iso_time(tbuf, valid_until);
+    log_debug(LD_DIR, "[SR] Valid until time for state set to %s.", tbuf);
+  }
 
   return valid_until;
 }
@@ -235,7 +234,8 @@ state_new(const char *fname)
   new_state->version = SR_PROTO_VERSION;
   new_state->commitments = digest256map_new();
   new_state->phase = get_sr_protocol_phase(time(NULL));
-  new_state->valid_until = get_valid_until_time();
+  /* XXX should this be called with the current time or the valid-after? */
+  new_state->valid_until = get_state_valid_until_time(time(NULL));
   return new_state;
 }
 
@@ -270,7 +270,7 @@ disk_state_new(void)
 
   new_state->magic_ = SR_DISK_STATE_MAGIC;
   new_state->Version = SR_PROTO_VERSION;
-  new_state->ValidUntil = get_valid_until_time();
+  new_state->ValidUntil = get_state_valid_until_time(time(NULL));
 
   /* Shared random values. */
   line = new_state->SharedRandPreviousValue =
@@ -318,6 +318,7 @@ disk_state_validate(sr_disk_state_t *state)
   }
   /* If the valid until time is before now, we shouldn't use that state. */
   if (state->ValidUntil < now) {
+    log_warn(LD_GENERAL, "[SR] SR state on disk has expired.");
     goto invalid;
   }
 
