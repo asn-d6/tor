@@ -148,6 +148,7 @@ static void
 test_generate_commitment(void *arg)
 {
   int retval;
+  authority_cert_t *auth_cert = NULL;
   char commit_b64[SR_COMMIT_BASE64_LEN + 1];
   char reveal_b64[SR_REVEAL_BASE64_LEN + 1];
   time_t now = time(NULL);
@@ -163,6 +164,10 @@ test_generate_commitment(void *arg)
 
   {  /* Setup a minimal dirauth environment for this test  */
     or_options_t *options = get_options_mutable();
+
+    auth_cert = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
+    tt_assert(auth_cert);
+
     options->AuthoritativeDir = 1;
     tt_int_op(0, ==, load_ed_keys(options, now));
 
@@ -171,7 +176,7 @@ test_generate_commitment(void *arg)
   }
 
   { /* Generate our commit/reveal */
-    our_commit = sr_generate_our_commitment(now);
+    our_commit = sr_generate_our_commitment(now, auth_cert);
     tt_assert(our_commit);
   }
 
