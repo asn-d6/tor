@@ -87,6 +87,8 @@ typedef struct sr_commit_t {
   /* Authority ed25519 identity key fingerprint base64 format. We keep it
    * for logging purposes instead of encoding each time. */
   char auth_fingerprint[ED25519_BASE64_LEN + 1];
+  /* The RSA identity fingerprint of the auth. */
+  char rsa_identity_fpr[FINGERPRINT_LEN + 1];
 
   /** Commitment information */
 
@@ -127,7 +129,8 @@ void sr_handle_received_commitment(const char *commit_pubkey,
                                    const char *hash_alg,
                                    const char *commitment,
                                    const char *reveal,
-                                   const ed25519_public_key_t *voter_key);
+                                   const ed25519_public_key_t *voter_key,
+                                   char *rsa_identity_fpr);
 
 sr_commit_t *sr_parse_commitment_line(smartlist_t *args);
 
@@ -137,7 +140,8 @@ const char *sr_get_srv_status_str(sr_srv_status_t status);
 void sr_compute_srv(void);
 char *sr_get_consensus_srv_string(void);
 
-sr_commit_t *sr_generate_our_commitment(time_t timestamp);
+sr_commit_t *sr_generate_our_commitment(time_t timestamp,
+                                        authority_cert_t *my_rsa_cert);
 
 #ifdef SHARED_RANDOM_PRIVATE
 
