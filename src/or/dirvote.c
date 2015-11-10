@@ -62,16 +62,12 @@ static char *make_consensus_method_list(int low, int high, const char *sep);
  * Voting
  * =====*/
 
-/** Return a heap-allocated string that contains the shared randomness
- *  key that we should include in our votes. Also include the whole
- *  cert chain that binds this key down to the ed25519 identity key. */
+/** Return a heap-allocated string that contains the ed25519 master key to
+ *  signing key certificate. */
 static char *
 get_sr_cert_chain_str(void)
 {
   char *sr_cert_chain_str = NULL;
-  smartlist_t *chunks = smartlist_new();
-
-  /* First we need to find all the certificates we need */
 
   { /* Get our (ed25519 master key -> ed25519 signing key) certificate */
     char ed_cert_base64[256]; /* XXX is this enough? */
@@ -90,44 +86,15 @@ get_sr_cert_chain_str(void)
       goto done;
     }
 
-    smartlist_add_asprintf(chunks, "signing-ed25519\n"
-                           "-----BEGIN ED25519 CERT-----\n"
-                           "%s"
-                           "-----END ED25519 CERT-----\n",
-                           ed_cert_base64);
+    tor_asprintf(&sr_cert_chain_str,
+                 "signing-ed25519\n"
+                 "-----BEGIN ED25519 CERT-----\n"
+                 "%s"
+                 "-----END ED25519 CERT-----\n",
+                 ed_cert_base64);
   }
-
-  { /* Get our (ed25519 signing key -> ed25519 sr key) certificate */
-    char ed_cert_base64[256];
-    const tor_cert_t *shared_random_cert = get_shared_random_key_cert();
-
-    if (!shared_random_cert) {
-      log_warn(LD_GENERAL, "Couldn't get our own SR cert.");
-      goto done;
-    }
-
-    if (base64_encode(ed_cert_base64, sizeof(ed_cert_base64),
-                      (const char*)shared_random_cert->encoded,
-                      shared_random_cert->encoded_len,
-                      BASE64_ENCODE_MULTILINE) < 0) {
-      log_err(LD_BUG,"Couldn't base64-encode sr key certificate!");
-      goto done;
-    }
-
-    smartlist_add_asprintf(chunks, "shared-random-ed25519\n"
-                           "-----BEGIN ED25519 CERT-----\n"
-                           "%s"
-                           "-----END ED25519 CERT-----\n",
-                           ed_cert_base64);
-  }
-
-  /* Concatenate the certs and we are ready to go. */
-  sr_cert_chain_str = smartlist_join_strings(chunks, "\n", 0, NULL);
 
  done:
-  SMARTLIST_FOREACH(chunks, char *, cp, tor_free(cp));
-  smartlist_free(chunks);
-
   return sr_cert_chain_str;
 }
 
