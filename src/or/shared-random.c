@@ -871,26 +871,34 @@ should_keep_commitment(sr_commit_t *commit,
 static void
 add_voted_commit(sr_commit_t *commit)
 {
-  sr_commit_t *saved_commit;
-
   tor_assert(commit);
 
-  /* An authority is allowed to commit only one value. */
-  saved_commit = digest256map_get(voted_commits,
-                                  commit->auth_identity.pubkey);
-  if (saved_commit != NULL) {
-    /* Since commit are carried on at each voting period, let's make sure we
-     * have the same commit and if not, ignore and log. */
-    if (!commitments_are_the_same(commit, saved_commit)) {
-      log_warn(LD_DIR, "[SR] Two different commits from authority %s"
-                       "Ignoring the latest one. This could happen if "
-                       "an authority rebooted and lost its sr-state.",
-               commit->auth_fingerprint);
+  /* Check if the authority that voted for <b>commit</b> has already posted a
+     commit. An authority is allowed to commit only one value. We use the RSA
+     identity key to check from previous commits because an authority is
+     allowed to rotate its ed25519 identity keys. */
+  /* XXX Should I check voted_commits or the sr_state here? */
+  DIGEST256MAP_FOREACH_MODIFY(voted_commits, key, sr_commit_t *, voted_commit) {
+    /* Check if the stored commit is from the same auth. */
+    if (!strcmp(commit->rsa_identity_fpr, voted_commit->rsa_identity_fpr)) {
+      /* Check if the stored commit we found is the _exact same_ commit. In any
+         case, ignore the new commit; only the first one matters. */
+      if (commitments_are_the_same(commit, voted_commit)) {
+        log_warn(LD_DIR, "[SR] Ignoring already-known commit by %s.",
+                 commit->rsa_identity_fpr);
+      } else {
+        log_warn(LD_DIR, "[SR] Found two different commits from authority %s"
+                 "with different SR keys. Ignoring the latest one. This"
+                 " could happen if an authority rebooted and lost its "
+                 "sr-state.", commit->rsa_identity_fpr);
+      }
+      return;
     }
-  } else {
-    /* Unique entry for now, add it indexed by the commit authority key. */
-    digest256map_set(voted_commits, commit->auth_identity.pubkey, commit);
-  }
+  } DIGEST256MAP_FOREACH_END;
+
+  /* Unique entry for now, add it indexed by the commit authority key. */
+  digest256map_set(voted_commits, commit->auth_identity.pubkey, commit);
+  log_warn(LD_DIR, "[SR] Saved commit by %s.", commit->rsa_identity_fpr);
 }
 
 /* Parse a Commitment line from our disk state and return a newly allocated
