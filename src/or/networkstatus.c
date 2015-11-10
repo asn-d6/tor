@@ -292,7 +292,6 @@ networkstatus_vote_free(networkstatus_t *ns)
 
   digestmap_free(ns->desc_digest_map, NULL);
 
-  tor_cert_free(ns->ed25519_shared_random_cert);
   tor_cert_free(ns->ed25519_signing_key_cert);
 
   memwipe(ns, 11, sizeof(*ns));
