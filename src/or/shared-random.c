@@ -348,9 +348,6 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
   /* Also copy the whole message to use during verification */
   strncpy(commit->encoded_reveal, encoded, sizeof(commit->encoded_reveal));
 
-  log_warn(LD_DIR, "[SR] Parsed reveal from %s", commit->auth_fingerprint);
-  commit_log(commit);
-
   return 0;
 
  error:
@@ -973,14 +970,6 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
   char voter_fp[ED25519_BASE64_LEN + 1];
   ed25519_public_to_base64(voter_fp, voter_key);
 
-  /* XXX: debugging */
-  {
-    log_warn(LD_DIR, "[SR] Received commit from %s", voter_fp);
-    log_warn(LD_DIR, "[SR] \t for: %s", commit_pubkey);
-    log_warn(LD_DIR, "[SR] \t C: %s", commitment);
-    log_warn(LD_DIR, "[SR] \t R: %s", reveal);
-  }
-
   /* Build a list of arguments that have the same order as the Commitment
    * line in the state. With that, we can parse it using the same function
    * that the state uses. Line format is as follow:
@@ -998,8 +987,16 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
   /* Parse our arguments to get a commit that we'll then verify. */
   commit = sr_parse_commitment_line(args);
   if (commit == NULL) {
+    log_warn(LD_GENERAL, "[SR] Failed to parse commit by %s",
+             commit->auth_fingerprint);
     goto end;
   }
+
+  { /* XXX Debug */
+    log_warn(LD_GENERAL, "[SR] Received commit:");
+    commit_log(commit);
+  }
+
   /* We now have a commit object that has been fully populated by our vote
    * data. Now we'll validate it. This function will make sure also to
    * validate the reveal value if one is present. */
@@ -1087,6 +1084,7 @@ decide_commit_during_reveal_phase(const sr_commit_t *commit)
   /* Get the commit from our state. If it's not found, it's possible that we
    * didn't get a commit during the commit phase. In this case, we ignore it
    * since we didn't rule that this commit should be kept. */
+  /* XXX This get needs to happen with the RSA key since the SR key might change */
   saved_commit = sr_state_get_commit(&commit->auth_identity);
   if (saved_commit == NULL) {
     return;
