@@ -2832,13 +2832,12 @@ networkstatus_verify_bw_weights(networkstatus_t *ns, int consensus_method)
   return valid;
 }
 
-/** We are parsing the vote document in <b>ns</b>. Given the directory
- *  tokens for the ed25519 signing certificate and the ed25519 shared
- *  randomness key certificate, verify their signatures and validity,
- *  parse them and extract the ed25519 keys from them.
+/** We are parsing the vote document in <b>ns</b>. Given the directory token for
+ *  the ed25519 signing certificate, verify its validity, parse it and extract
+ *  the ed25519 keys out of it.
  *
- *  We are interested in the shared randomness cert and the ed25519
- *  master key, so set them directly in <b>ns</b> for future use. */
+ *  For the SR protocol, we are interested in the ed25519 master key, so save it
+ *  directly in <b>ns</b> for future use. */
 static int
 extract_ed25519_keys_from_vote(const directory_token_t *sign_cert_tok,
                                networkstatus_t *ns)
@@ -3251,7 +3250,7 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
 
     /* Get the ed25519 identity key of this voter */
     const ed25519_public_key_t *voter_key =
-      &ns->ed25519_shared_random_cert->signed_key;
+      &ns->ed25519_signing_key_cert->signing_key;
     /* Get the RSA identity fingerprint of this voter */
     crypto_pk_t *rsa_identity_key = ns->cert->identity_key;
     if (crypto_pk_get_fingerprint(rsa_identity_key, rsa_identity_fpr, 0) < 0) {
