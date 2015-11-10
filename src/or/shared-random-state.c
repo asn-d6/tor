@@ -379,10 +379,6 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
     if (commit == NULL) {
       goto error;
     }
-    /* Commit was decoded correctly, let's verify it. */
-    if (!sr_verify_commit_sig(commit)) {
-      goto error;
-    }
     /* Add commit to our state pointer. */
     commit_add_to_state(commit, state);
 

@@ -208,19 +208,14 @@ verify_commit_and_reveal(const sr_commit_t *commit)
   return -1;
 }
 
-/* We just received <b>commit</b> in a vote. Make sure that it's conforming
- * to the current protocol phase. Verify its signature and timestamp. */
+/* We just received <b>commit</b> in a vote. Make sure that it's conforming to
+ * the current protocol phase and verify it's legit. */
 STATIC int
 verify_received_commit(const sr_commit_t *commit)
 {
   int have_reveal;
 
   tor_assert(commit);
-
-  /* Verify commit signature. */
-  if (!sr_verify_commit_sig(commit)) {
-    goto invalid;
-  }
 
   have_reveal = !tor_mem_is_zero(commit->encoded_reveal,
                                  sizeof(commit->encoded_reveal));
@@ -253,7 +248,7 @@ verify_received_commit(const sr_commit_t *commit)
 }
 
 /* Parse the encoded commit. The format is:
- *    base64-encode( H(REVEAL) || TIMESTAMP || SIGNATURE)
+ *    base64-encode( H(REVEAL) || TIMESTAMP )
  *
  * If successfully decoded and parsed, commit is updated and 0 is returned.
  * On error, return -1. */
@@ -264,7 +259,7 @@ commit_decode(const char *encoded, sr_commit_t *commit)
   size_t offset = 0;
   /* Needs an extra byte for the base64 decode calculation matches the
    * binary length once decoded. */
-  char b64_decoded[SR_COMMIT_LEN + 1];
+  char b64_decoded[SR_COMMIT_LEN + 2]; /* XXXX why + 2 */
 
   tor_assert(encoded);
   tor_assert(commit);
@@ -279,9 +274,9 @@ commit_decode(const char *encoded, sr_commit_t *commit)
    * coming from the network in a dirauth vote so we expect nothing more
    * than the base64 encoded length of a commit. */
   decoded_len = base64_decode(b64_decoded, sizeof(b64_decoded),
-                              encoded, SR_COMMIT_BASE64_LEN);
+                              encoded, strlen(encoded));
   if (decoded_len < 0) {
-    log_warn(LD_DIR, "[SR] Commitment can't be decoded.");
+    log_warn(LD_DIR, "[SR] Commitment can't be decoded %s.", encoded);
     goto error;
   }
 
@@ -295,10 +290,6 @@ commit_decode(const char *encoded, sr_commit_t *commit)
   offset += sizeof(commit->hashed_reveal);
   /* Next is timestamp. */
   commit->commit_ts = (time_t) tor_ntohll(get_uint64(b64_decoded + offset));
-  offset += 8;
-  /* Finally is the signature of the commit. */
-  memcpy(&commit->commit_signature.sig, b64_decoded + offset,
-         sizeof(commit->commit_signature.sig));
   /* Copy the base64 blob to the commit. Useful for voting. */
   strncpy(commit->encoded_commit, encoded, sizeof(commit->encoded_commit));
 
@@ -330,7 +321,7 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
    * coming from the network in a dirauth vote so we expect nothing more
    * than the base64 encoded length of our reveal. */
   decoded_len = base64_decode(b64_decoded, sizeof(b64_decoded),
-                              encoded, SR_REVEAL_BASE64_LEN);
+                              encoded, strlen(encoded));
   if (decoded_len < 0) {
     log_warn(LD_DIR, "[SR] Reveal value can't be decoded.");
     goto error;
@@ -375,14 +366,15 @@ reveal_encode(sr_commit_t *commit, char *dst, size_t len)
   offset += 8;
   memcpy(buf + offset, commit->random_number,
          sizeof(commit->random_number));
-  /* Let's clean the buffer and then encode it. */
+
+  /* Let's clean the buffer and then b64 encode it. */
   memset(dst, 0, len);
   return base64_encode(dst, len, buf, sizeof(buf), 0);
 }
 
 /* Encode the given commit object to dst which is a buffer large enough to
  * put the base64-encoded commit. The format is as follow:
- *     COMMIT = base64-encode( H(REVEAL) || TIMESTAMP || SIGNATURE )
+ *     COMMIT = base64-encode( H(REVEAL) || TIMESTAMP )
  */
 STATIC int
 commit_encode(sr_commit_t *commit, char *dst, size_t len)
@@ -394,17 +386,15 @@ commit_encode(sr_commit_t *commit, char *dst, size_t len)
   tor_assert(dst);
 
   memset(buf, 0, sizeof(buf));
+
   /* First is the hashed reveal. */
   memcpy(buf, commit->hashed_reveal,
          sizeof(commit->hashed_reveal));
   offset += sizeof(commit->hashed_reveal);
-  /* The timestamp is next. */
+  /* and then the timestamp */
   set_uint64(buf + offset, tor_htonll((uint64_t) commit->commit_ts));
-  offset += 8;
-  /* Finally, the signature. */
-  memcpy(buf + offset, commit->commit_signature.sig,
-         sizeof(commit->commit_signature.sig));
-  /* Clean the buffer and then encode it. */
+
+  /* Clean the buffer and then b64 encode it. */
   memset(dst, 0, len);
   return base64_encode(dst, len, buf, sizeof(buf), 0);
 }
@@ -442,11 +432,11 @@ sr_generate_our_commitment(time_t timestamp, authority_cert_t *my_rsa_cert)
 {
   sr_commit_t *commit = NULL;
   char fingerprint[FINGERPRINT_LEN+1];
-  const ed25519_keypair_t *signing_keypair;
+  const ed25519_public_key_t *identity_key;
 
-  /* Get our shared random keypair. */
-  signing_keypair = get_shared_random_keypair();
-  tor_assert(signing_keypair);
+  /* Get our ed25519 master key */
+  identity_key = get_master_identity_key();
+  tor_assert(identity_key);
 
   /* Get our RSA identity fingerprint */
   {
@@ -463,7 +453,7 @@ sr_generate_our_commitment(time_t timestamp, authority_cert_t *my_rsa_cert)
   }
 
   /* New commit with our identity key. */
-  commit = commit_new(&signing_keypair->pubkey, fingerprint);
+  commit = commit_new(identity_key, fingerprint);
 
   /* Generate the reveal random value */
   if (crypto_rand((char *) commit->random_number,
@@ -494,22 +484,6 @@ sr_generate_our_commitment(time_t timestamp, authority_cert_t *my_rsa_cert)
       goto error;
     }
     break;
-  }
-
-  { /* Now create the commit signature */
-    uint8_t sig_msg[SR_COMMIT_SIG_BODY_LEN];
-    memset(sig_msg, 0, sizeof(sig_msg));
-
-    /* Signature message format: H(REVEAL) || TIMESTAMP */
-    memcpy(sig_msg, commit->hashed_reveal, sizeof(commit->hashed_reveal));
-    set_uint64(sig_msg + sizeof(commit->hashed_reveal),
-               tor_htonll((uint64_t) commit->commit_ts));
-
-    if (ed25519_sign(&commit->commit_signature, sig_msg, sizeof(sig_msg),
-                     signing_keypair) < 0) {
-      log_warn(LD_BUG, "[SR] Can't sign commitment!");
-      goto error;
-    }
   }
 
   /* Now get the base64 blob that corresponds to our commit. */
@@ -885,7 +859,7 @@ add_voted_commit(sr_commit_t *commit)
                  commit->rsa_identity_fpr);
       } else {
         log_warn(LD_DIR, "[SR] Found two different commits from authority %s"
-                 "with different SR keys. Ignoring the latest one. This"
+                 "with different ed keys. Ignoring the latest one. This"
                  " could happen if an authority rebooted and lost its "
                  "sr-state.", commit->rsa_identity_fpr);
       }
@@ -1084,7 +1058,7 @@ decide_commit_during_reveal_phase(const sr_commit_t *commit)
   /* Get the commit from our state. If it's not found, it's possible that we
    * didn't get a commit during the commit phase. In this case, we ignore it
    * since we didn't rule that this commit should be kept. */
-  /* XXX This get needs to happen with the RSA key since the SR key might change */
+  /* XXX This get needs to happen with the RSA key since the ed25519 key can change */
   saved_commit = sr_state_get_commit(&commit->auth_identity);
   if (saved_commit == NULL) {
     return;
@@ -1125,31 +1099,6 @@ decide_commit_from_votes(void)
       tor_assert(0);
     }
   } DIGEST256MAP_FOREACH_END;
-}
-
-/* Return 1 iff the commit signature can be verified using the commit
- * authority fingerprint. Else return 0. */
-int
-sr_verify_commit_sig(const sr_commit_t *commit)
-{
-  uint8_t sig_msg[SR_COMMIT_SIG_BODY_LEN];
-
-  tor_assert(commit);
-
-  /* Let's verify the signature of the commitment. Format is:
-   *    H(REVEAL) || TIMESTAMP */
-  memcpy(sig_msg, commit->hashed_reveal, sizeof(commit->hashed_reveal));
-  set_uint64(sig_msg + sizeof(commit->hashed_reveal),
-             tor_htonll((uint64_t) commit->commit_ts));
-  if (ed25519_checksig(&commit->commit_signature, sig_msg,
-                       SR_COMMIT_SIG_BODY_LEN, &commit->auth_identity) != 0) {
-    log_warn(LD_DIR, "[SR] Commit signature from %s is invalid!",
-             commit->auth_fingerprint);
-    goto invalid;
-  }
-  return 1;
- invalid:
-  return 0;
 }
 
 /* Return a heap-allocated string that should be put in the consensus and
