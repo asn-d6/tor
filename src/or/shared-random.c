@@ -120,7 +120,7 @@ commit_log(const sr_commit_t *commit)
 {
   tor_assert(commit);
 
-  log_warn(LD_DIR, "[SR] \t Commit of %s [RSA: %s]",
+  log_warn(LD_DIR, "[SR] \t Commit of %s [transmitted by %s]",
            commit->auth_fingerprint,
            commit->rsa_identity_fpr);
 
