@@ -25,11 +25,9 @@
 
 /* Length of the random number (in bytes). */
 #define SR_RANDOM_NUMBER_LEN 32
-/* The signature includes the sha256 hash of the reveal + a 64bit timestamp */
-#define SR_COMMIT_SIG_BODY_LEN (DIGEST256_LEN + 8)
-/* Size of a decoded commit value in a vote or state. It consist of
-   the signature body and the signature. This is 104 bytes. */
-#define SR_COMMIT_LEN (SR_COMMIT_SIG_BODY_LEN + ED25519_SIG_LEN)
+/* Size of a decoded commit value in a vote or state. It's a hash and a
+   timestmap. */
+#define SR_COMMIT_LEN (DIGEST256_LEN + 8)
 /* Size of a decoded reveal value from a vote or state. It's a 64 bit
  * timestamp and the random number. This adds up to 40 bytes. */
 #define SR_REVEAL_LEN (8 + SR_RANDOM_NUMBER_LEN)
@@ -39,7 +37,7 @@
   (SR_SRV_TOKEN_LEN + 1 + 1 + DIGEST256_LEN)
 
 /* Length of base64 encoded commit NOT including the NULL terminated byte.
- * Formula is taken from base64_encode_size. This adds up to 140 bytes. */
+ * Formula is taken from base64_encode_size. */
 #define SR_COMMIT_BASE64_LEN \
   (((SR_COMMIT_LEN - 1) / 3) * 4 + 4)
 /* Length of base64 encoded reveal NOT including the NULL terminated byte.
@@ -76,9 +74,6 @@ typedef struct sr_commit_t {
   /* Hashing algorithm used for the value. Depends on the version of the
    * protocol located in the state. */
   digest_algorithm_t alg;
-  /* Signature of the commit that has been verified against the
-   * identity and thus valid. */
-  ed25519_signature_t signature;
 
   /** Commitment owner info */
 
@@ -92,9 +87,6 @@ typedef struct sr_commit_t {
 
   /** Commitment information */
 
-  /* Signature of the commit that has been verified against the
-   * identity and thus valid. */
-  ed25519_signature_t commit_signature;
   /* Timestamp of reveal. Correspond to TIMESTAMP. */
   time_t reveal_ts;
   /* H(REVEAL) as found in COMMIT message. */
