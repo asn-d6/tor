@@ -258,7 +258,6 @@ disk_state_free(sr_disk_state_t *state)
     return;
   }
   config_free(&state_format, state);
-  tor_free(state);
 }
 
 /* Allocate a new disk state, initialized it and return it. */
