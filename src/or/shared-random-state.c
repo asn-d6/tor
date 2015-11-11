@@ -716,6 +716,27 @@ is_booting_up(void)
   return !sr_state->n_protocol_runs;
 }
 
+static void
+reset_state_for_new_protocol_run(time_t valid_after)
+{
+  tor_assert(sr_state);
+
+  /* Keep counters in track */
+  sr_state->n_reveal_rounds = 0;
+  sr_state->n_commit_rounds = 0;
+  sr_state->n_protocol_runs++;
+
+  /* Reset valid-until */
+  sr_state->valid_until = get_state_valid_until_time(valid_after);
+
+  /* We are in a new protocol run so cleanup commitments. */
+  DIGEST256MAP_FOREACH_MODIFY(sr_state->commitments, key, sr_commit_t *, c) {
+    sr_commit_free(c);
+    MAP_DEL_CURRENT(key);
+  } DIGEST256MAP_FOREACH_END;
+}
+
+
 /** This is the first round of the new protocol run starting at
  *  <b>valid_after</b>. Do the necessary housekeeping. */
 static void
@@ -732,21 +753,13 @@ new_protocol_run(time_t valid_after)
     sr_compute_srv();
   }
 
-  /* Keep counters in track */
-  sr_state->n_reveal_rounds = 0;
-  sr_state->n_commit_rounds = 0;
-  sr_state->n_protocol_runs++;
+  /* Prepare for the new protocol run by reseting the state */
+  reset_state_for_new_protocol_run(valid_after);
 
   /* Do some logging */
   log_warn(LD_DIR, "[SR] =========================");
   log_warn(LD_DIR, "[SR] Protocol run #%" PRIu64 " starting!",
            sr_state->n_protocol_runs);
-
-  /* We are in a new protocol run so cleanup commitments. */
-  DIGEST256MAP_FOREACH_MODIFY(sr_state->commitments, key, sr_commit_t *, c) {
-    sr_commit_free(c);
-    MAP_DEL_CURRENT(key);
-  } DIGEST256MAP_FOREACH_END;
 
   /* Generate fresh commitments for this protocol run */
   our_commitment = sr_generate_our_commitment(valid_after, NULL);
