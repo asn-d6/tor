@@ -104,10 +104,12 @@ STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
 
 STATIC time_t get_state_valid_until_time(time_t now);
 
+STATIC sr_commit_t *state_query_get_commit_by_rsa(const char *rsa_fpr);
+
 #endif /* SHARED_RANDOM_STATE_PRIVATE */
 
 #ifdef TOR_UNIT_TESTS
-STATIC void set_sr_phase_to_reveal(void);
+STATIC void set_sr_phase(sr_phase_t phase);
 #endif
 
 
