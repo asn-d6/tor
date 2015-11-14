@@ -179,7 +179,7 @@ test_generate_commitment(void *arg)
   }
 
   { /* Parse our own commit during the commit phase */
-    sr_handle_received_commitment(our_commit->auth_fingerprint,
+    sr_handle_received_commit(our_commit->auth_fingerprint,
                                   "sha256",
                                   our_commit->encoded_commit, NULL,
                                   &our_commit->auth_identity,
@@ -196,7 +196,7 @@ test_generate_commitment(void *arg)
   set_sr_phase(SR_PHASE_REVEAL);
 
   { /* Parse our own commit & reveal now! */
-    sr_handle_received_commitment(our_commit->auth_fingerprint,
+    sr_handle_received_commit(our_commit->auth_fingerprint,
                                   "sha256",
                                   our_commit->encoded_commit,
                                   our_commit->encoded_reveal,
