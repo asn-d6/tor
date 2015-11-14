@@ -3176,11 +3176,6 @@ dirvote_compute_consensuses(void)
     }
   }
 
-  /* Trigger a decide stage for our shared random value state. At this
-   * point, all votes are in so we have to potentially create a shared
-   * random value before consensus is created. */
-  sr_decide_post_voting();
-
   signatures = get_detached_signatures_from_pending_consensuses(
        pending, N_CONSENSUS_FLAVORS);
 
