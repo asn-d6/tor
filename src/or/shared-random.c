@@ -20,11 +20,11 @@
  *         new_protocol_run()).
  *
  *      2) Dirauths publish commitment/reveal values in their votes
- *         depending on the current phase (see
- *         sr_get_commit_string_for_vote()).
+ *         depending on the current phase (see sr_get_commit_string_for_vote()).
  *
- *      3) After all votes have been received, dirauths decide which
- *         commitments/reveals to keep (see sr_decide_post_voting()).
+ *      3) Upon receiving a commit from a vote, authorities parse it, verify it,
+ *         and attempt to save any new commitment or reveal information in their
+ *         state file (see sr_handle_received_commitment()).
  *
  *      4) In the end of the reveal phase, dirauths compute the random value
  *         of the day using the active reveal values (see sr_compute_srv()).
@@ -48,10 +48,7 @@
 /* String representation of a shared random value status. */
 static const char *srv_status_str[] = { "fresh", "non-fresh" };
 
-/* Authoritative commit from an authority's vote. This is indexed by shared
- * random key and an entry is the authority commit that is obviously
- * authoritative once added to this map. */
-static digest256map_t *voted_commits;
+static void save_commit_to_state(sr_commit_t *commit);
 
 /* Return a string representation of a srv status. */
 const char *
@@ -140,23 +137,6 @@ commit_log(const sr_commit_t *commit)
   }
 }
 
-/* Free all commit object in the given list. */
-static void
-voted_commits_free(sr_commit_t *commit)
-{
-  tor_assert(commit);
-  sr_commit_free(commit);
-}
-
-/* Helper: deallocate a list of commit object that comes from the
- * voted_commits map. (Used with digest256map_free(), which requires a
- * function pointer whose argument is void *). */
-static void
-voted_commits_free_(void *p)
-{
-  voted_commits_free(p);
-}
-
 /* Make sure that the commitment and reveal information in <b>commit</b>
  * match. If they match return 0, return -1 otherwise. This function MUST be
  * used everytime we receive a new reveal value. */
@@ -208,43 +188,11 @@ verify_commit_and_reveal(const sr_commit_t *commit)
   return -1;
 }
 
-/* We just received <b>commit</b> in a vote. Make sure that it's conforming to
- * the current protocol phase and verify it's legit. */
-STATIC int
-verify_received_commit(const sr_commit_t *commit)
+static int
+commit_has_reveal_value(const sr_commit_t *commit)
 {
-  int have_reveal;
-
-  tor_assert(commit);
-
-  have_reveal = !tor_mem_is_zero(commit->encoded_reveal,
-                                 sizeof(commit->encoded_reveal));
-  switch (sr_state_get_phase()) {
-  case SR_PHASE_COMMIT:
-    /* During commit phase, we shouldn't get a reveal value and if so this
-     * is considered as a malformed commit thus invalid. */
-    if (have_reveal) {
-      log_warn(LD_DIR, "[SR] Found commit with reveal value during commit phase.");
-      goto invalid;
-    }
-    break;
-  case SR_PHASE_REVEAL:
-    /* We do have a reveal so let's verify it. */
-    if (have_reveal) {
-      if(verify_commit_and_reveal(commit) < 0) {
-        goto invalid;
-      }
-    }
-    break;
-  default:
-    goto invalid;
-  }
-
-  log_warn(LD_DIR, "[SR] \t Commit for %s has been verified successfully!",
-           commit->auth_fingerprint);
-  return 0;
- invalid:
-  return -1;
+  return !tor_mem_is_zero(commit->encoded_reveal,
+                          sizeof(commit->encoded_reveal));
 }
 
 /* Parse the encoded commit. The format is:
@@ -403,7 +351,6 @@ commit_encode(sr_commit_t *commit, char *dst, size_t len)
 static void
 sr_cleanup(void)
 {
-  digest256map_free(voted_commits, voted_commits_free_);
   sr_state_free();
 }
 
@@ -412,7 +359,6 @@ sr_cleanup(void)
 int
 sr_init(int save_to_disk)
 {
-  voted_commits = digest256map_new();
   return sr_state_init(save_to_disk);
 }
 
@@ -825,51 +771,85 @@ commit_is_authoritative(const sr_commit_t *commit,
  * state or 0 if not. If it's authoritative, the commit is flagged
  * accordingly. */
 static int
-should_keep_commitment(sr_commit_t *commit,
-                       const ed25519_public_key_t *voter_key)
+should_keep_commit(sr_commit_t *commit,
+                   const ed25519_public_key_t *voter_key)
 {
+  sr_commit_t *saved_commit;
+
   tor_assert(commit);
   tor_assert(voter_key);
 
-  /* For a commit to be added to our state, we need it to be authoritative, that
-   * is it's the voter's commit. */
-  return commit_is_authoritative(commit, voter_key);
-}
+  log_warn(LD_DIR, "[SR] Considering whether we will keep commit.");
 
-/* Add an authoritative commit that has just been received in a vote.  If an
- * entry for the authority is not found, one is created. If there is already
- * a commit from it, ignore it and log it. */
-static void
-add_voted_commit(sr_commit_t *commit)
-{
-  tor_assert(commit);
+  /* For a commit to be considered, it needs to be authoritative (it should be
+     the voter's own commit). */
+  if (!commit_is_authoritative(commit, voter_key)) {
+    log_warn(LD_DIR, "[SR] \t Ignoring non-authoritative commit.");
+    return 0;
+  }
 
   /* Check if the authority that voted for <b>commit</b> has already posted a
-     commit. An authority is allowed to commit only one value. We use the RSA
-     identity key to check from previous commits because an authority is
-     allowed to rotate its ed25519 identity keys. */
-  /* XXX Should I check voted_commits or the sr_state here? */
-  DIGEST256MAP_FOREACH_MODIFY(voted_commits, key, sr_commit_t *, voted_commit) {
-    /* Check if the stored commit is from the same auth. */
-    if (!strcmp(commit->rsa_identity_fpr, voted_commit->rsa_identity_fpr)) {
-      /* Check if the stored commit we found is the _exact same_ commit. In any
-         case, ignore the new commit; only the first one matters. */
-      if (commitments_are_the_same(commit, voted_commit)) {
-        log_warn(LD_DIR, "[SR] Ignoring already-known commit by %s.",
-                 commit->rsa_identity_fpr);
-      } else {
-        log_warn(LD_DIR, "[SR] Found two different commits from authority %s"
-                 "with different ed keys. Ignoring the latest one. This"
-                 " could happen if an authority rebooted and lost its "
-                 "sr-state.", commit->rsa_identity_fpr);
-      }
-      return;
-    }
-  } DIGEST256MAP_FOREACH_END;
+     commit before. We use the RSA identity key to check from previous commits
+     because an authority is allowed to rotate its ed25519 identity keys. */
+  saved_commit = sr_state_get_commit_by_rsa(commit->rsa_identity_fpr);
 
-  /* Unique entry for now, add it indexed by the commit authority key. */
-  digest256map_set(voted_commits, commit->auth_identity.pubkey, commit);
-  log_warn(LD_DIR, "[SR] Saved commit by %s.", commit->rsa_identity_fpr);
+  if (sr_state_get_phase() == SR_PHASE_COMMIT) {
+    if (commit_has_reveal_value(commit)) {
+      log_warn(LD_DIR, "[SR] Ignoring commit with reveal during commit phase");
+      goto ignore;
+    }
+
+    /* If we are in commit phase and this is the first time we see a commit by
+       this auth, save it. */
+    if (saved_commit) {
+      log_warn(LD_DIR, "[SR] \t Ignoring known commit during commit phase.");
+      goto ignore;
+    }
+
+    return 1;
+
+  } else { /* reveal phase */
+    /* We are now in reveal phase. We keep a commit if and only if:
+
+       - We have already seen a commit by this auth, AND
+       - the saved commit has the same commitment value as this one, AND
+       - the saved commit has no reveal information, AND
+       - this commit does have reveal information, AND
+       - the reveal & commit information are matching.
+
+       If all the above are true, then we are interested in this new commit for
+       its reveal information. */
+
+    if (!saved_commit) {
+      log_warn(LD_DIR, "[SR] \t Ignoring commit first seen in reveal phase.");
+      goto ignore;
+    }
+
+    if (!commitments_are_the_same(commit, saved_commit)) {
+      log_warn(LD_DIR, "[SR] \t Ignoring commit with wrong commitment info.");
+      goto ignore;
+    }
+
+    if (commit_has_reveal_value(saved_commit)) {
+      log_warn(LD_DIR, "[SR] \t Ignoring commit with known reveal info.");
+      goto ignore;
+    }
+
+    if (!commit_has_reveal_value(commit)) {
+      log_warn(LD_DIR, "[SR] \t Ignoring commit without reveal value.");
+      goto ignore;
+    }
+
+    if (verify_commit_and_reveal(commit) < 0) {
+      log_warn(LD_DIR, "[SR] \t Ignoring corrupted reveal info.");
+      goto ignore;
+    }
+
+    return 1;
+  }
+
+ ignore:
+  return 0;
 }
 
 /* Parse a Commitment line from our disk state and return a newly allocated
@@ -971,134 +951,57 @@ sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
     commit_log(commit);
   }
 
-  /* We now have a commit object that has been fully populated by our vote
-   * data. Now we'll validate it. This function will make sure also to
-   * validate the reveal value if one is present. */
-  if (verify_received_commit(commit) < 0) {
-    sr_commit_free(commit);
-    goto end;
-  }
-  /* Check if this commit can be stored in our state. It's important to
-   * never add a commit to the voted map unless it qualifies to be kept in
-   * our state post voting. */
-  if (!should_keep_commitment(commit, voter_key)) {
-    /* XXX: debugging. */
-    log_warn(LD_DIR, "[SR] Commit of authority %s received from %s "
-             "is not authoritative. Ignoring.",
-             commit->auth_fingerprint, voter_fp);
+  /* Check if this commit is valid and should be stored in our state. */
+  if (!should_keep_commit(commit, voter_key)) {
+    log_warn(LD_DIR, "[SR] Ignoring commit received from %s.", voter_fp);
     sr_commit_free(commit);
     goto end;
   }
 
-  /* Add the authoritative commit to our voted commit map so we can process
-   * them once we decide our state in the post voting stage. */
-  add_voted_commit(commit);
+  /* Everything lines up: save this commit to state then! */
+  save_commit_to_state(commit);
 
 end:
   smartlist_free(args);
 }
 
-/* We are during commit phase and we found <b>commit</b> in a vote. Decide
- * whether we should keep this commit or ignore it. Return 1 iff the commit
- * was added to our state or 0 if not. This is important because if the
- * commit was kept, our state takes ownership of the object. */
-static int
-decide_commit_during_commit_phase(sr_commit_t *commit)
-{
-  /* Indicate if we kept the commit for our state or not. */
-  int commit_kept = 0;
-  sr_commit_t *saved_commit;
-
-  tor_assert(commit);
-
-  log_warn(LD_DIR, "[SR] \t Deciding commit %s by %s",
-           commit->encoded_commit, commit->auth_fingerprint);
-
-  /* Query our state to know if we already have this commit saved. If so,
-   * use the saved commit else use the new one. */
-  saved_commit = sr_state_get_commit(&commit->auth_identity);
-  if (saved_commit != NULL) {
-    /* Safety net. We can't have different commit at this stage since the
-     * addition of a second commit to the voted map is impossible. */
-    int same_commits = commitments_are_the_same(commit, saved_commit);
-    tor_assert(same_commits);
-    goto end;
-  }
-  /* Add commit to our state since it's the first time we see it. */
-  sr_state_add_commit(commit);
-  commit_kept = 1;
-
- end:
-  return commit_kept;
-}
-
 /* We are during commit phase and we found <b>commit</b> in a
  * vote. See if it contains any reveal values that we could use. */
 static void
-decide_commit_during_reveal_phase(const sr_commit_t *commit)
+save_commit_during_reveal_phase(const sr_commit_t *commit)
 {
   sr_commit_t *saved_commit;
 
   tor_assert(commit);
 
-  int have_reveal = !tor_mem_is_zero(commit->encoded_reveal,
-                                     sizeof(commit->encoded_reveal));
-  /* XXX: debugging. */
-  log_warn(LD_DIR, "[SR] \t Commit %s (%s) by %s",
-           commit->encoded_commit,
-           have_reveal ? commit->encoded_reveal : "NOREVEAL",
-           commit->auth_fingerprint);
-
-  /* If the received commit contains no reveal value, we are not interested
-   * in it so ignore. */
-  if (!have_reveal) {
-    return;
-  }
-
-  /* Get the commit from our state. If it's not found, it's possible that we
-   * didn't get a commit during the commit phase. In this case, we ignore it
-   * since we didn't rule that this commit should be kept. */
-  /* XXX This get needs to happen with the RSA key since the ed25519 key can change */
-  saved_commit = sr_state_get_commit(&commit->auth_identity);
-  if (saved_commit == NULL) {
-    return;
-  }
-  /* Safety net. They can not be different commits at this point. */
+  /* Get the commit from our state. */
+  saved_commit = sr_state_get_commit_by_rsa(commit->rsa_identity_fpr);
+  tor_assert(saved_commit);
+  /* Safety net. They can not be different commitments at this point. */
   int same_commits = commitments_are_the_same(commit, saved_commit);
   tor_assert(same_commits);
 
-  /* Don't set the reveal value if we already have one. */
-  if (tor_mem_is_zero(saved_commit->encoded_reveal,
-                      sizeof(saved_commit->encoded_reveal))) {
-    sr_state_set_commit_reveal(saved_commit, commit->encoded_reveal);
-  }
+  sr_state_set_commit_reveal(saved_commit, commit->encoded_reveal);
 }
 
-/* For all vote in <b>votes</b>, decide if the commitments should be ignored
- * or added/updated to our state. Depending on the phase here, different
- * actions are taken. */
+/* Save <b>commit</b> to our persistent state. Depending on the current phase,
+ * different actions are taken. */
 static void
-decide_commit_from_votes(void)
+save_commit_to_state(sr_commit_t *commit)
 {
-  /* For each commit, decide if we keep it or not depending on the phase. */
-  DIGEST256MAP_FOREACH_MODIFY(voted_commits, key, sr_commit_t *, commit) {
-    sr_phase_t phase = sr_state_get_phase();
+  sr_phase_t phase = sr_state_get_phase();
 
-    switch (phase) {
-    case SR_PHASE_COMMIT:
-      if (decide_commit_during_commit_phase(commit)) {
-        /* Commit has been added to our state so remove it from this map
-         * so we transfer ownership to the state. */
-        MAP_DEL_CURRENT(key);
-      }
-      break;
-    case SR_PHASE_REVEAL:
-      decide_commit_during_reveal_phase(commit);
-      break;
-    default:
-      tor_assert(0);
-    }
-  } DIGEST256MAP_FOREACH_END;
+  switch (phase) {
+  case SR_PHASE_COMMIT:
+    /* During commit phase, just save any new authoritative commit */
+    sr_state_add_commit(commit);
+    break;
+  case SR_PHASE_REVEAL:
+    save_commit_during_reveal_phase(commit);
+    break;
+  default:
+    tor_assert(0);
+  }
 }
 
 /* Return a heap-allocated string that should be put in the consensus and
@@ -1121,26 +1024,6 @@ sr_get_consensus_srv_string(void)
   log_warn(LD_DIR, "[SR] Shared random value for the consensus:");
   log_warn(LD_DIR, "[SR] \t %s", srv_str);
   return srv_str;
-}
-
-/* This is called in the end of each voting round. Decide which
- * commitments/reveals to keep and write them to perm state. */
-void
-sr_decide_post_voting(void)
-{
-  log_warn(LD_DIR, "[SR] Deciding stage post voting.");
-
-   /* Decide which commit to keep in our state for the voted commits we just
-    * received. */
-  decide_commit_from_votes();
-
-  /* For last, we've just processed all of the voted commits so cleanup the
-   * map since we are post voting and we won't need them anymore. It also
-   * need to be cleaned up before the next voting period starts. */
-  digest256map_free(voted_commits, voted_commits_free_);
-  voted_commits = digest256map_new();
-
-  log_warn(LD_DIR, "[SR] State decided!");
 }
 
 /* Prepare the shared random state we are going to be using for the upcoming
