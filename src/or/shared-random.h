@@ -115,7 +115,7 @@ void sr_prepare_new_voting_period(time_t valid_after);
 void sr_commit_free(sr_commit_t *commit);
 int sr_verify_commit_sig(const sr_commit_t *commit);
 
-void sr_handle_received_commitment(const char *commit_pubkey,
+void sr_handle_received_commit(const char *commit_pubkey,
                                    const char *hash_alg,
                                    const char *commitment,
                                    const char *reveal,

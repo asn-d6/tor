@@ -24,7 +24,7 @@
  *
  *      3) Upon receiving a commit from a vote, authorities parse it, verify it,
  *         and attempt to save any new commitment or reveal information in their
- *         state file (see sr_handle_received_commitment()).
+ *         state file (see sr_handle_received_commit()).
  *
  *      4) In the end of the reveal phase, dirauths compute the random value
  *         of the day using the active reveal values (see sr_compute_srv()).
@@ -909,7 +909,7 @@ error:
  * line, validate it and add it to the voted commits map if it's valid so we
  * can process all commits in post voting stage. */
 void
-sr_handle_received_commitment(const char *commit_pubkey, const char *hash_alg,
+sr_handle_received_commit(const char *commit_pubkey, const char *hash_alg,
                               const char *commitment, const char *reveal,
                               const ed25519_public_key_t *voter_key,
                               char *rsa_identity_fpr)
