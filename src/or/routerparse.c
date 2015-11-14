@@ -3277,7 +3277,7 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
       if (tok->n_args > 3) { /* a reveal value might also be included */
         reveal = tok->args[3];
       }
-      sr_handle_received_commitment(commit_pubkey, hash_alg, commitment,
+      sr_handle_received_commit(commit_pubkey, hash_alg, commitment,
                                     reveal,
                                     voter_key, rsa_identity_fpr);
     } SMARTLIST_FOREACH_END(tok);
