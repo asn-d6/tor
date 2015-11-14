@@ -188,7 +188,7 @@ verify_commit_and_reveal(const sr_commit_t *commit)
   return -1;
 }
 
-static int
+STATIC int
 commit_has_reveal_value(const sr_commit_t *commit)
 {
   return !tor_mem_is_zero(commit->encoded_reveal,
