@@ -779,6 +779,18 @@ is_phase_transition(sr_phase_t next_phase)
   return sr_state->phase != next_phase;
 }
 
+static sr_commit_t *
+state_query_get_commit_by_rsa(const char *rsa_fpr)
+{
+  DIGEST256MAP_FOREACH(sr_state->commitments, key, sr_commit_t *, commit) {
+    /* Check if the stored commit is from the same auth. */
+    if (!strcmp(commit->rsa_identity_fpr, rsa_fpr)) {
+      return commit;
+    }
+  } DIGEST256MAP_FOREACH_END;
+
+  return NULL;
+}
 /* Helper function: This handles the GET state action using an
  * <b>obj_type</b> and <b>data</b> needed for the action. */
 static void *
@@ -787,10 +799,9 @@ state_query_get_(sr_state_object_t obj_type, void *data)
   void *obj = NULL;
 
   switch (obj_type) {
-  case SR_STATE_OBJ_COMMIT:
+  case SR_STATE_OBJ_COMMIT_RSA:
   {
-    ed25519_public_key_t *identity = data;
-    obj = digest256map_get(sr_state->commitments, identity->pubkey);
+    obj = state_query_get_commit_by_rsa(data);
     break;
   }
   case SR_STATE_OBJ_COMMITS:
@@ -805,6 +816,7 @@ state_query_get_(sr_state_object_t obj_type, void *data)
   case SR_STATE_OBJ_PHASE:
     obj = &sr_state->phase;
     break;
+  case SR_STATE_OBJ_COMMIT:
   default:
     tor_assert(0);
   }
@@ -835,6 +847,7 @@ state_query_put_(sr_state_object_t obj_type, void *data)
    * the commits should be put individually. */
   case SR_STATE_OBJ_PHASE:
   case SR_STATE_OBJ_COMMITS:
+  case SR_STATE_OBJ_COMMIT_RSA:
   default:
     tor_assert(0);
   }
@@ -859,6 +872,7 @@ state_query_del_(sr_state_object_t obj_type, void *data)
   case SR_STATE_OBJ_PREVSRV:
   case SR_STATE_OBJ_PHASE:
   case SR_STATE_OBJ_COMMITS:
+  case SR_STATE_OBJ_COMMIT_RSA:
   default:
     tor_assert(0);
   }
@@ -1028,14 +1042,14 @@ sr_state_update(time_t valid_after)
 /* Return commit object from the given authority digest <b>identity</b>.
  * Return NULL if not found. */
 sr_commit_t *
-sr_state_get_commit(const ed25519_public_key_t *identity)
+sr_state_get_commit_by_rsa(const char* rsa_fpr)
 {
   sr_commit_t *commit;
 
-  tor_assert(identity);
+  tor_assert(rsa_fpr);
 
-  state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_COMMIT,
-              (void *) identity, (void *) &commit);
+  state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_COMMIT_RSA,
+              (void *) rsa_fpr, (void *) &commit);
   return commit;
 }
 
@@ -1044,17 +1058,8 @@ sr_state_get_commit(const ed25519_public_key_t *identity)
 void
 sr_state_add_commit(sr_commit_t *commit)
 {
-  sr_commit_t *saved_commit = NULL;
-
   tor_assert(commit);
 
-  saved_commit = sr_state_get_commit(&commit->auth_identity);
-  if (saved_commit != NULL) {
-    /* MUST be same pointer else there is a code flow issue. */
-    tor_assert(saved_commit == commit);
-    /* No point of adding it again. */
-    return;
-  }
   /* Put the commit to the global state. */
   state_query(SR_STATE_ACTION_PUT, SR_STATE_OBJ_COMMIT,
               (void *) commit, NULL);
