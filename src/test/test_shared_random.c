@@ -147,11 +147,9 @@ extern const char AUTHORITY_CERT_1[];
 static void
 test_generate_commitment(void *arg)
 {
-  int retval;
   authority_cert_t *auth_cert = NULL;
-  char commit_b64[SR_COMMIT_BASE64_LEN + 1];
-  char reveal_b64[SR_REVEAL_BASE64_LEN + 1];
   time_t now = time(NULL);
+  sr_commit_t *saved_commit;
 
   (void) arg;
 
@@ -172,7 +170,7 @@ test_generate_commitment(void *arg)
     tt_int_op(0, ==, load_ed_keys(options, now));
 
     sr_state_init(0);
-    set_sr_phase_to_reveal();
+    set_sr_phase(SR_PHASE_COMMIT);
   }
 
   { /* Generate our commit/reveal */
@@ -180,31 +178,38 @@ test_generate_commitment(void *arg)
     tt_assert(our_commit);
   }
 
-  { /* Get the encodings of our commit/reveal. */
-    commit_encode(our_commit, commit_b64, sizeof(commit_b64));
-    reveal_encode(our_commit, reveal_b64, sizeof(reveal_b64));
+  { /* Parse our own commit during the commit phase */
+    sr_handle_received_commitment(our_commit->auth_fingerprint,
+                                  "sha256",
+                                  our_commit->encoded_commit, NULL,
+                                  &our_commit->auth_identity,
+                                  our_commit->rsa_identity_fpr);
   }
 
-  { /* Parse our own commit */
-
-    /* First copy auth information */
-    memcpy(&parsed_commit->auth_fingerprint, &our_commit->auth_fingerprint,
-           sizeof(parsed_commit->auth_fingerprint));
-    memcpy(&parsed_commit->auth_identity, &our_commit->auth_identity,
-           sizeof(parsed_commit->auth_identity));
-
-    retval = commit_decode(commit_b64, parsed_commit);
-    tt_int_op(retval, ==, 0);
+  { /* Check that it was accepted */
+    saved_commit = state_query_get_commit_by_rsa(our_commit->rsa_identity_fpr);
+    tt_assert(saved_commit);
+    tt_assert(!commit_has_reveal_value(saved_commit));
   }
 
-  { /* Parse our own reveal */
-    retval = reveal_decode(reveal_b64, parsed_commit);
-    tt_int_op(retval, ==, 0);
+  /* Fast forward to reveal phase! Vzoom! */
+  set_sr_phase(SR_PHASE_REVEAL);
+
+  { /* Parse our own commit & reveal now! */
+    sr_handle_received_commitment(our_commit->auth_fingerprint,
+                                  "sha256",
+                                  our_commit->encoded_commit,
+                                  our_commit->encoded_reveal,
+                                  &our_commit->auth_identity,
+                                  our_commit->rsa_identity_fpr);
   }
 
-  { /* Verify the commit with the reveal */
-    retval = verify_received_commit(parsed_commit);
-    tt_int_op(retval, ==, 0);
+  { /* Check that the reveal was accepted and that the reveal info matches. */
+    saved_commit = state_query_get_commit_by_rsa(our_commit->rsa_identity_fpr);
+    tt_assert(saved_commit);
+    tt_assert(tor_memeq(saved_commit->encoded_reveal,
+                        our_commit->encoded_reveal,
+                        sizeof(our_commit->encoded_reveal)));
   }
 
  done:

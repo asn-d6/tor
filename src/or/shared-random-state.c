@@ -779,7 +779,7 @@ is_phase_transition(sr_phase_t next_phase)
   return sr_state->phase != next_phase;
 }
 
-static sr_commit_t *
+STATIC sr_commit_t *
 state_query_get_commit_by_rsa(const char *rsa_fpr)
 {
   DIGEST256MAP_FOREACH(sr_state->commitments, key, sr_commit_t *, commit) {
@@ -1115,11 +1115,11 @@ sr_state_save(void)
 /** Set the current phase of the protocol to reveal.
  *  Used only by unit tests. */
 void
-set_sr_phase_to_reveal(void)
+set_sr_phase(sr_phase_t phase)
 {
   tor_assert(sr_state);
 
-  sr_state->phase = SR_PHASE_REVEAL;
+  sr_state->phase = phase;
 }
 #endif
 
