@@ -29,8 +29,8 @@
    timestmap. */
 #define SR_COMMIT_LEN (DIGEST256_LEN + 8)
 /* Size of a decoded reveal value from a vote or state. It's a 64 bit
- * timestamp and the random number. This adds up to 40 bytes. */
-#define SR_REVEAL_LEN (8 + SR_RANDOM_NUMBER_LEN)
+ * timestamp and the hashed random number. This adds up to 40 bytes. */
+#define SR_REVEAL_LEN (8 + DIGEST256_LEN)
 /* Size of SRV HMAC message length. The construction is has follow:
  *  "shared-random" | INT_8(reveal_num) | INT_8(version) | PREV_SRV */
 #define SR_SRV_HMAC_MSG_LEN \
@@ -96,8 +96,10 @@ typedef struct sr_commit_t {
 
   /** Reveal information */
 
-  /* 256 bit random number. Correspond to RN. */
-  uint8_t random_number[SR_RANDOM_NUMBER_LEN];
+  /* H(RN) which is what we used as the random value for this commit. We
+   * don't use the raw bytes since those are sent on the network thus
+   * avoiding possible information leaks of our PRNG. */
+  char random_number[DIGEST256_LEN];
   /* Timestamp of commit. Correspond to TIMESTAMP. */
   time_t commit_ts;
   /* This is the whole reveal message. We use it during verification */
