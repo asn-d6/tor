@@ -781,11 +781,11 @@ should_keep_commit(sr_commit_t *commit,
 
   log_warn(LD_DIR, "[SR] Considering whether we will keep commit.");
 
-  /* For a commit to be considered, it needs to be authoritative (it should be
-     the voter's own commit). */
+  /* For a commit to be considered, it needs to be authoritative (it should
+   * be the voter's own commit). */
   if (!commit_is_authoritative(commit, voter_key)) {
     log_warn(LD_DIR, "[SR] \t Ignoring non-authoritative commit.");
-    return 0;
+    goto ignore;
   }
 
   /* Check if the authority that voted for <b>commit</b> has already posted a
@@ -793,22 +793,22 @@ should_keep_commit(sr_commit_t *commit,
      because an authority is allowed to rotate its ed25519 identity keys. */
   saved_commit = sr_state_get_commit_by_rsa(commit->rsa_identity_fpr);
 
-  if (sr_state_get_phase() == SR_PHASE_COMMIT) {
-    if (commit_has_reveal_value(commit)) {
-      log_warn(LD_DIR, "[SR] Ignoring commit with reveal during commit phase");
-      goto ignore;
-    }
-
-    /* If we are in commit phase and this is the first time we see a commit by
-       this auth, save it. */
+  switch (sr_state_get_phase()) {
+  case SR_PHASE_COMMIT:
+    /* Already having a commit for an authority so ignore this one. */
     if (saved_commit) {
       log_warn(LD_DIR, "[SR] \t Ignoring known commit during commit phase.");
       goto ignore;
     }
 
-    return 1;
-
-  } else { /* reveal phase */
+    /* A commit with a reveal value is very wrong and constitute a bug. */
+    if (commit_has_reveal_value(commit)) {
+      /* XXX: should be LD_BUG at some point. */
+      log_warn(LD_DIR, "[SR] Ignoring commit with reveal during commit phase");
+      goto ignore;
+    }
+    break;
+  case SR_PHASE_REVEAL:
     /* We are now in reveal phase. We keep a commit if and only if:
 
        - We have already seen a commit by this auth, AND
@@ -844,10 +844,12 @@ should_keep_commit(sr_commit_t *commit,
       log_warn(LD_DIR, "[SR] \t Ignoring corrupted reveal info.");
       goto ignore;
     }
-
-    return 1;
+    break;
+  default:
+    tor_assert(0);
   }
 
+  return 1;
  ignore:
   return 0;
 }
