@@ -12,6 +12,7 @@
 #include "shared-random.h"
 #include "config.h"
 #include "confparse.h"
+#include "router.h"
 #include "shared-random-state.h"
 
 /* Default filename of the shared random state on disk. */
@@ -762,7 +763,8 @@ new_protocol_run(time_t valid_after)
            sr_state->n_protocol_runs);
 
   /* Generate fresh commitments for this protocol run */
-  our_commitment = sr_generate_our_commitment(valid_after, NULL);
+  our_commitment = sr_generate_our_commitment(valid_after,
+                                              get_my_v3_authority_cert());
   if (our_commitment) {
     /* Add our commitment to our state. In case we are unable to create one
      * (highly unlikely), we won't vote for this protocol run since our
