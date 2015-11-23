@@ -380,32 +380,37 @@ sr_generate_our_commitment(time_t timestamp, authority_cert_t *my_rsa_cert)
   char fingerprint[FINGERPRINT_LEN+1];
   const ed25519_public_key_t *identity_key;
 
+  tor_assert(my_rsa_cert);
+
   /* Get our ed25519 master key */
   identity_key = get_master_identity_key();
   tor_assert(identity_key);
 
   /* Get our RSA identity fingerprint */
-  {
-    if (!my_rsa_cert) {
-      my_rsa_cert = get_my_v3_authority_cert();
-      if (!my_rsa_cert) {
-        goto error;
-      }
-    }
-
-    if (crypto_pk_get_fingerprint(my_rsa_cert->identity_key, fingerprint, 0) < 0) {
-      goto error;
-    }
+  if (crypto_pk_get_fingerprint(my_rsa_cert->identity_key,
+                                fingerprint, 0) < 0) {
+    goto error;
   }
 
   /* New commit with our identity key. */
   commit = commit_new(identity_key, fingerprint);
 
-  /* Generate the reveal random value */
-  if (crypto_rand((char *) commit->random_number,
-                  sizeof(commit->random_number)) < 0) {
-    log_err(LD_REND, "[SR] Unable to generate reveal random value!");
-    goto error;
+  {
+    int ret;
+    char raw_rand[SR_RANDOM_NUMBER_LEN];
+    /* Generate the reveal random value */
+    if (crypto_rand(raw_rand, sizeof(commit->random_number)) < 0) {
+      log_err(LD_REND, "[SR] Unable to generate reveal random value!");
+      goto error;
+    }
+    /* Hash our random value in order to avoid sending the raw bytes of our
+     * PRNG to the network. */
+    ret = crypto_digest256(commit->random_number, raw_rand,
+                           sizeof(raw_rand), DIGEST_SHA256);
+    memwipe(raw_rand, 0, sizeof(raw_rand));
+    if (ret < 0) {
+      goto error;
+    }
   }
   commit->commit_ts = commit->reveal_ts = timestamp;
 
