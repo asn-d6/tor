@@ -150,6 +150,7 @@ test_generate_commitment(void *arg)
   authority_cert_t *auth_cert = NULL;
   time_t now = time(NULL);
   sr_commit_t *saved_commit;
+  smartlist_t *commits = smartlist_new();
 
   (void) arg;
 
@@ -179,11 +180,9 @@ test_generate_commitment(void *arg)
   }
 
   { /* Parse our own commit during the commit phase */
-    sr_handle_received_commit(our_commit->auth_fingerprint,
-                                  "sha256",
-                                  our_commit->encoded_commit, NULL,
-                                  &our_commit->auth_identity,
-                                  our_commit->rsa_identity_fpr);
+    smartlist_add(commits, our_commit);
+    sr_handle_received_commits(commits, &our_commit->auth_identity);
+    smartlist_clear(commits);
   }
 
   { /* Check that it was accepted */
@@ -196,12 +195,9 @@ test_generate_commitment(void *arg)
   set_sr_phase(SR_PHASE_REVEAL);
 
   { /* Parse our own commit & reveal now! */
-    sr_handle_received_commit(our_commit->auth_fingerprint,
-                                  "sha256",
-                                  our_commit->encoded_commit,
-                                  our_commit->encoded_reveal,
-                                  &our_commit->auth_identity,
-                                  our_commit->rsa_identity_fpr);
+    smartlist_add(commits, our_commit);
+    sr_handle_received_commits(commits, &our_commit->auth_identity);
+    smartlist_clear(commits);
   }
 
   { /* Check that the reveal was accepted and that the reveal info matches. */
@@ -213,6 +209,7 @@ test_generate_commitment(void *arg)
   }
 
  done:
+  smartlist_free(commits);
   tor_free(parsed_commit);
 }
 

@@ -153,17 +153,13 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
     packages = tor_strdup("");
   }
 
-  { /* Get shared randomness info for votes */
-    /* Get shared random key & cert chain */
-    shared_random_cert_chain_str = get_sr_cert_chain_str();
-    if (!shared_random_cert_chain_str) {
-      log_warn(LD_GENERAL, "Failed to get the SR cert chain! Skipping.");
-    }
-
-    /* Now get shared random commitments/reveals */
-    if (shared_random_cert_chain_str) {
-      shared_random_vote_str = sr_get_commit_string_for_vote();
-    }
+  /* Get shared randomness info for votes */
+  shared_random_cert_chain_str = get_sr_cert_chain_str();
+  if (!shared_random_cert_chain_str) {
+    log_warn(LD_GENERAL, "Failed to get the SR cert chain! Skipping.");
+  } else {
+    /* Get shared random commitments/reveals line(s). */
+    shared_random_vote_str = sr_get_string_for_vote();
   }
 
   {
@@ -223,7 +219,7 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  voter->contact,
                  shared_random_cert_chain_str ?
                            shared_random_cert_chain_str : "",
-                 shared_random_vote_str ? shared_random_vote_str : "");
+                 shared_random_vote_str);
 
     tor_free(params);
     tor_free(flags);
@@ -1351,7 +1347,7 @@ networkstatus_compute_consensus(smartlist_t *votes,
 
   if (consensus_method >= MIN_METHOD_FOR_SHARED_RANDOM) {
     /* Add the shared random value. */
-    char *srv_lines = sr_get_consensus_srv_string();
+    char *srv_lines = sr_get_string_for_consensus();
     if (srv_lines != NULL) {
       smartlist_add(chunks, srv_lines);
     }
@@ -3011,6 +3007,10 @@ dirvote_add_vote(const char *vote_body, const char **msg_out, int *status_out)
         }
       }
   } SMARTLIST_FOREACH_END(v);
+
+  /* This a valid vote, update our shared random state. */
+  sr_handle_received_commits(vote->sr_info.commitments,
+                             &vote->ed25519_signing_key_cert->signing_key);
 
   pending_vote = tor_malloc_zero(sizeof(pending_vote_t));
   pending_vote->vote_body = new_cached_dir(tor_strndup(vote_body,

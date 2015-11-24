@@ -147,8 +147,10 @@ typedef enum {
   K_LEGACY_DIR_KEY,
   K_DIRECTORY_FOOTER,
   K_SIGNING_CERT_ED,
+  K_SR_FLAG,
   K_COMMITMENT,
-  K_CONFLICT,
+  K_PREVIOUS_SRV,
+  K_CURRENT_SRV,
   K_PACKAGE,
 
   A_PURPOSE,
@@ -451,7 +453,10 @@ static token_rule_t networkstatus_token_table[] = {
   T01("params",                K_PARAMS,           ARGS,        NO_OBJ ),
   T( "fingerprint",            K_FINGERPRINT,      CONCAT_ARGS, NO_OBJ ),
   T01("signing-ed25519",       K_SIGNING_CERT_ED,  NO_ARGS ,    NEED_OBJ ),
+  T1("shared-rand-participate",K_SR_FLAG,          NO_ARGS,       NO_OBJ ),
   T0N("shared-rand-commitment",K_COMMITMENT,       GE(3),       NO_OBJ ),
+  T01("shared-rand-previous-value", K_PREVIOUS_SRV, EQ(2),       NO_OBJ ),
+  T01("shared-rand-current-value",  K_CURRENT_SRV,  EQ(2),       NO_OBJ ),
   T0N("package",               K_PACKAGE,          CONCAT_ARGS, NO_OBJ ),
 
   CERTIFICATE_MEMBERS
@@ -490,6 +495,9 @@ static token_rule_t networkstatus_consensus_token_table[] = {
   T01("server-versions",     K_SERVER_VERSIONS, CONCAT_ARGS, NO_OBJ ),
   T01("consensus-method",    K_CONSENSUS_METHOD,    EQ(1),   NO_OBJ),
   T01("params",                K_PARAMS,           ARGS,        NO_OBJ ),
+
+  T0N("shared-rand-previous-value", K_PREVIOUS_SRV, EQ(2),   NO_OBJ ),
+  T0N("shared-rand-current-value",  K_CURRENT_SRV,  EQ(2),   NO_OBJ ),
 
   END_OF_TABLE
 };
@@ -2897,6 +2905,126 @@ extract_ed25519_keys_from_vote(const directory_token_t *sign_cert_tok,
   return -1;
 }
 
+static int
+extract_shared_random_commitments(networkstatus_t *ns,
+                                  smartlist_t *tokens)
+{
+  char rsa_identity_fpr[FINGERPRINT_LEN + 1];
+  smartlist_t *chunks;
+
+  tor_assert(ns);
+  tor_assert(tokens);
+
+  smartlist_t *commitments = find_all_by_keyword(tokens, K_COMMITMENT);
+  if (commitments == NULL) {
+    goto end;
+  }
+
+  /* Get the RSA identity fingerprint of this voter */
+  crypto_pk_t *rsa_identity_key = ns->cert->identity_key;
+  if (crypto_pk_get_fingerprint(rsa_identity_key, rsa_identity_fpr, 0) < 0) {
+    goto err;
+  }
+
+  /* To parse a commit, it needs to be ordered like so:
+   *    algname SP identity SP rsa_fpr SP commitment [SP reveal]
+   */
+  chunks = smartlist_new();
+  SMARTLIST_FOREACH_BEGIN(commitments, directory_token_t *, tok) {
+    /* Hash algorithm. */
+    smartlist_add(chunks, tok->args[1]);
+    /* Commit's authority ed25519 identity key. */
+    smartlist_add(chunks, tok->args[0]);
+    /* Commit's authority RSA fingerprint. */
+    smartlist_add(chunks, rsa_identity_fpr);
+    /* Commit value. */
+    smartlist_add(chunks, tok->args[2]);
+    if (tok->n_args > 3) {
+      /* A reveal value might also be included */;
+      smartlist_add(chunks, tok->args[3]);
+    }
+    sr_commit_t *commit = sr_parse_commitment(chunks);
+    smartlist_clear(chunks);
+    if (commit == NULL) {
+      /* Commitment couldn't be parsed. Stop right now since this vote is
+       * clearly malformed. */
+      smartlist_free(chunks);
+      goto err;
+    }
+    /* Add newly created commit object to the vote. */
+    smartlist_add(ns->sr_info.commitments, commit);
+  } SMARTLIST_FOREACH_END(tok);
+  smartlist_free(chunks);
+ end:
+  return 0;
+ err:
+  return -1;
+}
+
+static int
+extract_one_srv(smartlist_t *tokens, directory_keyword k, sr_srv_t **srv_out)
+{
+  int ret = -1;
+  directory_token_t *tok;
+  sr_srv_t *srv = NULL;
+  smartlist_t *value, *chunks;
+
+  tor_assert(tokens);
+
+  chunks = smartlist_new();
+  value = find_all_by_keyword(tokens, k);
+  if (value == NULL) {
+    /* That's fine, no SRV is allowed. */
+    ret = 0;
+    goto end;
+  }
+  if (smartlist_len(value) > 1) {
+    /* Multiple SRV of same type is _NEVER_ suppose to happen. */
+    goto end;
+  }
+  tok = smartlist_get(value, 0);
+  /* First element is the status */
+  smartlist_add(chunks, tok->args[0]);
+  /* Second element is the value itself. */
+  smartlist_add(chunks, tok->args[1]);
+  srv = sr_parse_srv(chunks);
+  if (srv == NULL) {
+    goto end;
+  }
+  /* All is good. */
+  *srv_out = srv;
+  ret = 0;
+ end:
+  smartlist_free(chunks);
+  return ret;
+}
+
+static int
+extract_shared_random_srvs(networkstatus_t *ns,
+                           smartlist_t *tokens)
+{
+  sr_srv_t *prev_srv = NULL, *cur_srv = NULL;
+
+  tor_assert(ns);
+  tor_assert(tokens);
+
+  /* We extract both and on error, everything is stopped because it means
+   * the votes is malformed for the shared random value(s). */
+  if (extract_one_srv(tokens, K_PREVIOUS_SRV, &prev_srv) < 0 ||
+      extract_one_srv(tokens, K_CURRENT_SRV, &cur_srv) < 0) {
+    goto err;
+  }
+  if (prev_srv) {
+    smartlist_add(ns->sr_info.previous_srv, prev_srv);
+  }
+  if (cur_srv) {
+    smartlist_add(ns->sr_info.current_srv, cur_srv);
+  }
+  return 0;
+ err:
+  return -1;
+}
+
 /** Parse a v3 networkstatus vote, opinion, or consensus (depending on
  * ns_type), from <b>s</b>, and return the result.  Return NULL on failure. */
 networkstatus_t *
@@ -3240,48 +3368,38 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
   }
 
   /* If this is a vote document, try to extract the shared randomness
-     ed25519 key if there is one. Make sure that a cert chain is
-     included to certify the key. */
+   * ed25519 key if there is one. Make sure that a cert chain is included to
+   * certify the key. Then extract commitments. */
   if (ns->type == NS_TYPE_VOTE) {
-    directory_token_t *sign_cert_tok = find_opt_by_keyword(tokens, K_SIGNING_CERT_ED);
-
-    /* Get shared randomness cert if the required info is here. */
-    if (sign_cert_tok) {
-      if (extract_ed25519_keys_from_vote(sign_cert_tok, ns) < 0) {
-        log_warn(LD_GENERAL, "Corrupted ed25519 information in vote!");
+    /* Does this authority participates in the SR protocol? */
+    tok = find_opt_by_keyword(tokens, K_SR_FLAG);
+    if (tok != NULL) {
+      /* Note that this vote is participating in the protocol. */
+      ns->sr_info.participate = 1;
+      directory_token_t *sign_cert_tok =
+        find_opt_by_keyword(tokens, K_SIGNING_CERT_ED);
+      /* Get shared randomness cert if the required info is here. */
+      if (sign_cert_tok) {
+        if (extract_ed25519_keys_from_vote(sign_cert_tok, ns) < 0) {
+          log_warn(LD_GENERAL, "Corrupted ed25519 information in vote!");
+          goto err;
+        }
+      }
+      ns->sr_info.commitments = smartlist_new();
+      if (extract_shared_random_commitments(ns, tokens) < 0) {
+        log_warn(LD_DIR, "Unable to parse commitments");
         goto err;
       }
     }
   }
-
-  /* Get SR commitments from votes */
-  smartlist_t *commitment_lst = find_all_by_keyword(tokens, K_COMMITMENT);
-  if (commitment_lst) {
-    char rsa_identity_fpr[FINGERPRINT_LEN + 1];
-
-    /* Get the ed25519 identity key of this voter */
-    const ed25519_public_key_t *voter_key =
-      &ns->ed25519_signing_key_cert->signing_key;
-    /* Get the RSA identity fingerprint of this voter */
-    crypto_pk_t *rsa_identity_key = ns->cert->identity_key;
-    if (crypto_pk_get_fingerprint(rsa_identity_key, rsa_identity_fpr, 0) < 0) {
+  /* For both a vote and consensus, extract the shared random values. */
+  if (ns->type != NS_TYPE_OPINION) {
+    ns->sr_info.previous_srv = smartlist_new();
+    ns->sr_info.current_srv = smartlist_new();
+    if (extract_shared_random_srvs(ns, tokens) < 0) {
+      log_warn(LD_DIR, "Unable to parse SRV(s)");
       goto err;
     }
-
-    SMARTLIST_FOREACH_BEGIN(commitment_lst, directory_token_t *, tok) {
-      const char *commit_pubkey = tok->args[0];
-      const char *hash_alg = tok->args[1];
-      const char *commitment = tok->args[2];
-      const char *reveal = NULL;
-
-      if (tok->n_args > 3) { /* a reveal value might also be included */
-        reveal = tok->args[3];
-      }
-      sr_handle_received_commit(commit_pubkey, hash_alg, commitment,
-                                    reveal,
-                                    voter_key, rsa_identity_fpr);
-    } SMARTLIST_FOREACH_END(tok);
-    smartlist_free(commitment_lst);
   }
 
   /* Parse routerstatus lines. */
