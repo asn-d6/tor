@@ -20,7 +20,7 @@
  *         new_protocol_run()).
  *
  *      2) Dirauths publish commitment/reveal values in their votes
- *         depending on the current phase (see sr_get_commit_string_for_vote()).
+ *         depending on the current phase (see sr_get_string_for_vote()).
  *
  *      3) Upon receiving a commit from a vote, authorities parse it, verify it,
  *         and attempt to save any new commitment or reveal information in their
@@ -37,6 +37,7 @@
 
 #define SHARED_RANDOM_PRIVATE
 
+#include "or.h"
 #include "shared-random.h"
 #include "config.h"
 #include "confparse.h"
@@ -672,13 +673,13 @@ get_vote_line_from_commit(const sr_commit_t *commit)
   return vote_line;
 }
 
-/* Return a smartlist for which each element is the SRV line that should be
- * put in a vote or consensus. Caller must free the string elements in the
- * list once done with it. */
-static smartlist_t *
-get_srv_vote_line(void)
+/* Return a heap allocated string that contains the SRV line(s) that should
+ * be put in a vote or consensus. Caller must free the returned string.
+ * Empty string is returned if there are no SRV. */
+static char *
+get_srv_ns_lines(void)
 {
-  char *srv_line = NULL;
+  char *srv_line = NULL, *srv_str;
   char srv_hash_encoded[HEX_DIGEST256_LEN + 1];
   smartlist_t *lines = smartlist_new();
   sr_srv_t *srv;
@@ -705,20 +706,32 @@ get_srv_vote_line(void)
     smartlist_add(lines, srv_line);
     log_warn(LD_DIR, "[SR] \t Current SRV: %s", srv_line);
   }
-  return lines;
+  srv_str = smartlist_join_strings(lines, "", 0, NULL);
+  SMARTLIST_FOREACH(lines, char *, s, tor_free(s));
+  smartlist_free(lines);
+  return srv_str;
 }
 
-/* Return a heap-allocated string that should be put in the votes and
- * contains the shared randomness information for this phase. It's the
- * responsibility of the caller to free the string. */
+/* Return a heap-allocated string containing commits that should be put in
+ * the votes. It's the responsibility of the caller to free the string.
+ * This always return a valid string, either empty or with line(s). */
 char *
-sr_get_commit_string_for_vote(void)
+sr_get_string_for_vote(void)
 {
   char *vote_str = NULL;
   digest256map_t *state_commits;
   smartlist_t *chunks = smartlist_new();
 
   log_warn(LD_DIR, "[SR] Sending out vote string:");
+
+  /* First line, put in the vote the participation flag.
+   * XXX: Should depends on a torrc option. */
+  {
+    char *sr_flag_line;
+    static const char *sr_flag_key = "shared-rand-participate";
+    tor_asprintf(&sr_flag_line, "%s\n", sr_flag_key);
+    smartlist_add(chunks, sr_flag_line);
+  }
 
   /* In our vote we include every commitment in our permanent state. */
   state_commits = sr_state_get_commits();
@@ -729,11 +742,10 @@ sr_get_commit_string_for_vote(void)
     log_warn(LD_DIR, "[SR] \t Commit: %s", line);
   } DIGEST256MAP_FOREACH_END;
 
-  /* Add the SRV values to the string. */
+  /* Add the SRV value(s) if any. */
   {
-    smartlist_t *srv_lines = get_srv_vote_line();
-    smartlist_add_all(chunks, srv_lines);
-    smartlist_free(srv_lines);
+    char *srv_lines = get_srv_ns_lines();
+    smartlist_add(chunks, srv_lines);
   }
 
   vote_str = smartlist_join_strings(chunks, "", 0, NULL);
@@ -859,10 +871,47 @@ should_keep_commit(sr_commit_t *commit,
   return 0;
 }
 
-/* Parse a Commitment line from our disk state and return a newly allocated
- * commit object. NULL is returned on error. */
+/* Parse a list of arguments from a SRV value either from a vote, consensus
+ * or from our disk state and return a newly allocated srv object. NULL is
+ * returned on error.
+ *
+ * The arguments' order:
+ *    status, value
+ */
+sr_srv_t *
+sr_parse_srv(smartlist_t *args)
+{
+  char *value;
+  sr_srv_t *srv = NULL;
+  sr_srv_status_t status;
+
+  tor_assert(args);
+
+  /* First argument is the status. */
+  status = sr_get_srv_status_from_str(smartlist_get(args, 0));
+  if (status < 0) {
+    goto end;
+  }
+  srv = tor_malloc_zero(sizeof(*srv));
+  srv->status = status;
+
+  /* Second and last argument is the shared random value it self. */
+  value = smartlist_get(args, 1);
+  memcpy(srv->value, value, sizeof(srv->value));
+
+end:
+  return srv;
+}
+
+/* Parse a list of arguments from a commitment either from a vote or from
+ * our disk state and return a newly allocated commit object. NULL is
+ * returned on error.
+ *
+ * The arguments' order matter very much:
+ *  algname, ed25519 identity, RSA fingerprint, commit value[, reveal value]
+ */
 sr_commit_t *
-sr_parse_commitment_line(smartlist_t *args)
+sr_parse_commitment(smartlist_t *args)
 {
   char *value;
   ed25519_public_key_t pubkey;
@@ -911,65 +960,28 @@ error:
   return NULL;
 }
 
-/* Entry point from the voting process that is this is called when a
- * commitment is seen in a vote so it can be added to our state. Parse the
- * line, validate it and add it to the voted commits map if it's valid so we
- * can process all commits in post voting stage. */
+/* Called when we have a valid vote and we are about to use it to compute a
+ * consensus. The <b>commitments</b> is the list of commits from a single
+ * vote coming from authority <b>voter_key</b>. We'll update our state with
+ * that list. Once done, the list of commitments will be empty. */
 void
-sr_handle_received_commit(const char *commit_pubkey, const char *hash_alg,
-                              const char *commitment, const char *reveal,
-                              const ed25519_public_key_t *voter_key,
-                              char *rsa_identity_fpr)
+sr_handle_received_commits(smartlist_t *commitments,
+                           const ed25519_public_key_t *voter_key)
 {
-  sr_commit_t *commit;
-  smartlist_t *args;
+  tor_assert(commitments);
+  tor_assert(voter_key);
 
-  tor_assert(commit_pubkey);
-  tor_assert(hash_alg);
-  tor_assert(commitment);
-  /* XXX: debugging. */
-  char voter_fp[ED25519_BASE64_LEN + 1];
-  ed25519_public_to_base64(voter_fp, voter_key);
-
-  /* Build a list of arguments that have the same order as the Commitment
-   * line in the state. With that, we can parse it using the same function
-   * that the state uses. Line format is as follow:
-   *    "shared-rand-commitment" SP algname SP identity SP
-   *                             commitment-value [SP revealed-value] NL
-   */
-  args = smartlist_new();
-  smartlist_add(args, (char *) hash_alg);
-  smartlist_add(args, (char *) commit_pubkey);
-  smartlist_add(args, (char *) rsa_identity_fpr);
-  smartlist_add(args, (char *) commitment);
-  if (reveal != NULL) {
-    smartlist_add(args, (char *) reveal);
-  }
-  /* Parse our arguments to get a commit that we'll then verify. */
-  commit = sr_parse_commitment_line(args);
-  if (commit == NULL) {
-    log_warn(LD_GENERAL, "[SR] Failed to parse commit by %s",
-             commit->auth_fingerprint);
-    goto end;
-  }
-
-  { /* XXX Debug */
-    log_warn(LD_GENERAL, "[SR] Received commit:");
-    commit_log(commit);
-  }
-
-  /* Check if this commit is valid and should be stored in our state. */
-  if (!should_keep_commit(commit, voter_key)) {
-    log_warn(LD_DIR, "[SR] Ignoring commit received from %s.", voter_fp);
-    sr_commit_free(commit);
-    goto end;
-  }
-
-  /* Everything lines up: save this commit to state then! */
-  save_commit_to_state(commit);
-
-end:
-  smartlist_free(args);
+  SMARTLIST_FOREACH_BEGIN(commitments, sr_commit_t *, commit) {
+    /* We won't need the commit in this list anymore, kept or not. */
+    SMARTLIST_DEL_CURRENT(commitments, commit);
+    /* Check if this commit is valid and should be stored in our state. */
+    if (!should_keep_commit(commit, voter_key)) {
+      sr_commit_free(commit);
+      continue;
+    }
+    /* Everything lines up: save this commit to state then! */
+    save_commit_to_state(commit);
+  } SMARTLIST_FOREACH_END(commit);
 }
 
 /* We are during commit phase and we found <b>commit</b> in a
@@ -1013,22 +1025,22 @@ save_commit_to_state(sr_commit_t *commit)
 
 /* Return a heap-allocated string that should be put in the consensus and
  * contains the shared randomness values. It's the responsibility of the
- * caller to free the string. */
+ * caller to free the string. NULL is returned if no SRV(s) available. */
 char *
-sr_get_consensus_srv_string(void)
+sr_get_string_for_consensus(void)
 {
   char *srv_str;
-  smartlist_t *srv_lines = get_srv_vote_line();
 
-  if (!srv_lines) {
+  /* XXX: Must validate the number of participant consensus params. */
+
+  srv_str = get_srv_ns_lines();
+  if (strlen(srv_str) == 0) {
+    tor_free(srv_str);
     return NULL;
   }
 
-  srv_str = smartlist_join_strings(srv_lines, "", 0, NULL);
-  SMARTLIST_FOREACH(srv_lines, char *, s, tor_free(s));
-  smartlist_free(srv_lines);
   /* XXX: debugging. */
-  log_warn(LD_DIR, "[SR] Shared random value for the consensus:");
+  log_warn(LD_DIR, "[SR] Shared random line(s) put in the consensus:");
   log_warn(LD_DIR, "[SR] \t %s", srv_str);
   return srv_str;
 }
