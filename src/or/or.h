@@ -2494,6 +2494,18 @@ typedef struct networkstatus_voter_info_t {
   smartlist_t *sigs;
 } networkstatus_voter_info_t;
 
+typedef struct networkstatus_sr_info_t {
+  /* Indicate if the dirauth partitipates in the SR protocol with its vote.
+   * This is tied to the SR flag in the vote. */
+  unsigned int participate:1;
+  /* Both vote and consensus: Current and previous SRV. If list is empty,
+   * this means none were found in either the consensus or vote. */
+  smartlist_t *previous_srv;
+  smartlist_t *current_srv;
+  /* Vote only: List of commitments. */
+  smartlist_t *commitments;
+} networkstatus_sr_info_t;
+
 /** Enumerates the possible seriousness values of a networkstatus document. */
 typedef enum {
   NS_TYPE_VOTE,
@@ -2580,6 +2592,9 @@ typedef struct networkstatus_t {
   /** Ed25519 signing key certificate, if included. This cert must
    *  also include the ed25519 master key as the signing_key. */
   struct tor_cert_st *ed25519_signing_key_cert;
+
+  /** Contains the shared random protocol data from a vote or consensus. */
+  networkstatus_sr_info_t sr_info;
 } networkstatus_t;
 
 /** A set of signatures for a networkstatus consensus.  Unless otherwise

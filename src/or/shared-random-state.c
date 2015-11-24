@@ -9,6 +9,7 @@
 
 #define SHARED_RANDOM_STATE_PRIVATE
 
+#include "or.h"
 #include "shared-random.h"
 #include "config.h"
 #include "confparse.h"
@@ -51,7 +52,8 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 /* A protocol round is completed after N seconds */
 #define SHARED_RANDOM_VOTING_INTERVAL 3600
 /* Each protocol phase has 12 rounds  */
-#define SHARED_RANDOM_N_ROUNDS 12
+/* XXX: Testing: #define SHARED_RANDOM_N_ROUNDS 12 */
+#define SHARED_RANDOM_N_ROUNDS 3
 
 static int
 disk_state_validate_cb(void *old_state, void *state, void *default_state,
@@ -375,7 +377,7 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
                line->value);
       goto error;
     }
-    commit = sr_parse_commitment_line(args);
+    commit = sr_parse_commitment(args);
     if (commit == NULL) {
       goto error;
     }
@@ -397,9 +399,9 @@ error:
 static int
 disk_state_parse_srv(const char *value, sr_srv_t *dst)
 {
-  char *srv;
+  int ret = -1;
   smartlist_t *args;
-  sr_srv_status_t status;
+  sr_srv_t *srv;
 
   tor_assert(value);
   tor_assert(dst);
@@ -412,21 +414,18 @@ disk_state_parse_srv(const char *value, sr_srv_t *dst)
              "Line: \"%s\"", value);
     goto error;
   }
-
-  /* First argument is the status. */
-  status = sr_get_srv_status_from_str(smartlist_get(args, 0));
-  if (status < 0) {
+  srv = sr_parse_srv(args);
+  if (srv == NULL) {
     goto error;
   }
-  dst->status = status;
-
-  /* Second and last argument is the shared random value it self. */
-  srv = smartlist_get(args, 1);
-  memcpy(dst->value, srv, sizeof(dst->value));
-  return 0;
+  memcpy(dst, srv, sizeof(*srv));
+  tor_free(srv);
+  ret = 0;
 
  error:
-  return -1;
+  SMARTLIST_FOREACH(args, char *, s, tor_free(s));
+  smartlist_free(args);
+  return ret;
 }
 
 /* Parse the SharedRandPreviousValue line from the state. Return 0 on

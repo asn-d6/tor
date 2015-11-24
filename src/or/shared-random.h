@@ -111,26 +111,23 @@ typedef struct sr_commit_t {
 int sr_init(int save_to_disk);
 void sr_save_and_cleanup(void);
 
-char *sr_get_commit_string_for_vote(void);
 void sr_prepare_new_voting_period(time_t valid_after);
 
 void sr_commit_free(sr_commit_t *commit);
 int sr_verify_commit_sig(const sr_commit_t *commit);
 
-void sr_handle_received_commit(const char *commit_pubkey,
-                                   const char *hash_alg,
-                                   const char *commitment,
-                                   const char *reveal,
-                                   const ed25519_public_key_t *voter_key,
-                                   char *rsa_identity_fpr);
+void sr_handle_received_commits(smartlist_t *commitments,
+                                const ed25519_public_key_t *voter_key);
 
-sr_commit_t *sr_parse_commitment_line(smartlist_t *args);
+sr_commit_t *sr_parse_commitment(smartlist_t *args);
+sr_srv_t *sr_parse_srv(smartlist_t *args);
 
 sr_srv_status_t sr_get_srv_status_from_str(const char *name);
 const char *sr_get_srv_status_str(sr_srv_status_t status);
 
 void sr_compute_srv(void);
-char *sr_get_consensus_srv_string(void);
+char *sr_get_string_for_vote(void);
+char *sr_get_string_for_consensus(void);
 
 sr_commit_t *sr_generate_our_commitment(time_t timestamp,
                                         authority_cert_t *my_rsa_cert);

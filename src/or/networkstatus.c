@@ -32,6 +32,7 @@
 #include "router.h"
 #include "routerlist.h"
 #include "routerparse.h"
+#include "shared-random.h"
 #include "transports.h"
 #include "torcert.h"
 
@@ -322,6 +323,22 @@ networkstatus_vote_free(networkstatus_t *ns)
   digestmap_free(ns->desc_digest_map, NULL);
 
   tor_cert_free(ns->ed25519_signing_key_cert);
+
+  if (ns->sr_info.commitments) {
+    SMARTLIST_FOREACH(ns->sr_info.commitments, sr_commit_t *, c,
+                      sr_commit_free(c));
+    smartlist_free(ns->sr_info.commitments);
+  }
+  if (ns->sr_info.previous_srv) {
+    SMARTLIST_FOREACH(ns->sr_info.previous_srv, sr_srv_t *, srv,
+                      tor_free(srv));
+    smartlist_free(ns->sr_info.previous_srv);
+  }
+  if (ns->sr_info.current_srv) {
+    SMARTLIST_FOREACH(ns->sr_info.current_srv, sr_srv_t *, srv,
+                      tor_free(srv));
+    smartlist_free(ns->sr_info.current_srv);
+  }
 
   memwipe(ns, 11, sizeof(*ns));
   tor_free(ns);
