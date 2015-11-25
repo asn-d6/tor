@@ -722,11 +722,18 @@ sr_get_string_for_vote(void)
   char *vote_str = NULL;
   digest256map_t *state_commits;
   smartlist_t *chunks = smartlist_new();
+  const or_options_t *options = get_options();
+
+  /* Are we participating in the protocol? */
+  if (options->VoteSharedRandom) {
+    /* chunks is an empty list at this point which will result in an empty
+     * string at the end. */
+    goto end;
+  }
 
   log_warn(LD_DIR, "[SR] Sending out vote string:");
 
-  /* First line, put in the vote the participation flag.
-   * XXX: Should depends on a torrc option. */
+  /* First line, put in the vote the participation flag. */
   {
     char *sr_flag_line;
     static const char *sr_flag_key = "shared-rand-participate";
@@ -749,6 +756,7 @@ sr_get_string_for_vote(void)
     smartlist_add(chunks, srv_lines);
   }
 
+ end:
   vote_str = smartlist_join_strings(chunks, "", 0, NULL);
   SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
   smartlist_free(chunks);
@@ -1031,6 +1039,12 @@ char *
 sr_get_string_for_consensus(void)
 {
   char *srv_str;
+  const or_options_t *options = get_options();
+
+  /* Not participating, avoid returning anything. */
+  if (options->VoteSharedRandom) {
+    return NULL;
+  }
 
   /* XXX: Must validate the number of participant consensus params. */
 

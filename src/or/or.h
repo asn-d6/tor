@@ -4473,6 +4473,12 @@ typedef struct {
 
   /** Autobool: Do we try to retain capabilities if we can? */
   int KeepBindCapabilities;
+
+  /** Bool (default: 1): Switch for the shared random protocol. Only
+   * relevant to a directory authority. If off, the authority won't
+   * participate in the protocol. If on (default), a flag is added to the
+   * vote indicating participation. */
+  int VoteSharedRandom;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */
