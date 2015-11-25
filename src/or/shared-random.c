@@ -1072,7 +1072,11 @@ decide_num_participants(const or_options_t *options)
 
 /* Return a heap-allocated string that should be put in the consensus and
  * contains the shared randomness values. It's the responsibility of the
- * caller to free the string. NULL is returned if no SRV(s) available. */
+ * caller to free the string. NULL is returned if no SRV(s) available.
+ *
+ * This is called when a consensus (any flavor) is bring created thus it
+ * should NEVER change the state nor the state should be changed in between
+ * consensus creation. */
 char *
 sr_get_string_for_consensus(void)
 {
