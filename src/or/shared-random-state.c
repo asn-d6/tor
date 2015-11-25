@@ -197,12 +197,12 @@ commit_add_to_state(sr_commit_t *commit, sr_state_t *state)
   tor_assert(commit);
   tor_assert(state);
 
-  saved_commit = digest256map_set(state->commitments,
-                                  commit->auth_identity.pubkey, commit);
+  saved_commit = digestmap_set(state->commitments, commit->rsa_identity_fpr,
+                               commit);
   tor_assert(saved_commit == NULL);
 }
 
-/* Helper: deallocate a commit object. (Used with digest256map_free(), which
+/* Helper: deallocate a commit object. (Used with digestmap_free(), which
  * requires a function pointer whose argument is void *). */
 static void
 commit_free_(void *p)
@@ -218,7 +218,7 @@ state_free(sr_state_t *state)
     return;
   }
   tor_free(state->fname);
-  digest256map_free(state->commitments, commit_free_);
+  digestmap_free(state->commitments, commit_free_);
   tor_free(state);
 }
 
@@ -235,7 +235,7 @@ state_new(const char *fname)
   }
   new_state->fname = tor_strdup(fname);
   new_state->version = SR_PROTO_VERSION;
-  new_state->commitments = digest256map_new();
+  new_state->commitments = digestmap_new();
   new_state->phase = get_sr_protocol_phase(time(NULL));
   /* XXX should this be called with the current time or the valid-after? */
   new_state->valid_until = get_state_valid_until_time(time(NULL));
@@ -578,12 +578,12 @@ disk_state_update(void)
 
   /* Parse the commitments and construct config line(s). */
   next = &sr_disk_state->Commitments;
-  DIGEST256MAP_FOREACH(sr_state->commitments, key, sr_commit_t *, commit) {
+  DIGESTMAP_FOREACH(sr_state->commitments, key, sr_commit_t *, commit) {
     *next = line = tor_malloc_zero(sizeof(*line));
     line->key = tor_strdup(dstate_commit_key);
     disk_state_put_commit_line(commit, line);
     next = &(line->next);
-  } DIGEST256MAP_FOREACH_END;
+  } DIGESTMAP_FOREACH_END;
 }
 
 /* Load state from disk and put it into our disk state. If the state passes
@@ -730,10 +730,10 @@ reset_state_for_new_protocol_run(time_t valid_after)
   sr_state->valid_until = get_state_valid_until_time(valid_after);
 
   /* We are in a new protocol run so cleanup commitments. */
-  DIGEST256MAP_FOREACH_MODIFY(sr_state->commitments, key, sr_commit_t *, c) {
+  DIGESTMAP_FOREACH_MODIFY(sr_state->commitments, key, sr_commit_t *, c) {
     sr_commit_free(c);
     MAP_DEL_CURRENT(key);
-  } DIGEST256MAP_FOREACH_END;
+  } DIGESTMAP_FOREACH_END;
 }
 
 /** This is the first round of the new protocol run starting at
@@ -782,14 +782,8 @@ is_phase_transition(sr_phase_t next_phase)
 STATIC sr_commit_t *
 state_query_get_commit_by_rsa(const char *rsa_fpr)
 {
-  DIGEST256MAP_FOREACH(sr_state->commitments, key, sr_commit_t *, commit) {
-    /* Check if the stored commit is from the same auth. */
-    if (!strcmp(commit->rsa_identity_fpr, rsa_fpr)) {
-      return commit;
-    }
-  } DIGEST256MAP_FOREACH_END;
-
-  return NULL;
+  tor_assert(rsa_fpr);
+  return digestmap_get(sr_state->commitments, rsa_fpr);
 }
 /* Helper function: This handles the GET state action using an
  * <b>obj_type</b> and <b>data</b> needed for the action. */
@@ -863,8 +857,8 @@ state_query_del_(sr_state_object_t obj_type, void *data)
   switch (obj_type) {
   case SR_STATE_OBJ_COMMIT:
   {
-    const ed25519_public_key_t *identity = data;
-    digest256map_remove(sr_state->commitments, identity->pubkey);
+    const char *identity = data;
+    digestmap_remove(sr_state->commitments, identity);
     break;
   }
   /* The following object are _NOT_ suppose to be removed. */
@@ -977,10 +971,10 @@ sr_state_rotate_srv(void)
 }
 
 /* Return a pointer to the commits map from our state. CANNOT be NULL. */
-digest256map_t *
+digestmap_t *
 sr_state_get_commits(void)
 {
-  digest256map_t *commits;
+  digestmap_t *commits;
   state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_COMMITS,
               NULL, (void *) &commits);
   tor_assert(commits);
