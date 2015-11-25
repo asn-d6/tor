@@ -135,10 +135,10 @@ commit_log(const sr_commit_t *commit)
   }
 
   if (commit->reveal_ts >= 0) {
-    log_warn(LD_DIR, "[SR] \t R: [TS: %u] [RN: %s...] [R: %s...]",
+    log_warn(LD_DIR, "[SR] \t R: [TS: %u] [RN: %s...] [R: %s]",
              (unsigned) commit->reveal_ts,
-             hex_str((const char *) commit->random_number, 5),
-             hex_str(commit->encoded_reveal, 5));
+             hex_str(commit->random_number, 5),
+             commit->encoded_reveal);
   } else {
     log_warn(LD_DIR, "[SR] \t R: UNKNOWN");
   }
