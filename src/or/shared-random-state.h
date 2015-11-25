@@ -50,8 +50,8 @@ typedef struct sr_state_t {
   unsigned int n_reveal_rounds;
 
   /* A map of all the receive commitments for the protocol run. This is
-   * indexed by authority identity digest. */
-  digest256map_t *commitments;
+   * indexed by authority RSA identity digest. */
+  digestmap_t *commitments;
 
   /* Current and previous shared random value. See section [SRCALC] in
    * proposal 250 for details on how this is constructed. */
@@ -85,9 +85,8 @@ void sr_state_set_previous_srv(sr_srv_t *srv);
 void sr_state_set_current_srv(sr_srv_t *srv);
 void sr_state_rotate_srv(void);
 
-digest256map_t *sr_state_get_commits(void);
-sr_commit_t *sr_state_get_commit_by_rsa(const char* rsa_fpr);
-sr_commit_t *sr_state_get_commit(const ed25519_public_key_t *identity);
+digestmap_t *sr_state_get_commits(void);
+sr_commit_t *sr_state_get_commit_by_rsa(const char *rsa_fpr);
 void sr_state_add_commit(sr_commit_t *commit);
 void sr_state_remove_commit(const ed25519_public_key_t *key);
 void sr_state_set_commit_reveal(sr_commit_t *commit,
