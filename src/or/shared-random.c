@@ -41,6 +41,7 @@
 #include "shared-random.h"
 #include "config.h"
 #include "confparse.h"
+#include "networkstatus.h"
 #include "routerkeys.h"
 #include "router.h"
 #include "routerlist.h"
@@ -725,7 +726,7 @@ sr_get_string_for_vote(void)
   const or_options_t *options = get_options();
 
   /* Are we participating in the protocol? */
-  if (options->VoteSharedRandom) {
+  if (!options->VoteSharedRandom) {
     /* chunks is an empty list at this point which will result in an empty
      * string at the end. */
     goto end;
@@ -977,8 +978,13 @@ void
 sr_handle_received_commits(smartlist_t *commitments,
                            const ed25519_public_key_t *voter_key)
 {
-  tor_assert(commitments);
   tor_assert(voter_key);
+
+  /* It's possible if our vote has seen _NO_ commits because it doesn't
+   * contain any. */
+  if (commitments == NULL) {
+    return;
+  }
 
   SMARTLIST_FOREACH_BEGIN(commitments, sr_commit_t *, commit) {
     /* We won't need the commit in this list anymore, kept or not. */
@@ -1032,32 +1038,65 @@ save_commit_to_state(sr_commit_t *commit)
   }
 }
 
+static int
+decide_num_participants(const or_options_t *options)
+{
+  int num_dirauth;
+
+  tor_assert(options);
+
+  if (options->NumSRParticipants) {
+    return options->NumSRParticipants;
+  }
+  num_dirauth = get_n_authorities(V3_DIRINFO);
+  /* If the params is not found, default value should always be the maximum
+   * number of trusted authorities. Let's not take any chances. */
+  return networkstatus_get_param(NULL, "NumSRParticipants", num_dirauth, 1,
+                                 num_dirauth);
+}
+
 /* Return a heap-allocated string that should be put in the consensus and
  * contains the shared randomness values. It's the responsibility of the
  * caller to free the string. NULL is returned if no SRV(s) available. */
 char *
 sr_get_string_for_consensus(void)
 {
+  int num_participants, num_commits;
   char *srv_str;
+  const digest256map_t *commits;
   const or_options_t *options = get_options();
 
   /* Not participating, avoid returning anything. */
-  if (options->VoteSharedRandom) {
-    return NULL;
+  if (!options->VoteSharedRandom) {
+    log_warn(LD_DIR, "[SR] Support disabled (VoteSharedRandom %d)",
+             options->VoteSharedRandom);
+    goto end;
   }
 
   /* XXX: Must validate the number of participant consensus params. */
+  commits = sr_state_get_commits();
+  num_commits = digest256map_size(commits);
+  num_participants = decide_num_participants(options);
+  if (num_participants < num_commits) {
+    log_warn(LD_DIR, "[SR] Not enough participants. Need %d, have %d",
+             num_participants, num_commits);
+    goto end;
+  }
+  log_warn(LD_DIR, "[SR] We have enough participants! Needed %d, have %d",
+           num_participants, num_commits);
 
   srv_str = get_srv_ns_lines();
   if (strlen(srv_str) == 0) {
     tor_free(srv_str);
-    return NULL;
+    goto end;
   }
 
   /* XXX: debugging. */
   log_warn(LD_DIR, "[SR] Shared random line(s) put in the consensus:");
   log_warn(LD_DIR, "[SR] \t %s", srv_str);
   return srv_str;
+ end:
+  return NULL;
 }
 
 /* Prepare the shared random state we are going to be using for the upcoming

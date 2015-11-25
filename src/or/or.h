@@ -4350,6 +4350,11 @@ typedef struct {
    * participate in the protocol. If on (default), a flag is added to the
    * vote indicating participation. */
   int VoteSharedRandom;
+  /** UINT (default: 0): Number of participant in the shared random
+   * protocol. This is a consensus parameter which tells a dirauth how many
+   * vote we need that advertise support for the procotol in order to vote
+   * for shared random values. */
+  int NumSRParticipants;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */
