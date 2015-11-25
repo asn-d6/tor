@@ -373,7 +373,7 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
     smartlist_split_string(args, line->value, " ",
                            SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 0);
     if (smartlist_len(args) < 4) {
-      log_warn(LD_DIR, "Too few arguments to Commitment. Line: \"%s\"",
+      log_warn(LD_DIR, "[SR] Too few arguments to Commitment. Line: \"%s\"",
                line->value);
       goto error;
     }
@@ -410,7 +410,7 @@ disk_state_parse_srv(const char *value, sr_srv_t *dst)
   smartlist_split_string(args, value, " ",
                          SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 0);
   if (smartlist_len(args) < 2) {
-    log_warn(LD_DIR, "Too few arguments to shared random value. "
+    log_warn(LD_DIR, "[SR] Too few arguments to shared random value. "
              "Line: \"%s\"", value);
     goto error;
   }
@@ -612,7 +612,7 @@ disk_state_load_from_disk(void)
 
     /* Read content of file so we can parse it. */
     if ((content = read_file_to_str(fname, 0, NULL)) == NULL) {
-      log_warn(LD_FS, "Unable to read SR state file \"%s\"", fname);
+      log_warn(LD_FS, "[SR] Unable to read SR state file \"%s\"", fname);
       goto error;
     }
     if (config_get_lines(content, &lines, 0) < 0) {
@@ -621,7 +621,7 @@ disk_state_load_from_disk(void)
     config_assign(&state_format, disk_state, lines, 0, 0, &errmsg);
     config_free_lines(lines);
     if (errmsg) {
-      log_warn(LD_DIR, "%s", errmsg);
+      log_warn(LD_DIR, "[SR] %s", errmsg);
       tor_free(errmsg);
       goto error;
     }
@@ -638,7 +638,7 @@ disk_state_load_from_disk(void)
   case FN_ERROR:
   case FN_DIR:
   default:
-    log_warn(LD_FS, "SR state file \"%s\" not a file? Failing.", fname);
+    log_warn(LD_FS, "[SR] State file \"%s\" not a file? Failing.", fname);
     ret = -EINVAL;
     goto error;
   }
@@ -695,12 +695,12 @@ disk_state_save_to_disk(void)
   tor_free(state);
   fname = get_datadir_fname(default_fname);
   if (write_str_to_file(fname, content, 0) < 0) {
-    log_warn(LD_FS, "Unable to write SR state to file \"%s\"", fname);
+    log_warn(LD_FS, "[SR] Unable to write SR state to file \"%s\"", fname);
     ret = -1;
     goto done;
   }
   ret = 0;
-  log_info(LD_DIR, "Saved SR state to \"%s\"", fname);
+  log_info(LD_DIR, "[SR] Saved state to \"%s\"", fname);
 
 done:
   tor_free(fname);
@@ -735,7 +735,6 @@ reset_state_for_new_protocol_run(time_t valid_after)
     MAP_DEL_CURRENT(key);
   } DIGEST256MAP_FOREACH_END;
 }
-
 
 /** This is the first round of the new protocol run starting at
  *  <b>valid_after</b>. Do the necessary housekeeping. */
