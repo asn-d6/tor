@@ -91,13 +91,18 @@ static sr_commit_t *
 commit_new(const ed25519_public_key_t *identity,
            const char *rsa_identity_fpr)
 {
-  sr_commit_t *commit = tor_malloc_zero(sizeof(*commit));
-  commit->alg = SR_DIGEST_ALG;
+  sr_commit_t *commit;
+
   tor_assert(identity);
+  tor_assert(rsa_identity_fpr);
+
+  commit = tor_malloc_zero(sizeof(*commit));
+  commit->alg = SR_DIGEST_ALG;
   memcpy(&commit->auth_identity, identity, sizeof(commit->auth_identity));
   /* This call can't fail. */
   ed25519_public_to_base64(commit->auth_fingerprint, identity);
-  strlcpy(commit->rsa_identity_fpr, rsa_identity_fpr, sizeof(commit->rsa_identity_fpr));
+  strlcpy(commit->rsa_identity_fpr, rsa_identity_fpr,
+          sizeof(commit->rsa_identity_fpr));
   return commit;
 }
 
@@ -642,7 +647,7 @@ get_vote_line_from_commit(const sr_commit_t *commit)
   sr_phase_t current_phase = sr_state_get_phase();
   static const char *commit_str_key = "shared-rand-commitment";
 
-  log_warn(LD_DIR, "Encoding commit for vote:");
+  log_warn(LD_DIR, "[SR] Encoding commit for vote:");
   commit_log(commit);
 
   switch (current_phase) {
@@ -806,7 +811,10 @@ should_keep_commit(sr_commit_t *commit,
   tor_assert(commit);
   tor_assert(voter_key);
 
-  log_warn(LD_DIR, "[SR] Considering whether we will keep commit.");
+  log_warn(LD_DIR, "[SR] [+] Should we keep commit %s from %s (voter: %s)",
+           hex_str((const char *) commit->encoded_commit, 5),
+           commit->auth_fingerprint,
+           commit->rsa_identity_fpr);
 
   /* For a commit to be considered, it needs to be authoritative (it should
    * be the voter's own commit). */
@@ -933,14 +941,14 @@ sr_parse_commitment(smartlist_t *args)
   value = smartlist_get(args, 0);
   alg = crypto_digest_algorithm_parse_name(value);
   if (alg != SR_DIGEST_ALG) {
-    log_warn(LD_DIR, "Commitment line algorithm %s is not recognized.",
+    log_warn(LD_DIR, "[SR] Commitment algorithm %s is not recognized.",
              value);
     goto error;
   }
   /* Second arg is the authority ed25519 identity. */
   value = smartlist_get(args, 1);
   if (ed25519_public_from_base64(&pubkey, value) < 0) {
-    log_warn(LD_DIR, "Commitment line identity is not recognized.");
+    log_warn(LD_DIR, "[SR] Commitment identity is not recognized.");
     goto error;
   }
 
@@ -1015,6 +1023,11 @@ save_commit_during_reveal_phase(const sr_commit_t *commit)
   int same_commits = commitments_are_the_same(commit, saved_commit);
   tor_assert(same_commits);
 
+  /* Copy reveal information to our saved commit. */
+  saved_commit->reveal_ts = commit->reveal_ts;
+  memcpy(saved_commit->random_number, commit->random_number,
+         sizeof(commit->random_number));
+
   sr_state_set_commit_reveal(saved_commit, commit->encoded_reveal);
 }
 
@@ -1038,6 +1051,8 @@ save_commit_to_state(sr_commit_t *commit)
   }
 }
 
+/* Return the number of participants of the SR protocol. This is based on a
+ * consensus params. */
 static int
 decide_num_participants(const or_options_t *options)
 {
@@ -1073,7 +1088,9 @@ sr_get_string_for_consensus(void)
     goto end;
   }
 
-  /* XXX: Must validate the number of participant consensus params. */
+  /* If we have less commits than the number of participants, we stop right
+   * there. We only participate that is add the SRV in the consensus (if
+   * any) if we have enough authority that participates in the protocol. */
   commits = sr_state_get_commits();
   num_commits = digest256map_size(commits);
   num_participants = decide_num_participants(options);
