@@ -450,7 +450,7 @@ static token_rule_t networkstatus_token_table[] = {
   T01("params",                K_PARAMS,           ARGS,        NO_OBJ ),
   T( "fingerprint",            K_FINGERPRINT,      CONCAT_ARGS, NO_OBJ ),
   T01("signing-ed25519",       K_SIGNING_CERT_ED,  NO_ARGS ,    NEED_OBJ ),
-  T1("shared-rand-participate",K_SR_FLAG,          NO_ARGS,       NO_OBJ ),
+  T01("shared-rand-participate",K_SR_FLAG,         NO_ARGS,     NO_OBJ ),
   T0N("shared-rand-commitment",K_COMMITMENT,       GE(3),       NO_OBJ ),
   T01("shared-rand-previous-value", K_PREVIOUS_SRV, EQ(2),       NO_OBJ ),
   T01("shared-rand-current-value",  K_CURRENT_SRV,  EQ(2),       NO_OBJ ),
