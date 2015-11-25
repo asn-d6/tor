@@ -570,7 +570,7 @@ sr_compute_srv(void)
   size_t reveal_num;
   char *reveals = NULL;
   smartlist_t *chunks, *commits;
-  digest256map_t *state_commits;
+  digestmap_t *state_commits;
 
   /* Computing a shared random value in the commit phase is very wrong. This
    * should only happen at the very end of the reveal phase when a new
@@ -580,7 +580,7 @@ sr_compute_srv(void)
 
   /* XXX: Let's make sure those conditions to compute an SRV are solid and
    * cover all cases. While writing this I'm still unsure of those. */
-  reveal_num = digest256map_size(state_commits);
+  reveal_num = digestmap_size(state_commits);
   tor_assert(reveal_num < UINT8_MAX);
 
   /* One single value means that it's only ours so do not compute a disaster
@@ -602,9 +602,9 @@ sr_compute_srv(void)
 
   /* We must make a list of commit ordered by authority fingerprint in
    * ascending order as specified by proposal 250. */
-  DIGEST256MAP_FOREACH(state_commits, key, sr_commit_t *, c) {
+  DIGESTMAP_FOREACH(state_commits, key, sr_commit_t *, c) {
     smartlist_add(commits, c);
-  } DIGEST256MAP_FOREACH_END;
+  } DIGESTMAP_FOREACH_END;
   smartlist_sort(commits, compare_commit_identity_);
 
   /* Now for each commit for that sorted list in ascending order, we'll
@@ -726,7 +726,7 @@ char *
 sr_get_string_for_vote(void)
 {
   char *vote_str = NULL;
-  digest256map_t *state_commits;
+  digestmap_t *state_commits;
   smartlist_t *chunks = smartlist_new();
   const or_options_t *options = get_options();
 
@@ -749,12 +749,12 @@ sr_get_string_for_vote(void)
 
   /* In our vote we include every commitment in our permanent state. */
   state_commits = sr_state_get_commits();
-  DIGEST256MAP_FOREACH(state_commits, key,
+  DIGESTMAP_FOREACH(state_commits, key,
                        const sr_commit_t *, commit) {
     char *line = get_vote_line_from_commit(commit);
     smartlist_add(chunks, line);
     log_warn(LD_DIR, "[SR] \t Commit: %s", line);
-  } DIGEST256MAP_FOREACH_END;
+  } DIGESTMAP_FOREACH_END;
 
   /* Add the SRV value(s) if any. */
   {
@@ -1078,7 +1078,7 @@ sr_get_string_for_consensus(void)
 {
   int num_participants, num_commits;
   char *srv_str;
-  const digest256map_t *commits;
+  const digestmap_t *commits;
   const or_options_t *options = get_options();
 
   /* Not participating, avoid returning anything. */
@@ -1092,7 +1092,7 @@ sr_get_string_for_consensus(void)
    * there. We only participate that is add the SRV in the consensus (if
    * any) if we have enough authority that participates in the protocol. */
   commits = sr_state_get_commits();
-  num_commits = digest256map_size(commits);
+  num_commits = digestmap_size(commits);
   num_participants = decide_num_participants(options);
   if (num_participants < num_commits) {
     log_warn(LD_DIR, "[SR] Not enough participants. Need %d, have %d",
