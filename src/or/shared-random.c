@@ -1188,7 +1188,7 @@ sr_get_string_for_consensus(smartlist_t *votes)
   /* Get the required number of participants and stop if we haven't reach
    * that limit. */
   num_participants = decide_num_participants(options);
-  if (num_participants < num_sr_votes) {
+  if (num_sr_votes < num_participants) {
     log_warn(LD_DIR, "[SR] Not enough participants. Need %d, have %d",
              num_participants, num_sr_votes);
     goto end;
