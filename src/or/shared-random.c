@@ -54,25 +54,9 @@ static const char *srv_status_str[] = { "fresh", "non-fresh" };
 static const char *prev_str_key = "shared-rand-previous-value";
 static const char *cur_str_key = "shared-rand-current-value";
 
-static void save_commit_to_state(sr_commit_t *commit);
-
-/* Return a string representation of a srv status. */
-const char *
-sr_get_srv_status_str(sr_srv_status_t status)
-{
-  switch (status) {
-  case SR_SRV_STATUS_FRESH:
-  case SR_SRV_STATUS_NONFRESH:
-    return srv_status_str[status];
-  default:
-    /* Unknown status shouldn't be possible. */
-    tor_assert(0);
-  }
-}
-
 /* Return a status value from a string. */
-sr_srv_status_t
-sr_get_srv_status_from_str(const char *name)
+static sr_srv_status_t
+get_srv_status_from_str(const char *name)
 {
   unsigned int i;
   sr_srv_status_t status = -1;
@@ -108,18 +92,6 @@ commit_new(const ed25519_public_key_t *identity,
   strlcpy(commit->rsa_identity_fpr, rsa_identity_fpr,
           sizeof(commit->rsa_identity_fpr));
   return commit;
-}
-
-/* Free a commit object. */
-void
-sr_commit_free(sr_commit_t *commit)
-{
-  if (commit == NULL) {
-    return;
-  }
-  /* Make sure we do not leave OUR random number in memory. */
-  memwipe(commit->random_number, 0, sizeof(commit->random_number));
-  tor_free(commit);
 }
 
 /* Issue a log message describing <b>commit</b>. */
@@ -199,6 +171,7 @@ verify_commit_and_reveal(const sr_commit_t *commit)
   return -1;
 }
 
+/* Return true iff the commit contains an encoded reveal value. */
 STATIC int
 commit_has_reveal_value(const sr_commit_t *commit)
 {
@@ -365,103 +338,6 @@ sr_cleanup(void)
   sr_state_free();
 }
 
-/* Initialize shared random subsystem. This MUST be call early in the boot
- * process of tor. Return 0 on success else -1 on error. */
-int
-sr_init(int save_to_disk)
-{
-  return sr_state_init(save_to_disk);
-}
-
-/* Save our state to disk and cleanup everything. */
-void
-sr_save_and_cleanup(void)
-{
-  sr_state_save();
-  sr_cleanup();
-}
-
-/** Generate the commitment/reveal value for the protocol run starting
- *  at <b>timestamp</b>. If <b>my_cert</b> is provided use it as our
- *  authority certificate (used in unittests). */
-sr_commit_t *
-sr_generate_our_commitment(time_t timestamp, authority_cert_t *my_rsa_cert)
-{
-  sr_commit_t *commit = NULL;
-  char fingerprint[FINGERPRINT_LEN+1];
-  const ed25519_public_key_t *identity_key;
-
-  tor_assert(my_rsa_cert);
-
-  /* Get our ed25519 master key */
-  identity_key = get_master_identity_key();
-  tor_assert(identity_key);
-
-  /* Get our RSA identity fingerprint */
-  if (crypto_pk_get_fingerprint(my_rsa_cert->identity_key,
-                                fingerprint, 0) < 0) {
-    goto error;
-  }
-
-  /* New commit with our identity key. */
-  commit = commit_new(identity_key, fingerprint);
-
-  {
-    int ret;
-    char raw_rand[SR_RANDOM_NUMBER_LEN];
-    /* Generate the reveal random value */
-    crypto_rand(raw_rand, sizeof(commit->random_number));
-    /* Hash our random value in order to avoid sending the raw bytes of our
-     * PRNG to the network. */
-    ret = crypto_digest256(commit->random_number, raw_rand,
-                           sizeof(raw_rand), DIGEST_SHA256);
-    memwipe(raw_rand, 0, sizeof(raw_rand));
-    if (ret < 0) {
-      goto error;
-    }
-  }
-  commit->commit_ts = commit->reveal_ts = timestamp;
-
-  /* Now get the base64 blob that corresponds to our reveal */
-  if (reveal_encode(commit, commit->encoded_reveal,
-                    sizeof(commit->encoded_reveal)) < 0) {
-    log_err(LD_REND, "[SR] Unable to encode the reveal value!");
-    goto error;
-  }
-
-  /* Now let's create the commitment */
-
-  switch (commit->alg) {
-  case DIGEST_SHA1:
-  case DIGEST_SHA512:
-    tor_assert(0);
-  case DIGEST_SHA256:
-    /* Only sha256 is supported and the default. */
-  default:
-    if (crypto_digest256(commit->hashed_reveal, commit->encoded_reveal,
-                         sizeof(commit->encoded_reveal),
-                         DIGEST_SHA256) < 0) {
-      goto error;
-    }
-    break;
-  }
-
-  /* Now get the base64 blob that corresponds to our commit. */
-  if (commit_encode(commit, commit->encoded_commit,
-                    sizeof(commit->encoded_commit)) < 0) {
-    log_err(LD_REND, "[SR] Unable to encode the commit value!");
-    goto error;
-  }
-
-  log_warn(LD_DIR, "[SR] Generated our commitment:");
-  commit_log(commit);
-  return commit;
-
- error:
-  sr_commit_free(commit);
-  return NULL;
-}
-
 /* Using <b>commit</b>, return a newly allocated string containing the
  * authority identity fingerprint concatenated with its encoded reveal
  * value. It's the caller responsibility to free the memory. This can't fail
@@ -563,83 +439,6 @@ compare_commit_identity_(const void **_a, const void **_b)
                 ((sr_commit_t *)*_b)->rsa_identity_fpr);
 }
 
-/** Compute the shared random value based on the reveals we have in the
- * given <b>state</b>. */
-void
-sr_compute_srv(void)
-{
-  size_t reveal_num;
-  char *reveals = NULL;
-  smartlist_t *chunks, *commits;
-  digestmap_t *state_commits;
-
-  /* Computing a shared random value in the commit phase is very wrong. This
-   * should only happen at the very end of the reveal phase when a new
-   * protocol run is about to start. */
-  tor_assert(sr_state_get_phase() == SR_PHASE_REVEAL);
-  state_commits = sr_state_get_commits();
-
-  /* XXX: Let's make sure those conditions to compute an SRV are solid and
-   * cover all cases. While writing this I'm still unsure of those. */
-  reveal_num = digestmap_size(state_commits);
-  tor_assert(reveal_num < UINT8_MAX);
-
-  /* One single value means that it's only ours so do not compute a disaster
-   * shared random value.
-   * XXX: that's sketchy... */
-  if (reveal_num == 1) {
-    goto end;
-  }
-  /* Make sure we have enough reveal values and if not, generate the
-   * disaster srv value and stop right away. */
-  if (reveal_num < SR_SRV_MIN_REVEAL) {
-    sr_srv_t *disaster_srv =
-      generate_srv_disaster(sr_state_get_previous_srv());
-    sr_state_set_current_srv(disaster_srv);
-    goto end;
-  }
-
-  commits = smartlist_new();
-  chunks = smartlist_new();
-
-  /* We must make a list of commit ordered by authority fingerprint in
-   * ascending order as specified by proposal 250. */
-  DIGESTMAP_FOREACH(state_commits, key, sr_commit_t *, c) {
-    smartlist_add(commits, c);
-  } DIGESTMAP_FOREACH_END;
-  smartlist_sort(commits, compare_commit_identity_);
-
-  /* Now for each commit for that sorted list in ascending order, we'll
-   * build the element for each authority that needs to go into the srv
-   * computation. */
-  SMARTLIST_FOREACH_BEGIN(commits, const sr_commit_t *, c) {
-    char *element = get_srv_element_from_commit(c);
-    smartlist_add(chunks, element);
-  } SMARTLIST_FOREACH_END(c);
-  smartlist_free(commits);
-
-  {
-    /* Join all reveal values into one giant string that we'll hash so we
-     * can generated our shared random value. */
-    sr_srv_t *current_srv;
-    char hashed_reveals[DIGEST256_LEN];
-    reveals = smartlist_join_strings(chunks, "", 0, NULL);
-    SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
-    smartlist_free(chunks);
-    if (crypto_digest256(hashed_reveals, reveals, strlen(reveals),
-                         DIGEST_SHA256) < 0) {
-      log_warn(LD_DIR, "[SR] Unable to hash the reveals. Stopping.");
-      goto end;
-    }
-    current_srv = generate_srv(hashed_reveals, (uint8_t) reveal_num,
-                               sr_state_get_previous_srv());
-    sr_state_set_current_srv(current_srv);
-  }
-
- end:
-  tor_free(reveals);
-}
-
 /* Given <b>commit</b> give the line that we should place in our votes.
  * It's the responsibility of the caller to free the string. */
 static char *
@@ -727,55 +526,6 @@ get_srv_ns_lines(void)
   SMARTLIST_FOREACH(lines, char *, s, tor_free(s));
   smartlist_free(lines);
   return srv_str;
-}
-
-/* Return a heap-allocated string containing commits that should be put in
- * the votes. It's the responsibility of the caller to free the string.
- * This always return a valid string, either empty or with line(s). */
-char *
-sr_get_string_for_vote(void)
-{
-  char *vote_str = NULL;
-  digestmap_t *state_commits;
-  smartlist_t *chunks = smartlist_new();
-  const or_options_t *options = get_options();
-
-  /* Are we participating in the protocol? */
-  if (!options->VoteSharedRandom) {
-    /* chunks is an empty list at this point which will result in an empty
-     * string at the end. */
-    goto end;
-  }
-
-  log_warn(LD_DIR, "[SR] Sending out vote string:");
-
-  /* First line, put in the vote the participation flag. */
-  {
-    char *sr_flag_line;
-    static const char *sr_flag_key = "shared-rand-participate";
-    tor_asprintf(&sr_flag_line, "%s\n", sr_flag_key);
-    smartlist_add(chunks, sr_flag_line);
-  }
-
-  /* In our vote we include every commitment in our permanent state. */
-  state_commits = sr_state_get_commits();
-  DIGESTMAP_FOREACH(state_commits, key, const sr_commit_t *, commit) {
-    char *line = get_vote_line_from_commit(commit);
-    smartlist_add(chunks, line);
-    log_warn(LD_DIR, "[SR] \t Commit: %s", line);
-  } DIGESTMAP_FOREACH_END;
-
-  /* Add the SRV value(s) if any. */
-  {
-    char *srv_lines = get_srv_ns_lines();
-    smartlist_add(chunks, srv_lines);
-  }
-
- end:
-  vote_str = smartlist_join_strings(chunks, "", 0, NULL);
-  SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
-  smartlist_free(chunks);
-  return vote_str;
 }
 
 /* Return 1 iff the two commits have the same commitment values. This
@@ -896,125 +646,6 @@ should_keep_commit(sr_commit_t *commit,
   return 1;
  ignore:
   return 0;
-}
-
-/* Parse a list of arguments from a SRV value either from a vote, consensus
- * or from our disk state and return a newly allocated srv object. NULL is
- * returned on error.
- *
- * The arguments' order:
- *    status, value
- */
-sr_srv_t *
-sr_parse_srv(smartlist_t *args)
-{
-  char *value;
-  sr_srv_t *srv = NULL;
-  sr_srv_status_t status;
-
-  tor_assert(args);
-
-  /* First argument is the status. */
-  status = sr_get_srv_status_from_str(smartlist_get(args, 0));
-  if (status < 0) {
-    goto end;
-  }
-  srv = tor_malloc_zero(sizeof(*srv));
-  srv->status = status;
-
-  /* Second and last argument is the shared random value it self. */
-  value = smartlist_get(args, 1);
-  base16_decode((char *) srv->value, sizeof(srv->value), value,
-                HEX_DIGEST256_LEN);
-
-end:
-  return srv;
-}
-
-/* Parse a list of arguments from a commitment either from a vote or from
- * our disk state and return a newly allocated commit object. NULL is
- * returned on error.
- *
- * The arguments' order matter very much:
- *  algname, ed25519 identity, RSA fingerprint, commit value[, reveal value]
- */
-sr_commit_t *
-sr_parse_commitment(smartlist_t *args)
-{
-  char *value;
-  ed25519_public_key_t pubkey;
-  digest_algorithm_t alg;
-  const char *rsa_identity_fpr;
-  sr_commit_t *commit = NULL;
-
-  /* First argument is the algorithm. */
-  value = smartlist_get(args, 0);
-  alg = crypto_digest_algorithm_parse_name(value);
-  if (alg != SR_DIGEST_ALG) {
-    log_warn(LD_DIR, "[SR] Commitment algorithm %s is not recognized.",
-             value);
-    goto error;
-  }
-  /* Second arg is the authority ed25519 identity. */
-  value = smartlist_get(args, 1);
-  if (ed25519_public_from_base64(&pubkey, value) < 0) {
-    log_warn(LD_DIR, "[SR] Commitment identity is not recognized.");
-    goto error;
-  }
-
-  /* Third argument is the RSA fingerprint of the auth */
-  rsa_identity_fpr = smartlist_get(args, 2);
-
-  /* Allocate commit since we have a valid identity now. */
-  commit = commit_new(&pubkey, rsa_identity_fpr);
-
-  /* Fourth argument is the commitment value base64-encoded. */
-  value = smartlist_get(args, 3);
-  if (commit_decode(value, commit) < 0) {
-    goto error;
-  }
-
-  /* (Optional) Fifth argument is the revealed value. */
-  value = smartlist_get(args, 4);
-  if (value != NULL) {
-    if (reveal_decode(value, commit) < 0) {
-      goto error;
-    }
-  }
-
-  return commit;
-error:
-  sr_commit_free(commit);
-  return NULL;
-}
-
-/* Called when we have a valid vote and we are about to use it to compute a
- * consensus. The <b>commitments</b> is the list of commits from a single
- * vote coming from authority <b>voter_key</b>. We'll update our state with
- * that list. Once done, the list of commitments will be empty. */
-void
-sr_handle_received_commits(smartlist_t *commitments,
-                           const ed25519_public_key_t *voter_key)
-{
-  tor_assert(voter_key);
-
-  /* It's possible if our vote has seen _NO_ commits because it doesn't
-   * contain any. */
-  if (commitments == NULL) {
-    return;
-  }
-
-  SMARTLIST_FOREACH_BEGIN(commitments, sr_commit_t *, commit) {
-    /* We won't need the commit in this list anymore, kept or not. */
-    SMARTLIST_DEL_CURRENT(commitments, commit);
-    /* Check if this commit is valid and should be stored in our state. */
-    if (!should_keep_commit(commit, voter_key)) {
-      sr_commit_free(commit);
-      continue;
-    }
-    /* Everything lines up: save this commit to state then! */
-    save_commit_to_state(commit);
-  } SMARTLIST_FOREACH_END(commit);
 }
 
 /* We are during commit phase and we found <b>commit</b> in a
@@ -1155,6 +786,373 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
   smartlist_free(sr_digests);
   digest256map_free(sr_values, tor_free_);
   return srv;
+}
+
+/* Return a string representation of a srv status. */
+const char *
+sr_get_srv_status_str(sr_srv_status_t status)
+{
+  switch (status) {
+  case SR_SRV_STATUS_FRESH:
+  case SR_SRV_STATUS_NONFRESH:
+    return srv_status_str[status];
+  default:
+    /* Unknown status shouldn't be possible. */
+    tor_assert(0);
+  }
+}
+
+/* Free a commit object. */
+void
+sr_commit_free(sr_commit_t *commit)
+{
+  if (commit == NULL) {
+    return;
+  }
+  /* Make sure we do not leave OUR random number in memory. */
+  memwipe(commit->random_number, 0, sizeof(commit->random_number));
+  tor_free(commit);
+}
+
+/* Initialize shared random subsystem. This MUST be call early in the boot
+ * process of tor. Return 0 on success else -1 on error. */
+int
+sr_init(int save_to_disk)
+{
+  return sr_state_init(save_to_disk);
+}
+
+/* Save our state to disk and cleanup everything. */
+void
+sr_save_and_cleanup(void)
+{
+  sr_state_save();
+  sr_cleanup();
+}
+
+/* Generate the commitment/reveal value for the protocol run starting at
+ * <b>timestamp</b>. If <b>my_cert</b> is provided use it as our authority
+ * certificate (used in unittests). */
+sr_commit_t *
+sr_generate_our_commitment(time_t timestamp, authority_cert_t *my_rsa_cert)
+{
+  sr_commit_t *commit = NULL;
+  char fingerprint[FINGERPRINT_LEN+1];
+  const ed25519_public_key_t *identity_key;
+
+  tor_assert(my_rsa_cert);
+
+  /* Get our ed25519 master key */
+  identity_key = get_master_identity_key();
+  tor_assert(identity_key);
+
+  /* Get our RSA identity fingerprint */
+  if (crypto_pk_get_fingerprint(my_rsa_cert->identity_key,
+                                fingerprint, 0) < 0) {
+    goto error;
+  }
+
+  /* New commit with our identity key. */
+  commit = commit_new(identity_key, fingerprint);
+
+  {
+    int ret;
+    char raw_rand[SR_RANDOM_NUMBER_LEN];
+    /* Generate the reveal random value */
+    crypto_rand(raw_rand, sizeof(commit->random_number));
+    /* Hash our random value in order to avoid sending the raw bytes of our
+     * PRNG to the network. */
+    ret = crypto_digest256(commit->random_number, raw_rand,
+                           sizeof(raw_rand), DIGEST_SHA256);
+    memwipe(raw_rand, 0, sizeof(raw_rand));
+    if (ret < 0) {
+      goto error;
+    }
+  }
+  commit->commit_ts = commit->reveal_ts = timestamp;
+
+  /* Now get the base64 blob that corresponds to our reveal */
+  if (reveal_encode(commit, commit->encoded_reveal,
+                    sizeof(commit->encoded_reveal)) < 0) {
+    log_err(LD_REND, "[SR] Unable to encode the reveal value!");
+    goto error;
+  }
+
+  /* Now let's create the commitment */
+
+  switch (commit->alg) {
+  case DIGEST_SHA1:
+  case DIGEST_SHA512:
+    tor_assert(0);
+  case DIGEST_SHA256:
+    /* Only sha256 is supported and the default. */
+  default:
+    if (crypto_digest256(commit->hashed_reveal, commit->encoded_reveal,
+                         sizeof(commit->encoded_reveal),
+                         DIGEST_SHA256) < 0) {
+      goto error;
+    }
+    break;
+  }
+
+  /* Now get the base64 blob that corresponds to our commit. */
+  if (commit_encode(commit, commit->encoded_commit,
+                    sizeof(commit->encoded_commit)) < 0) {
+    log_err(LD_REND, "[SR] Unable to encode the commit value!");
+    goto error;
+  }
+
+  log_warn(LD_DIR, "[SR] Generated our commitment:");
+  commit_log(commit);
+  return commit;
+
+error:
+  sr_commit_free(commit);
+  return NULL;
+}
+
+/* Compute the shared random value based on the reveals we have in the given
+ * <b>state</b>. */
+void
+sr_compute_srv(void)
+{
+  size_t reveal_num;
+  char *reveals = NULL;
+  smartlist_t *chunks, *commits;
+  digestmap_t *state_commits;
+
+  /* Computing a shared random value in the commit phase is very wrong. This
+   * should only happen at the very end of the reveal phase when a new
+   * protocol run is about to start. */
+  tor_assert(sr_state_get_phase() == SR_PHASE_REVEAL);
+  state_commits = sr_state_get_commits();
+
+  /* XXX: Let's make sure those conditions to compute an SRV are solid and
+   * cover all cases. While writing this I'm still unsure of those. */
+  reveal_num = digestmap_size(state_commits);
+  tor_assert(reveal_num < UINT8_MAX);
+
+  /* One single value means that it's only ours so do not compute a disaster
+   * shared random value.
+   * XXX: that's sketchy... */
+  if (reveal_num == 1) {
+    goto end;
+  }
+  /* Make sure we have enough reveal values and if not, generate the
+   * disaster srv value and stop right away. */
+  if (reveal_num < SR_SRV_MIN_REVEAL) {
+    sr_srv_t *disaster_srv =
+      generate_srv_disaster(sr_state_get_previous_srv());
+    sr_state_set_current_srv(disaster_srv);
+    goto end;
+  }
+
+  commits = smartlist_new();
+  chunks = smartlist_new();
+
+  /* We must make a list of commit ordered by authority fingerprint in
+   * ascending order as specified by proposal 250. */
+  DIGESTMAP_FOREACH(state_commits, key, sr_commit_t *, c) {
+    smartlist_add(commits, c);
+  } DIGESTMAP_FOREACH_END;
+  smartlist_sort(commits, compare_commit_identity_);
+
+  /* Now for each commit for that sorted list in ascending order, we'll
+   * build the element for each authority that needs to go into the srv
+   * computation. */
+  SMARTLIST_FOREACH_BEGIN(commits, const sr_commit_t *, c) {
+    char *element = get_srv_element_from_commit(c);
+    smartlist_add(chunks, element);
+  } SMARTLIST_FOREACH_END(c);
+  smartlist_free(commits);
+
+  {
+    /* Join all reveal values into one giant string that we'll hash so we
+     * can generated our shared random value. */
+    sr_srv_t *current_srv;
+    char hashed_reveals[DIGEST256_LEN];
+    reveals = smartlist_join_strings(chunks, "", 0, NULL);
+    SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
+    smartlist_free(chunks);
+    if (crypto_digest256(hashed_reveals, reveals, strlen(reveals),
+                         DIGEST_SHA256) < 0) {
+      log_warn(LD_DIR, "[SR] Unable to hash the reveals. Stopping.");
+      goto end;
+    }
+    current_srv = generate_srv(hashed_reveals, (uint8_t) reveal_num,
+                               sr_state_get_previous_srv());
+    sr_state_set_current_srv(current_srv);
+  }
+
+end:
+  tor_free(reveals);
+}
+
+/* Parse a list of arguments from a SRV value either from a vote, consensus
+ * or from our disk state and return a newly allocated srv object. NULL is
+ * returned on error.
+ *
+ * The arguments' order:
+ *    status, value
+ */
+sr_srv_t *
+sr_parse_srv(smartlist_t *args)
+{
+  char *value;
+  sr_srv_t *srv = NULL;
+  sr_srv_status_t status;
+
+  tor_assert(args);
+
+  /* First argument is the status. */
+  status = get_srv_status_from_str(smartlist_get(args, 0));
+  if (status < 0) {
+    goto end;
+  }
+  srv = tor_malloc_zero(sizeof(*srv));
+  srv->status = status;
+
+  /* Second and last argument is the shared random value it self. */
+  value = smartlist_get(args, 1);
+  base16_decode((char *) srv->value, sizeof(srv->value), value,
+                HEX_DIGEST256_LEN);
+end:
+  return srv;
+}
+
+/* Parse a list of arguments from a commitment either from a vote or from
+ * our disk state and return a newly allocated commit object. NULL is
+ * returned on error.
+ *
+ * The arguments' order matter very much:
+ *  algname, ed25519 identity, RSA fingerprint, commit value[, reveal value]
+ */
+sr_commit_t *
+sr_parse_commitment(smartlist_t *args)
+{
+  char *value;
+  ed25519_public_key_t pubkey;
+  digest_algorithm_t alg;
+  const char *rsa_identity_fpr;
+  sr_commit_t *commit = NULL;
+
+  /* First argument is the algorithm. */
+  value = smartlist_get(args, 0);
+  alg = crypto_digest_algorithm_parse_name(value);
+  if (alg != SR_DIGEST_ALG) {
+    log_warn(LD_DIR, "[SR] Commitment algorithm %s is not recognized.",
+             value);
+    goto error;
+  }
+  /* Second arg is the authority ed25519 identity. */
+  value = smartlist_get(args, 1);
+  if (ed25519_public_from_base64(&pubkey, value) < 0) {
+    log_warn(LD_DIR, "[SR] Commitment identity is not recognized.");
+    goto error;
+  }
+
+  /* Third argument is the RSA fingerprint of the auth */
+  rsa_identity_fpr = smartlist_get(args, 2);
+
+  /* Allocate commit since we have a valid identity now. */
+  commit = commit_new(&pubkey, rsa_identity_fpr);
+
+  /* Fourth argument is the commitment value base64-encoded. */
+  value = smartlist_get(args, 3);
+  if (commit_decode(value, commit) < 0) {
+    goto error;
+  }
+
+  /* (Optional) Fifth argument is the revealed value. */
+  value = smartlist_get(args, 4);
+  if (value != NULL) {
+    if (reveal_decode(value, commit) < 0) {
+      goto error;
+    }
+  }
+
+  return commit;
+error:
+  sr_commit_free(commit);
+  return NULL;
+}
+
+/* Called when we have a valid vote and we are about to use it to compute a
+ * consensus. The <b>commitments</b> is the list of commits from a single
+ * vote coming from authority <b>voter_key</b>. We'll update our state with
+ * that list. Once done, the list of commitments will be empty. */
+void
+sr_handle_received_commits(smartlist_t *commitments,
+                           const ed25519_public_key_t *voter_key)
+{
+  tor_assert(voter_key);
+
+  /* It's possible if our vote has seen _NO_ commits because it doesn't
+   * contain any. */
+  if (commitments == NULL) {
+    return;
+  }
+
+  SMARTLIST_FOREACH_BEGIN(commitments, sr_commit_t *, commit) {
+    /* We won't need the commit in this list anymore, kept or not. */
+    SMARTLIST_DEL_CURRENT(commitments, commit);
+    /* Check if this commit is valid and should be stored in our state. */
+    if (!should_keep_commit(commit, voter_key)) {
+      sr_commit_free(commit);
+      continue;
+    }
+    /* Everything lines up: save this commit to state then! */
+    save_commit_to_state(commit);
+  } SMARTLIST_FOREACH_END(commit);
+}
+
+/* Return a heap-allocated string containing commits that should be put in
+ * the votes. It's the responsibility of the caller to free the string.
+ * This always return a valid string, either empty or with line(s). */
+char *
+sr_get_string_for_vote(void)
+{
+  char *vote_str = NULL;
+  digestmap_t *state_commits;
+  smartlist_t *chunks = smartlist_new();
+  const or_options_t *options = get_options();
+
+  /* Are we participating in the protocol? */
+  if (!options->VoteSharedRandom) {
+    /* chunks is an empty list at this point which will result in an empty
+     * string at the end. */
+    goto end;
+  }
+
+  log_warn(LD_DIR, "[SR] Sending out vote string:");
+
+  /* First line, put in the vote the participation flag. */
+  {
+    char *sr_flag_line;
+    static const char *sr_flag_key = "shared-rand-participate";
+    tor_asprintf(&sr_flag_line, "%s\n", sr_flag_key);
+    smartlist_add(chunks, sr_flag_line);
+  }
+
+  /* In our vote we include every commitment in our permanent state. */
+  state_commits = sr_state_get_commits();
+  DIGESTMAP_FOREACH(state_commits, key, const sr_commit_t *, commit) {
+    char *line = get_vote_line_from_commit(commit);
+    smartlist_add(chunks, line);
+    log_warn(LD_DIR, "[SR] \t Commit: %s", line);
+  } DIGESTMAP_FOREACH_END;
+
+  /* Add the SRV value(s) if any. */
+  {
+    char *srv_lines = get_srv_ns_lines();
+    smartlist_add(chunks, srv_lines);
+  }
+
+end:
+  vote_str = smartlist_join_strings(chunks, "", 0, NULL);
+  SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
+  smartlist_free(chunks);
+  return vote_str;
 }
 
 /* Return a heap-allocated string that should be put in the consensus and
