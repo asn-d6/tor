@@ -3185,6 +3185,10 @@ dirvote_compute_consensuses(void)
     goto err;
   }
 
+  /* Make sure our shared random state will now use what the majority has
+   * decided that is what's in the valid consensus. */
+  sr_post_consensus();
+
   dirvote_clear_pending_consensuses();
   memcpy(pending_consensuses, pending, sizeof(pending));
 
