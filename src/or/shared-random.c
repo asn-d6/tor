@@ -54,6 +54,15 @@ static const char *srv_status_str[] = { "fresh", "non-fresh" };
 static const char *prev_str_key = "shared-rand-previous-value";
 static const char *cur_str_key = "shared-rand-current-value";
 
+/* When we compute a consensus, the majority decides on shared random values
+ * (if any) and they are saved in this array. Once we are done and about to
+ * post the newly computed consensus, we'll update our state with the values
+ * in this array so we have all authorities using the same values.
+ *
+ * Index 0 is the previous value and 1 is the current. If no value could be
+ * decided from majority, pointer is NULL. */
+static sr_srv_t *post_consensus_srv[2];
+
 /* Return a status value from a string. */
 static sr_srv_status_t
 get_srv_status_from_str(const char *name)
@@ -70,6 +79,15 @@ get_srv_status_from_str(const char *name)
     }
   }
   return status;
+}
+
+/* Return a heap allocated copy of <b>orig</b>. */
+static sr_srv_t *
+srv_dup(const sr_srv_t *orig)
+{
+  sr_srv_t *dup = tor_malloc_zero(sizeof(*dup));
+  memcpy(dup, orig, sizeof(*dup));
+  return dup;
 }
 
 /* Allocate a new commit object and initializing it with <b>identity</b>
@@ -1209,6 +1227,7 @@ sr_get_string_for_consensus(smartlist_t *votes)
       char *line = srv_to_ns_string(srv, prev_str_key);
       smartlist_add(chunks, line);
       log_warn(LD_DIR, "[SR] \t Previous SRV: %s", line);
+      post_consensus_srv[0] = srv_dup(srv);
     }
     /* Get the most frequent current SRV. */
     srv = get_majority_srv_from_votes(votes, 1);
@@ -1216,6 +1235,7 @@ sr_get_string_for_consensus(smartlist_t *votes)
       char *line = srv_to_ns_string(srv, cur_str_key);
       smartlist_add(chunks, line);
       log_warn(LD_DIR, "[SR] \t Current SRV: %s", line);
+      post_consensus_srv[1]  = srv_dup(srv);
     }
     /* Join the line(s) here in one string to return. */
     srv_str = smartlist_join_strings(chunks, "", 0, NULL);
@@ -1244,4 +1264,18 @@ sr_prepare_new_voting_period(time_t valid_after)
 {
   /* Make sure our state is coherent for the next voting period. */
   sr_state_update(valid_after);
+}
+
+/* Update the SRV(s) that the majority has decided once the consensus is
+ * ready to be posted. */
+void
+sr_post_consensus(void)
+{
+  /* Set the SRV(s) in our state even if both are NULL, it doesn't matter
+   * this is what the majority has decided. */
+  sr_state_set_previous_srv(post_consensus_srv[0]);
+  sr_state_set_current_srv(post_consensus_srv[1]);
+  /* Ownership of all object have been passed to the state so simply reset
+   * the array for the next period without freeing the object. */
+  post_consensus_srv[0] = post_consensus_srv[1] = NULL;
 }
