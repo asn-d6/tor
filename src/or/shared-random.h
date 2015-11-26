@@ -127,7 +127,7 @@ const char *sr_get_srv_status_str(sr_srv_status_t status);
 
 void sr_compute_srv(void);
 char *sr_get_string_for_vote(void);
-char *sr_get_string_for_consensus(void);
+char *sr_get_string_for_consensus(smartlist_t *votes);
 
 sr_commit_t *sr_generate_our_commitment(time_t timestamp,
                                         authority_cert_t *my_rsa_cert);
