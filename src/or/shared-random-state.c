@@ -164,6 +164,7 @@ get_state_valid_until_time(time_t now)
 STATIC sr_phase_t
 get_sr_protocol_phase(time_t valid_after)
 {
+  /* Shared random protocol has two phases, commit and reveal. */
   int total_periods = SHARED_RANDOM_N_ROUNDS * 2;
   int voting_interval;
   int current_slot;
@@ -708,14 +709,6 @@ done:
   return ret;
 }
 
-/* Return 1 iff we are just booting off. We use the number of protocol runs
- * we've seen so far to know that which is 0 at first. */
-static int
-is_booting_up(void)
-{
-  return !sr_state->n_protocol_runs;
-}
-
 /* Reset our state to prepare for a new protocol run. Once this returns, all
  * commitments in the state will be removed and freed. */
 static void
@@ -760,7 +753,7 @@ new_protocol_run(time_t valid_after)
   sr_commit_t *our_commitment = NULL;
 
   /* Only compute the srv at the end of the reveal phase. */
-  if (sr_state->phase == SR_PHASE_REVEAL && !is_booting_up()) {
+  if (sr_state->phase == SR_PHASE_REVEAL) {
     /* We are about to compute a new shared random value that will be set in
      * our state as the current value so rotate values. */
     state_rotate_srv();
@@ -1009,10 +1002,19 @@ sr_state_update(time_t valid_after)
     }
     /* Set the new phase for this round */
     sr_state->phase = new_phase;
-  } else if (is_booting_up()) {
-    /* We are just booting up this means there is no chance we are in a
-     * phase transition thus consider this a new protocol run. */
-    new_protocol_run(valid_after);
+  } else if (sr_state->phase == SR_PHASE_COMMIT &&
+             digestmap_size(sr_state->commitments) == 0) {
+    /* We are _NOT_ in a transition phase so if we are in the commit phase
+     * and have no commit, generate one. Chances are that we are booting up
+     * so let's have a commit in our state for the next voting period. */
+    sr_commit_t *our_commitment =
+      sr_generate_our_commitment(valid_after, get_my_v3_authority_cert());
+    if (our_commitment) {
+      /* Add our commitment to our state. In case we are unable to create one
+       * (highly unlikely), we won't vote for this protocol run since our
+       * commitment won't be in our state. */
+      sr_state_add_commit(our_commitment);
+    }
   }
 
   /* Count the current round */
