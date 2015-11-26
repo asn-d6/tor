@@ -716,6 +716,8 @@ is_booting_up(void)
   return !sr_state->n_protocol_runs;
 }
 
+/* Reset our state to prepare for a new protocol run. Once this returns, all
+ * commitments in the state will be removed and freed. */
 static void
 reset_state_for_new_protocol_run(time_t valid_after)
 {
@@ -736,6 +738,20 @@ reset_state_for_new_protocol_run(time_t valid_after)
   } DIGESTMAP_FOREACH_END;
 }
 
+/* Rotate SRV value by freeing the previous value, assigning the current
+ * value to the previous one and nullifying the current one. */
+static void
+state_rotate_srv(void)
+{
+  /* Get a pointer to the previous SRV so we can free it after rotation. */
+  sr_srv_t *previous_srv = sr_state_get_previous_srv();
+  /* Set previous SRV with the current one. */
+  sr_state_set_previous_srv(sr_state_get_current_srv());
+  /* Nullify the current srv. */
+  sr_state_set_current_srv(NULL);
+  tor_free(previous_srv);
+}
+
 /** This is the first round of the new protocol run starting at
  *  <b>valid_after</b>. Do the necessary housekeeping. */
 static void
@@ -747,7 +763,7 @@ new_protocol_run(time_t valid_after)
   if (sr_state->phase == SR_PHASE_REVEAL && !is_booting_up()) {
     /* We are about to compute a new shared random value that will be set in
      * our state as the current value so rotate values. */
-    sr_state_rotate_srv();
+    state_rotate_srv();
     /* Compute the shared randomness value of the day. */
     sr_compute_srv();
   }
@@ -954,20 +970,6 @@ sr_state_set_current_srv(sr_srv_t *srv)
 {
   state_query(SR_STATE_ACTION_PUT, SR_STATE_OBJ_CURSRV, (void *) srv,
               NULL);
-}
-
-/* Rotate SRV value by freeing the previous value, assigning the current
- * value to the previous one and nullifying the current one. */
-void
-sr_state_rotate_srv(void)
-{
-  /* Get a pointer to the previous SRV so we can free it after rotation. */
-  sr_srv_t *previous_srv = sr_state_get_previous_srv();
-  /* Set previous SRV with the current one. */
-  sr_state_set_previous_srv(sr_state_get_current_srv());
-  /* Nullify the current srv. */
-  sr_state_set_current_srv(NULL);
-  tor_free(previous_srv);
 }
 
 /* Return a pointer to the commits map from our state. CANNOT be NULL. */
