@@ -2932,7 +2932,7 @@ extract_shared_random_commitments(networkstatus_t *ns,
       /* A reveal value might also be included */;
       smartlist_add(chunks, tok->args[3]);
     }
-    sr_commit_t *commit = sr_parse_commitment(chunks);
+    sr_commit_t *commit = sr_parse_commit(chunks);
     smartlist_clear(chunks);
     if (commit == NULL) {
       /* Commitment couldn't be parsed. Stop right now since this vote is
@@ -2941,7 +2941,7 @@ extract_shared_random_commitments(networkstatus_t *ns,
       goto err;
     }
     /* Add newly created commit object to the vote. */
-    smartlist_add(ns->sr_info.commitments, commit);
+    smartlist_add(ns->sr_info.commits, commit);
   } SMARTLIST_FOREACH_END(tok);
   smartlist_free(chunks);
  end:
@@ -3374,7 +3374,7 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
           goto err;
         }
       }
-      ns->sr_info.commitments = smartlist_new();
+      ns->sr_info.commits = smartlist_new();
       if (extract_shared_random_commitments(ns, tokens) < 0) {
         log_warn(LD_DIR, "Unable to parse commitments");
         goto err;

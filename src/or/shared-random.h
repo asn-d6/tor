@@ -117,10 +117,10 @@ void sr_decide_srv_post_consensus(void);
 void sr_commit_free(sr_commit_t *commit);
 int sr_verify_commit_sig(const sr_commit_t *commit);
 
-void sr_handle_received_commits(smartlist_t *commitments,
+void sr_handle_received_commits(smartlist_t *commits,
                                 const ed25519_public_key_t *voter_key);
 
-sr_commit_t *sr_parse_commitment(smartlist_t *args);
+sr_commit_t *sr_parse_commit(smartlist_t *args);
 sr_srv_t *sr_parse_srv(smartlist_t *args);
 
 sr_srv_status_t sr_get_srv_status_from_str(const char *name);

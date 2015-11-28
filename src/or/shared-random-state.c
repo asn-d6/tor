@@ -378,7 +378,7 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
                line->value);
       goto error;
     }
-    commit = sr_parse_commitment(args);
+    commit = sr_parse_commit(args);
     if (commit == NULL) {
       goto error;
     }

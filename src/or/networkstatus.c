@@ -295,10 +295,10 @@ networkstatus_vote_free(networkstatus_t *ns)
 
   tor_cert_free(ns->ed25519_signing_key_cert);
 
-  if (ns->sr_info.commitments) {
-    SMARTLIST_FOREACH(ns->sr_info.commitments, sr_commit_t *, c,
+  if (ns->sr_info.commits) {
+    SMARTLIST_FOREACH(ns->sr_info.commits, sr_commit_t *, c,
                       sr_commit_free(c));
-    smartlist_free(ns->sr_info.commitments);
+    smartlist_free(ns->sr_info.commits);
   }
   if (ns->sr_info.previous_srv) {
     SMARTLIST_FOREACH(ns->sr_info.previous_srv, sr_srv_t *, srv,
