@@ -51,8 +51,8 @@
 static const char *srv_status_str[] = { "fresh", "non-fresh" };
 
 /* Prefix of shared random values in a string. */
-static const char *prev_str_key = "shared-rand-previous-value";
-static const char *cur_str_key = "shared-rand-current-value";
+#define PREVIOUS_SRV_STR "shared-rand-previous-value"
+#define CURRENT_SRV_STR "shared-rand-current-value"
 
 /* When we compute a consensus, the majority decides on shared random values
  * (if any) and they are saved in this array. Once we are done and about to
@@ -85,8 +85,9 @@ get_srv_status_from_str(const char *name)
 static sr_srv_t *
 srv_dup(const sr_srv_t *orig)
 {
-  sr_srv_t *dup = tor_malloc_zero(sizeof(*dup));
-  memcpy(dup, orig, sizeof(*dup));
+  sr_srv_t *dup = tor_malloc_zero(sizeof(sr_srv_t));
+  dup->status = orig->status;
+  memcpy(dup->value, orig->value, sizeof(dup->value));
   return dup;
 }
 
@@ -529,14 +530,14 @@ get_srv_ns_lines(void)
   /* Compute the previous srv value if one. */
   srv = sr_state_get_previous_srv();
   if (srv != NULL) {
-    srv_line = srv_to_ns_string(srv, prev_str_key);
+    srv_line = srv_to_ns_string(srv, PREVIOUS_SRV_STR);
     smartlist_add(lines, srv_line);
     log_warn(LD_DIR, "[SR] \t Previous SRV: %s", srv_line);
   }
   /* Compute current srv value if one. */
   srv = sr_state_get_current_srv();
   if (srv != NULL) {
-    srv_line = srv_to_ns_string(srv, cur_str_key);
+    srv_line = srv_to_ns_string(srv, CURRENT_SRV_STR);
     smartlist_add(lines, srv_line);
     log_warn(LD_DIR, "[SR] \t Current SRV: %s", srv_line);
   }
@@ -1136,7 +1137,7 @@ sr_get_string_for_vote(void)
   const or_options_t *options = get_options();
 
   /* Are we participating in the protocol? */
-  if (!options->VoteSharedRandom) {
+  if (!options->AuthDirSharedRandomness) {
     /* chunks is an empty list at this point which will result in an empty
      * string at the end. */
     goto end;
@@ -1190,9 +1191,9 @@ sr_get_string_for_consensus(smartlist_t *votes)
   tor_assert(votes);
 
   /* Not participating, avoid returning anything. */
-  if (!options->VoteSharedRandom) {
-    log_warn(LD_DIR, "[SR] Support disabled (VoteSharedRandom %d)",
-             options->VoteSharedRandom);
+  if (!options->AuthDirSharedRandomness) {
+    log_warn(LD_DIR, "[SR] Support disabled (AuthDirSharedRandomness %d)",
+             options->AuthDirSharedRandomness);
     goto end;
   }
 
@@ -1224,7 +1225,7 @@ sr_get_string_for_consensus(smartlist_t *votes)
     /* Get the most frequent previous SRV. */
     sr_srv_t *srv = get_majority_srv_from_votes(votes, 0);
     if (srv) {
-      char *line = srv_to_ns_string(srv, prev_str_key);
+      char *line = srv_to_ns_string(srv, PREVIOUS_SRV_STR);
       smartlist_add(chunks, line);
       log_warn(LD_DIR, "[SR] \t Previous SRV: %s", line);
       post_consensus_srv[0] = srv_dup(srv);
@@ -1232,7 +1233,7 @@ sr_get_string_for_consensus(smartlist_t *votes)
     /* Get the most frequent current SRV. */
     srv = get_majority_srv_from_votes(votes, 1);
     if (srv) {
-      char *line = srv_to_ns_string(srv, cur_str_key);
+      char *line = srv_to_ns_string(srv, CURRENT_SRV_STR);
       smartlist_add(chunks, line);
       log_warn(LD_DIR, "[SR] \t Current SRV: %s", line);
       post_consensus_srv[1]  = srv_dup(srv);
@@ -1269,7 +1270,7 @@ sr_prepare_new_voting_period(time_t valid_after)
 /* Update the SRV(s) that the majority has decided once the consensus is
  * ready to be posted. */
 void
-sr_post_consensus(void)
+sr_decide_srv_post_consensus(void)
 {
   /* Set the SRV(s) in our state even if both are NULL, it doesn't matter
    * this is what the majority has decided. */

@@ -112,7 +112,7 @@ int sr_init(int save_to_disk);
 void sr_save_and_cleanup(void);
 
 void sr_prepare_new_voting_period(time_t valid_after);
-void sr_post_consensus(void);
+void sr_decide_srv_post_consensus(void);
 
 void sr_commit_free(sr_commit_t *commit);
 int sr_verify_commit_sig(const sr_commit_t *commit);
