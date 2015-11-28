@@ -4478,7 +4478,7 @@ typedef struct {
    * relevant to a directory authority. If off, the authority won't
    * participate in the protocol. If on (default), a flag is added to the
    * vote indicating participation. */
-  int VoteSharedRandom;
+  int AuthDirSharedRandomness;
   /** UINT (default: 0): Number of participant in the shared random
    * protocol. This is a consensus parameter which tells a dirauth how many
    * vote we need that advertise support for the procotol in order to vote
