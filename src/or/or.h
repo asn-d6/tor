@@ -2429,7 +2429,7 @@ typedef struct networkstatus_sr_info_t {
   smartlist_t *previous_srv;
   smartlist_t *current_srv;
   /* Vote only: List of commitments. */
-  smartlist_t *commitments;
+  smartlist_t *commits;
 } networkstatus_sr_info_t;
 
 /** Enumerates the possible seriousness values of a networkstatus document. */
