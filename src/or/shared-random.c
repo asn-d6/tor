@@ -33,6 +33,17 @@
  * shared random protocol in disk so that authorities can resume on the
  * protocol if they have to reboot.
  *
+ * Terminology:
+ *
+ * - "Commitment" is the commitment value of the commit-and-reveal protocol.
+ *
+ * - "Reveal" is the reveal value of the commit-and-reveal protocol.
+ *
+ * - "Commit" is a struct (sr_commit_t) that contains the commitment value and
+ *    optionally also the corresponding reveal value.
+ *
+ * - "SRV" is the Shared Random Value that gets generated as the result of the
+ *   commit-and-reveal protocol.
  **/
 
 #define SHARED_RANDOM_PRIVATE
@@ -667,8 +678,8 @@ should_keep_commit(sr_commit_t *commit,
   return 0;
 }
 
-/* We are during commit phase and we found <b>commit</b> in a
- * vote. See if it contains any reveal values that we could use. */
+/* We are during reveal phase and we found <b>commit</b> in a vote that contains
+ * reveal values that we could use. Update the commit we have in our state. */
 static void
 save_commit_during_reveal_phase(const sr_commit_t *commit)
 {
@@ -711,8 +722,8 @@ save_commit_to_state(sr_commit_t *commit)
   }
 }
 
-/* Return the number of participants of the SR protocol. This is based on a
- * consensus params. */
+/* Return the number of required participants of the SR protocol. This is based
+ * on a consensus params. */
 static int
 decide_num_participants(const or_options_t *options)
 {
@@ -1047,7 +1058,7 @@ end:
  *  algname, ed25519 identity, RSA fingerprint, commit value[, reveal value]
  */
 sr_commit_t *
-sr_parse_commitment(smartlist_t *args)
+sr_parse_commit(smartlist_t *args)
 {
   char *value;
   ed25519_public_key_t pubkey;
@@ -1101,20 +1112,20 @@ error:
  * vote coming from authority <b>voter_key</b>. We'll update our state with
  * that list. Once done, the list of commitments will be empty. */
 void
-sr_handle_received_commits(smartlist_t *commitments,
+sr_handle_received_commits(smartlist_t *commits,
                            const ed25519_public_key_t *voter_key)
 {
   tor_assert(voter_key);
 
   /* It's possible if our vote has seen _NO_ commits because it doesn't
    * contain any. */
-  if (commitments == NULL) {
+  if (commits == NULL) {
     return;
   }
 
-  SMARTLIST_FOREACH_BEGIN(commitments, sr_commit_t *, commit) {
+  SMARTLIST_FOREACH_BEGIN(commits, sr_commit_t *, commit) {
     /* We won't need the commit in this list anymore, kept or not. */
-    SMARTLIST_DEL_CURRENT(commitments, commit);
+    SMARTLIST_DEL_CURRENT(commits, commit);
     /* Check if this commit is valid and should be stored in our state. */
     if (!should_keep_commit(commit, voter_key)) {
       sr_commit_free(commit);
