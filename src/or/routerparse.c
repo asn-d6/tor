@@ -146,7 +146,7 @@ typedef enum {
   K_DIRECTORY_FOOTER,
   K_SIGNING_CERT_ED,
   K_SR_FLAG,
-  K_COMMITMENT,
+  K_COMMIT,
   K_PREVIOUS_SRV,
   K_CURRENT_SRV,
   K_PACKAGE,
@@ -451,7 +451,7 @@ static token_rule_t networkstatus_token_table[] = {
   T( "fingerprint",            K_FINGERPRINT,      CONCAT_ARGS, NO_OBJ ),
   T01("signing-ed25519",       K_SIGNING_CERT_ED,  NO_ARGS ,    NEED_OBJ ),
   T01("shared-rand-participate",K_SR_FLAG,         NO_ARGS,     NO_OBJ ),
-  T0N("shared-rand-commitment",K_COMMITMENT,       GE(3),       NO_OBJ ),
+  T0N("shared-rand-commitment",K_COMMIT,       GE(3),       NO_OBJ ),
   T01("shared-rand-previous-value", K_PREVIOUS_SRV, EQ(2),       NO_OBJ ),
   T01("shared-rand-current-value",  K_CURRENT_SRV,  EQ(2),       NO_OBJ ),
   T0N("package",               K_PACKAGE,          CONCAT_ARGS, NO_OBJ ),
@@ -2909,11 +2909,11 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
 
   ns->sr_info.commits = smartlist_new();
 
-  smartlist_t *commitments = find_all_by_keyword(tokens, K_COMMITMENT);
+  smartlist_t *commits = find_all_by_keyword(tokens, K_COMMIT);
 
   /* It's normal that a vote might contain no commits even if it participates in
      the SR protocol. Don't treat it as an error. */
-  if (commitments == NULL) {
+  if (commits == NULL) {
     goto end;
   }
 
@@ -2927,7 +2927,7 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
    *    algname SP identity SP rsa_fpr SP commitment [SP reveal]
    */
   chunks = smartlist_new();
-  SMARTLIST_FOREACH_BEGIN(commitments, directory_token_t *, tok) {
+  SMARTLIST_FOREACH_BEGIN(commits, directory_token_t *, tok) {
     tor_assert(tok->n_args >= 3);
 
     /* Hash algorithm. */
