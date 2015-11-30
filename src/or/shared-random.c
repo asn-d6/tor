@@ -698,20 +698,20 @@ save_commit_to_state(sr_commit_t *commit)
 /* Return the number of required participants of the SR protocol. This is based
  * on a consensus params. */
 static int
-decide_num_participants(const or_options_t *options)
+get_n_voters_for_srv_agreement(void)
 {
-  int num_dirauth;
+  int num_dirauths;
+  const or_options_t *options = get_options();
 
-  tor_assert(options);
-
-  if (options->NumSRParticipants) {
-    return options->NumSRParticipants;
+  if (options->AuthDirNumSRVAgreements) {
+    return options->AuthDirNumSRVAgreements;
   }
-  num_dirauth = get_n_authorities(V3_DIRINFO);
+
+  num_dirauths = get_n_authorities(V3_DIRINFO);
   /* If the params is not found, default value should always be the maximum
    * number of trusted authorities. Let's not take any chances. */
-  return networkstatus_get_param(NULL, "NumSRParticipants", num_dirauth, 1,
-                                 num_dirauth);
+  return networkstatus_get_param(NULL, "NumSRVAgreements", num_dirauths, 1,
+                                 num_dirauths);
 }
 
 /* Using a list of <b>votes</b>, return the SRV object from them that does
@@ -780,10 +780,10 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
     }
   }
 
-  { /* Check if this SRV has enough votes according to NumSRParticipants */
-    int num_required_agreements = decide_num_participants(options);
+  { /* Check if this SRV has enough votes according to NumSRVAgreements */
+    int num_required_agreements = get_n_voters_for_srv_agreement();
 
-    if (obj->count < required_agreements) {
+    if (obj->count < num_required_agreements) {
       log_warn(LD_DIR, "Didn't reach superagreement for SRV!");
       goto end;
     }
