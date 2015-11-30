@@ -1602,7 +1602,7 @@ rend_service_receive_introduction(origin_circuit_t *circuit,
   /* Check if we'd refuse to talk to this router */
   if (options->StrictNodes &&
       routerset_contains_extendinfo(options->ExcludeNodes, rp)) {
-    log_warn(LD_REND, "Client asked to rendezvous at a relay that we "
+    log_warn(LD_REND, "XXX Client asked to rendezvous at a relay that we "
              "exclude, and StrictNodes is set. Refusing service.");
     reason = END_CIRC_REASON_INTERNAL; /* XXX might leak why we refused */
     goto err;
@@ -1678,6 +1678,7 @@ rend_service_receive_introduction(origin_circuit_t *circuit,
 
   /* Launch a circuit to alice's chosen rendezvous point.
    */
+  /* here we go */ 
   for (i=0;i<MAX_REND_FAILURES;i++) {
     int flags = CIRCLAUNCH_NEED_CAPACITY | CIRCLAUNCH_IS_INTERNAL;
     if (circ_needs_uptime) flags |= CIRCLAUNCH_NEED_UPTIME;
@@ -1786,7 +1787,7 @@ find_rp_for_intro(const rend_intro_cell_t *intro,
     if (!node) {
       if (err_msg_out) {
         tor_asprintf(&err_msg,
-                     "Couldn't find router %s named in INTRODUCE2 cell",
+                     "XXX Couldn't find router %s named in INTRODUCE2 cell",
                      escaped_safe_str_client(rp_nickname));
       }
 
@@ -1797,7 +1798,7 @@ find_rp_for_intro(const rend_intro_cell_t *intro,
     if (!rp) {
       if (err_msg_out) {
         tor_asprintf(&err_msg,
-                     "Could build extend_info_t for router %s named "
+                     "XXX Could build extend_info_t for router %s named "
                      "in INTRODUCE2 cell",
                      escaped_safe_str_client(rp_nickname));
       }
@@ -1811,7 +1812,7 @@ find_rp_for_intro(const rend_intro_cell_t *intro,
   } else {
     if (err_msg_out) {
       tor_asprintf(&err_msg,
-                   "Unknown version %d in INTRODUCE2 cell",
+                   "XXX Unknown version %d in INTRODUCE2 cell",
                    (int)(intro->version));
     }
 
@@ -2077,6 +2078,7 @@ rend_service_parse_intro_for_v2(
   }
 
   extend_info = tor_malloc_zero(sizeof(extend_info_t));
+  /* Here the hidden service parses the RP's address. */
   tor_addr_from_ipv4n(&extend_info->addr, get_uint32(buf + 1));
   extend_info->port = ntohs(get_uint16(buf + 5));
   memcpy(extend_info->identity_digest, buf + 7, DIGEST_LEN);

