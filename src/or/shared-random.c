@@ -395,8 +395,6 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   sr_srv_t *srv;
 
   tor_assert(hashed_reveals);
-  /* Specification requires at least 3 authorities are needed. */
-  tor_assert(reveal_num >= 3);
 
   /* Very important here since we might not have a previous shared random
    * value so make sure we all have the content at first. */
@@ -432,31 +430,6 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   log_warn(LD_DIR, "[SR] \t Msg: %s", hex_str(msg, 10));
   log_warn(LD_DIR, "[SR] \t Final SRV: %s",
            hex_str((const char *) srv->value, HEX_DIGEST256_LEN));
-  return srv;
-}
-
-/* Return a srv object that constructed with the disaster mode
- * specification. It's as follow:
- *    HMAC(previous_SRV, "shared-random-disaster")
- * This function cannot fail. */
-static sr_srv_t *
-generate_srv_disaster(sr_srv_t *previous_srv)
-{
-  char key[DIGEST256_LEN];
-  sr_srv_t *srv = tor_malloc_zero(sizeof(*srv));
-  static const char *invariant = "shared-random-disaster";
-
-  log_warn(LD_DIR, "[SR] Computing distaster shared random value.");
-
-  if (previous_srv) {
-    memcpy(key, previous_srv->value, sizeof(key));
-  } else {
-    memset(key, 0, sizeof(key));
-  }
-
-  crypto_hmac_sha256((char *) srv->value, key, sizeof(key),
-                     invariant, strlen(invariant));
-  srv->status = SR_SRV_STATUS_NONFRESH;
   return srv;
 }
 
@@ -961,21 +934,6 @@ sr_compute_srv(void)
    * cover all cases. While writing this I'm still unsure of those. */
   reveal_num = digestmap_size(state_commits);
   tor_assert(reveal_num < UINT8_MAX);
-
-  /* One single value means that it's only ours so do not compute a disaster
-   * shared random value.
-   * XXX: that's sketchy... */
-  if (reveal_num == 1) {
-    goto end;
-  }
-  /* Make sure we have enough reveal values and if not, generate the
-   * disaster srv value and stop right away. */
-  if (reveal_num < SR_SRV_MIN_REVEAL) {
-    sr_srv_t *disaster_srv =
-      generate_srv_disaster(sr_state_get_previous_srv());
-    sr_state_set_current_srv(disaster_srv);
-    goto end;
-  }
 
   commits = smartlist_new();
   chunks = smartlist_new();

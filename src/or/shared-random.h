@@ -20,8 +20,6 @@
 #define SR_SRV_TOKEN "shared-random"
 /* Don't count the NULL terminated byte even though the TOKEN has it. */
 #define SR_SRV_TOKEN_LEN (sizeof(SR_SRV_TOKEN) - 1)
-/* Minimum number of reveal values needed to compute a SRV value. */
-#define SR_SRV_MIN_REVEAL 3
 
 /* Length of the random number (in bytes). */
 #define SR_RANDOM_NUMBER_LEN 32
