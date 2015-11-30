@@ -2851,20 +2851,23 @@ networkstatus_verify_bw_weights(networkstatus_t *ns, int consensus_method)
   return valid;
 }
 
-/** We are parsing the vote document in <b>ns</b>. Given the directory token for
- *  the ed25519 signing certificate, verify its validity, parse it and extract
- *  the ed25519 keys out of it.
- *
- *  For the SR protocol, we are interested in the ed25519 master key, so save it
- *  directly in <b>ns</b> for future use. */
+/** We are parsing the vote document in <b>ns</b>. Extract the ed25519 signing
+ *  certificate and verify its validity. For the SR protocol, we are interested
+ *  in the ed25519 master key, so save it directly in <b>ns</b> for future
+ *  use. */
 static int
-extract_ed25519_keys_from_vote(const directory_token_t *sign_cert_tok,
-                               networkstatus_t *ns)
+extract_ed25519_keys_from_vote(networkstatus_t *ns, smartlist_t *tokens)
 {
   tor_cert_t *sign_cert = NULL;
   time_t now = time(NULL);
 
-  tor_assert(sign_cert_tok);
+  directory_token_t *sign_cert_tok =
+    find_opt_by_keyword(tokens, K_SIGNING_CERT_ED);
+
+  if (!sign_cert_tok) {
+    log_warn(LD_DIR, "Vote contained SR info but no ed25519 keys!");
+    goto err;
+  }
 
   /* Do some basic validation */
   if (strcmp(sign_cert_tok->object_type, "ED25519 CERT")) {
@@ -2905,9 +2908,9 @@ extract_ed25519_keys_from_vote(const directory_token_t *sign_cert_tok,
   return -1;
 }
 
+/** DOCDOCDOC */
 static int
-extract_shared_random_commitments(networkstatus_t *ns,
-                                  smartlist_t *tokens)
+extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
 {
   char rsa_identity_fpr[FINGERPRINT_LEN + 1];
   smartlist_t *chunks;
@@ -2915,7 +2918,12 @@ extract_shared_random_commitments(networkstatus_t *ns,
   tor_assert(ns);
   tor_assert(tokens);
 
+  ns->sr_info.commits = smartlist_new();
+
   smartlist_t *commitments = find_all_by_keyword(tokens, K_COMMITMENT);
+
+  /* It's normal that a vote might contain no commits even if it participates in
+     the SR protocol. Don't treat it as an error. */
   if (commitments == NULL) {
     goto end;
   }
@@ -2931,6 +2939,8 @@ extract_shared_random_commitments(networkstatus_t *ns,
    */
   chunks = smartlist_new();
   SMARTLIST_FOREACH_BEGIN(commitments, directory_token_t *, tok) {
+    tor_assert(tok->n_args >= 3);
+
     /* Hash algorithm. */
     smartlist_add(chunks, tok->args[1]);
     /* Commit's authority ed25519 identity key. */
@@ -3367,27 +3377,21 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
     }
   }
 
-  /* If this is a vote document, try to extract the shared randomness
-   * ed25519 key if there is one. Make sure that a cert chain is included to
-   * certify the key. Then extract commitments. */
+  /* If this is a vote document, check if information about the shared
+     randomness protocol is included, and extract it. */
   if (ns->type == NS_TYPE_VOTE) {
     /* Does this authority participates in the SR protocol? */
     tok = find_opt_by_keyword(tokens, K_SR_FLAG);
-    if (tok != NULL) {
-      /* Note that this vote is participating in the protocol. */
+    if (tok) {
       ns->sr_info.participate = 1;
-      directory_token_t *sign_cert_tok =
-        find_opt_by_keyword(tokens, K_SIGNING_CERT_ED);
-      /* Get shared randomness cert if the required info is here. */
-      if (sign_cert_tok) {
-        if (extract_ed25519_keys_from_vote(sign_cert_tok, ns) < 0) {
-          log_warn(LD_GENERAL, "Corrupted ed25519 information in vote!");
-          goto err;
-        }
+      /* Get the ed25519 identity key of voter (required for SR protocol). */
+      if (extract_ed25519_keys_from_vote(ns, tokens) < 0) {
+        log_warn(LD_GENERAL, "Corrupted ed25519 information in vote!");
+        goto err;
       }
-      ns->sr_info.commits = smartlist_new();
-      if (extract_shared_random_commitments(ns, tokens) < 0) {
-        log_warn(LD_DIR, "Unable to parse commitments");
+      /* Get the SR commitments and reveals from the vote. */
+      if (extract_shared_random_commits(ns, tokens) < 0) {
+        log_warn(LD_DIR, "Unable to parse commits");
         goto err;
       }
     }
