@@ -4483,7 +4483,7 @@ typedef struct {
    * protocol. This is a consensus parameter which tells a dirauth how many
    * vote we need that advertise support for the procotol in order to vote
    * for shared random values. */
-  int NumSRParticipants;
+  int AuthDirNumSRVAgreements;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */
