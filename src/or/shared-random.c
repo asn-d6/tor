@@ -765,22 +765,38 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
     goto end;
   }
 
-  /* Now that we have the most frequent SR value, get it's object so we can
-   * know the amount of time it has been seen and decide on majority. */
+  /* Now that we have the most frequent SRV, get its object and check if it has
+     been voted by enough people to be accepted. */
   obj = digest256map_get(sr_values, value);
   tor_assert(obj);
-  srv = NULL;
-  /* Check if the object found has reached majority. */
-  if (obj->count >= ((smartlist_len(votes) / 2) + 1)) {
-    srv = obj->srv;
+
+  {  /* Check if this SRV has reached majority. */
+    int n_voters = get_n_authorities(V3_DIRINFO);
+    int votes_required_for_majority = (n_voters / 2) + 1;
+
+    if (obj->count < votes_required_for_majority) {
+      log_warn(LD_DIR, "Didn't reach majority for SRV!");
+      goto end;
+    }
   }
+
+  { /* Check if this SRV has enough votes according to NumSRParticipants */
+    int num_required_agreements = decide_num_participants(options);
+
+    if (obj->count < required_agreements) {
+      log_warn(LD_DIR, "Didn't reach superagreement for SRV!");
+      goto end;
+    }
+  }
+
+  /* We found an SRV that we can use! Habemus SRV! */
+  srv = obj->srv;
 
   {
     /** XXX debugging */
     char decoded[HEX_DIGEST256_LEN + 1];
     base16_encode(decoded, sizeof(decoded), (char *) value, DIGEST256_LEN);
-    log_warn(LD_DIR, "[SR] \t Most frequent SRV: %s (count: %d%s)", decoded,
-             obj->count, srv == NULL ? "" : ", majority!");
+    log_warn(LD_DIR, "[SR] \t Chosen SRV: %s (%d votes)", decoded, obj->count);
   }
 
  end:
@@ -1153,7 +1169,6 @@ end:
 char *
 sr_get_string_for_consensus(smartlist_t *votes)
 {
-  int num_participants, num_sr_votes = 0;
   char *srv_str;
   const or_options_t *options = get_options();
 
@@ -1165,25 +1180,6 @@ sr_get_string_for_consensus(smartlist_t *votes)
              options->AuthDirSharedRandomness);
     goto end;
   }
-
-  /* Do we have enough SR participants so we can put the SRV(s) in the
-   * consensus? */
-  SMARTLIST_FOREACH_BEGIN(votes, networkstatus_t *, v) {
-    if (v->sr_info.participate) {
-      num_sr_votes++;
-    }
-  } SMARTLIST_FOREACH_END(v);
-  /* Get the required number of participants and stop if we haven't reach
-   * that limit. */
-  num_participants = decide_num_participants(options);
-  if (num_sr_votes < num_participants) {
-    log_warn(LD_DIR, "[SR] Not enough participants. Need %d, have %d",
-             num_participants, num_sr_votes);
-    goto end;
-  }
-  log_warn(LD_DIR, "[SR] We have enough participants! Needed %d, have %d",
-           num_participants, num_sr_votes);
-
 
   /* XXX: There is maybe a way to merge this with get_srv_ns_lines() and
    * have a more clean common interface for both the vote and consensus when
