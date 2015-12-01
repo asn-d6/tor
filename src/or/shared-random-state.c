@@ -46,11 +46,6 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
   VAR(#member, conftype, member, initvalue)
 /* Our persistent state magic number. Yes we got the 42s! */
 #define SR_DISK_STATE_MAGIC 42424242
-
-/* Shared randomness protocol starts at 00:00 UTC */
-#define SHARED_RANDOM_START_HOUR 00
-/* A protocol round is completed after N seconds */
-#define SHARED_RANDOM_VOTING_INTERVAL 3600
 /* Each protocol phase has 12 rounds  */
 /* XXX: Testing: #define SHARED_RANDOM_N_ROUNDS 12 */
 #define SHARED_RANDOM_N_ROUNDS 3
@@ -122,6 +117,25 @@ get_phase_from_str(const char *name)
   return phase;
 }
 
+/* Return the voting interval of the tor vote subsystem. */
+static int
+get_voting_interval(void)
+{
+  /* Get the active voting interval. Same for both a testing and real
+   * network. We voluntarily ignore the "InitialVotingInterval" since it
+   * complexifies things and it doesn't affect the SR protocol. */
+  return get_options()->V3AuthVotingInterval;
+}
+
+/* Given the time <b>now</b>, return the start time of the current round of
+ * the SR protocol. For example, if it's 23:47:08, the current round thus
+ * started at 23:47:00 for a voting interval of 10 seconds. */
+static time_t
+get_start_time_of_current_round(time_t now)
+{
+  return now - (now % get_voting_interval());
+}
+
 /* Return the time we should expire the state file created at <b>now</b>.
  * We expire the state file in the beginning of the next protocol run. */
 STATIC time_t
@@ -131,15 +145,9 @@ get_state_valid_until_time(time_t now)
   int current_round, voting_interval, rounds_left, beginning_of_current_round;
   time_t valid_until;
 
-  /* Get the active voting interval. */
-  if (get_options()->TestingTorNetwork) {
-    voting_interval = get_options()->V3AuthVotingInterval;
-  } else {
-    voting_interval = SHARED_RANDOM_VOTING_INTERVAL;
-  }
-
+  voting_interval = get_voting_interval();
   /* Find the time the current round started. */
-  beginning_of_current_round = now - (now % voting_interval);
+  beginning_of_current_round = get_start_time_of_current_round(now);
 
   /* Find how many rounds are left till the end of the protocol run */
   current_round = (now / voting_interval) % total_rounds;
@@ -152,7 +160,7 @@ get_state_valid_until_time(time_t now)
   { /* Logging */
     char tbuf[ISO_TIME_LEN + 1];
     format_iso_time(tbuf, valid_until);
-    log_debug(LD_DIR, "[SR] Valid until time for state set to %s.", tbuf);
+    log_warn(LD_DIR, "[SR] Valid until time for state set to %s.", tbuf);
   }
 
   return valid_until;
@@ -166,19 +174,11 @@ get_sr_protocol_phase(time_t valid_after)
 {
   /* Shared random protocol has two phases, commit and reveal. */
   int total_periods = SHARED_RANDOM_N_ROUNDS * 2;
-  int voting_interval;
   int current_slot;
-
-  /* Get the active voting interval. */
-  if (get_options()->TestingTorNetwork) {
-    voting_interval = get_options()->V3AuthVotingInterval;
-  } else {
-    voting_interval = SHARED_RANDOM_VOTING_INTERVAL;
-  }
 
   /* Split time into slots of size 'voting_interval'. See which slot we are
      currently into, and find which phase it corresponds to. */
-  current_slot = (valid_after / voting_interval) % total_periods;
+  current_slot = (valid_after / get_voting_interval()) % total_periods;
 
   if (current_slot < SHARED_RANDOM_N_ROUNDS) {
     return SR_PHASE_COMMIT;
@@ -985,35 +985,40 @@ sr_state_get_commits(void)
  * <b>valid_after</b>. Don't call this function twice in the same voting
  * period. */
 void
-sr_state_update(time_t valid_after)
+sr_state_update(time_t now)
 {
+  time_t next_round_time;
+  sr_phase_t next_phase;
+
   tor_assert(sr_state);
 
-  /* Get the new protocol phase according to the current hour */
-  sr_phase_t new_phase = get_sr_protocol_phase(valid_after);
+  /* Get time of the next round so we can know which phase is coming up. */
+  next_round_time =
+    get_start_time_of_current_round(now) + get_voting_interval();
+  next_phase = get_sr_protocol_phase(next_round_time);
 
   /* Are we in a phase transition that is the next phase is not the same as
    * the current one? */
-  if (is_phase_transition(new_phase)) {
-    switch (new_phase) {
+  if (is_phase_transition(next_phase)) {
+    switch (next_phase) {
     case SR_PHASE_COMMIT:
       /* We were in the reveal phase or we are just starting so this is a
        * new protocol run. */
-      new_protocol_run(valid_after);
+      new_protocol_run(next_round_time);
       break;
     case SR_PHASE_REVEAL:
       /* We were in the commit phase thus now in reveal. */
       break;
     }
     /* Set the new phase for this round */
-    sr_state->phase = new_phase;
+    sr_state->phase = next_phase;
   } else if (sr_state->phase == SR_PHASE_COMMIT &&
              digestmap_size(sr_state->commitments) == 0) {
     /* We are _NOT_ in a transition phase so if we are in the commit phase
      * and have no commit, generate one. Chances are that we are booting up
      * so let's have a commit in our state for the next voting period. */
     sr_commit_t *our_commitment =
-      sr_generate_our_commitment(valid_after, get_my_v3_authority_cert());
+      sr_generate_our_commitment(next_round_time, get_my_v3_authority_cert());
     if (our_commitment) {
       /* Add our commitment to our state. In case we are unable to create one
        * (highly unlikely), we won't vote for this protocol run since our
@@ -1033,7 +1038,7 @@ sr_state_update(time_t valid_after)
 
   { /* XXX: debugging. */
     char tbuf[ISO_TIME_LEN + 1];
-    format_iso_time(tbuf, valid_after);
+    format_iso_time(tbuf, next_round_time);
     log_warn(LD_DIR, "[SR] ------------------------------");
     log_warn(LD_DIR, "[SR] State prepared for new voting period (%s). "
              "Current phase is %s (%d/%d).",

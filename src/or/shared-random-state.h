@@ -91,7 +91,7 @@ void sr_state_remove_commit(const ed25519_public_key_t *key);
 void sr_state_set_commit_reveal(sr_commit_t *commit,
                                 const char *encoded_reveal);
 
-void sr_state_update(time_t valid_after);
+void sr_state_update(time_t now);
 int sr_state_init(int save_to_disk);
 void sr_state_save(void);
 void sr_state_free(void);
