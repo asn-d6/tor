@@ -1222,16 +1222,6 @@ sr_get_string_for_consensus(smartlist_t *votes)
   return NULL;
 }
 
-/* Prepare the shared random state we are going to be using for the upcoming
- * voting period at <b>valid_after</b>. This function should be called once
- * at the beginning of each new voting period. */
-void
-sr_prepare_new_voting_period(time_t valid_after)
-{
-  /* Make sure our state is coherent for the next voting period. */
-  sr_state_update(valid_after);
-}
-
 /* Update the SRV(s) that the majority has decided once the consensus is
  * ready to be posted. */
 void
@@ -1244,4 +1234,7 @@ sr_decide_srv_post_consensus(void)
   /* Ownership of all object have been passed to the state so simply reset
    * the array for the next period without freeing the object. */
   post_consensus_srv[0] = post_consensus_srv[1] = NULL;
+
+  /* Make sure our state is coherent for the next voting period. */
+  sr_state_update(time(NULL));
 }
