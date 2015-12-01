@@ -229,6 +229,7 @@ state_free(sr_state_t *state)
 static sr_state_t *
 state_new(const char *fname)
 {
+  time_t now = time(NULL);
   sr_state_t *new_state = tor_malloc_zero(sizeof(*new_state));
   /* If file name is not provided, use default. */
   if (fname == NULL) {
@@ -237,9 +238,13 @@ state_new(const char *fname)
   new_state->fname = tor_strdup(fname);
   new_state->version = SR_PROTO_VERSION;
   new_state->commitments = digestmap_new();
-  new_state->phase = get_sr_protocol_phase(time(NULL));
-  /* XXX should this be called with the current time or the valid-after? */
-  new_state->valid_until = get_state_valid_until_time(time(NULL));
+  new_state->phase = get_sr_protocol_phase(now);
+  /* We can't use a valid-after time here since we don't have one if we are
+   * just botting for instance. In any case, we use now which is fine even
+   * though we are booting up at 23:45 since at the new protocol run (in 15
+   * min) this will be updated accordingly and in the meantime you won't
+   * participate in the SR protocol by a lack of reveal values. */
+  new_state->valid_until = get_state_valid_until_time(now);
   return new_state;
 }
 
@@ -313,13 +318,12 @@ disk_state_validate(sr_disk_state_t *state)
 
   tor_assert(state);
 
-  now = time(NULL);
-
   /* Do we support the protocol version in the state?. */
   if (state->Version > SR_PROTO_VERSION) {
     goto invalid;
   }
   /* If the valid until time is before now, we shouldn't use that state. */
+  now = time(NULL);
   if (state->ValidUntil < now) {
     log_warn(LD_DIR, "[SR] SR state on disk has expired.");
     goto invalid;
@@ -470,6 +474,7 @@ disk_state_parse(sr_disk_state_t *new_disk_state)
 
   new_state->version = new_disk_state->Version;
   new_state->valid_until = new_disk_state->ValidUntil;
+  /* XXX: useless... */
   (void) get_phase_from_str;
 
   /* Parse the shared random values. */
@@ -1146,8 +1151,8 @@ sr_state_init(int save_to_disk)
         sr_state_t *new_state = state_new(default_fname);
         sr_disk_state_t *new_disk_state = disk_state_new();
         state_set(new_state);
-        /* It's important to set the global disk state pointer since the save
-         * call will use a lot of functions that need to query it. */
+        /* It's important to set our disk state pointer since the save call
+         * below uses it to synchronized it with our memory state.  */
         disk_state_set(new_disk_state);
         /* No entry, let's save our new state to disk. */
         if (save_to_disk && disk_state_save_to_disk() < 0) {
