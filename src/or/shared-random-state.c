@@ -321,7 +321,7 @@ disk_state_validate(sr_disk_state_t *state)
   }
   /* If the valid until time is before now, we shouldn't use that state. */
   if (state->ValidUntil < now) {
-    log_warn(LD_GENERAL, "[SR] SR state on disk has expired.");
+    log_warn(LD_DIR, "[SR] SR state on disk has expired.");
     goto invalid;
   }
 
