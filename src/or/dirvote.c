@@ -2723,10 +2723,6 @@ dirvote_perform_vote(void)
   if (!(ns = dirserv_generate_networkstatus_vote_obj(key, cert)))
     return -1;
 
-  /* Update the shared randomness state for this upcoming voting period
-  XXX Is this REALLY the best place to do this? */
-  sr_prepare_new_voting_period(ns->valid_after);
-
   contents = format_networkstatus_vote(key, ns);
   networkstatus_vote_free(ns);
   if (!contents)
