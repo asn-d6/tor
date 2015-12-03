@@ -294,6 +294,96 @@ test_encoding(void *arg)
   ;
 }
 
+/* Test anything that has to do with SR protocol and vote. */
+static void
+test_vote(void *arg)
+{
+  int ret;
+  authority_cert_t *auth_cert = NULL;
+  time_t now = time(NULL);
+  sr_commit_t *our_commit = NULL;
+
+  (void) arg;
+
+  {  /* Setup a minimal dirauth environment for this test  */
+    or_options_t *options = get_options_mutable();
+
+    auth_cert = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
+    tt_assert(auth_cert);
+
+    options->AuthoritativeDir = 1;
+    tt_int_op(0, ==, load_ed_keys(options, now));
+
+    sr_state_init(0);
+    /* Set ourself in reveal phase so we can parse the reveal value in the
+     * vote as well. */
+    set_sr_phase(SR_PHASE_REVEAL);
+  }
+
+  /* Generate our commit object and validate it has the appropriate field
+   * that we can then use to build a representation that we'll find in a
+   * vote coming from the network. */
+  {
+    sr_commit_t *saved_commit;
+    our_commit = sr_generate_our_commitment(now, auth_cert);
+    tt_assert(our_commit);
+    sr_state_add_commit(our_commit);
+    /* Make sure it's there. */
+    saved_commit = sr_state_get_commit_by_rsa(our_commit->rsa_identity_fpr);
+    tt_assert(saved_commit);
+  }
+
+  {
+    smartlist_t *chunks = smartlist_new();
+    smartlist_t *tokens = smartlist_new();
+    /* Get our vote line and validate it. */
+    char *lines = sr_get_string_for_vote();
+    tt_assert(lines);
+    /* Split the lines. We expect 2 here. */
+    ret = smartlist_split_string(chunks, lines, "\n", SPLIT_IGNORE_BLANK, 0);
+    tt_int_op(ret, ==, 2);
+    tt_str_op(smartlist_get(chunks, 0), OP_EQ, "shared-rand-participate");
+    /* Get our commitment line and will validate it agains our commit. The
+     * format is as follow:
+     *    "shared-rand-commitment" SP identity SP algname SP COMMIT [SP REVEAL] NL
+     */
+    char *commit_line = smartlist_get(chunks, 1);
+    tt_assert(commit_line);
+    ret = smartlist_split_string(tokens, commit_line, " ", 0, 0);
+    tt_int_op(ret, ==, 5);
+    tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-commitment");
+    tt_str_op(smartlist_get(tokens, 1), OP_EQ,
+              our_commit->auth_fingerprint);
+    tt_str_op(smartlist_get(tokens, 2), OP_EQ,
+              crypto_digest_algorithm_get_name(DIGEST_SHA256));
+    tt_str_op(smartlist_get(tokens, 3), OP_EQ, our_commit->encoded_commit);
+    tt_str_op(smartlist_get(tokens, 4), OP_EQ, our_commit->encoded_reveal);
+
+    /* Finally, does this vote line creates a valid commit object? */
+    smartlist_t *args = smartlist_new();
+    smartlist_add(args, smartlist_get(tokens, 2));
+    smartlist_add(args, smartlist_get(tokens, 1));
+    smartlist_add(args, our_commit->rsa_identity_fpr);
+    smartlist_add(args, smartlist_get(tokens, 3));
+    smartlist_add(args, smartlist_get(tokens, 4));
+    sr_commit_t *parsed_commit = sr_parse_commit(args);
+    tt_assert(parsed_commit);
+    tt_mem_op(parsed_commit, ==, our_commit, sizeof(*our_commit));
+
+    /* Clean up */
+    sr_commit_free(parsed_commit);
+    SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
+    smartlist_free(chunks);
+    SMARTLIST_FOREACH(tokens, char *, s, tor_free(s));
+    smartlist_free(tokens);
+    smartlist_clear(args);
+    smartlist_free(args);
+  }
+
+ done:
+  sr_commit_free(our_commit);
+}
+
 struct testcase_t sr_tests[] = {
   { "get_sr_protocol_phase", test_get_sr_protocol_phase, TT_FORK,
     NULL, NULL },
@@ -302,6 +392,8 @@ struct testcase_t sr_tests[] = {
   { "encoding", test_encoding, TT_FORK,
     NULL, NULL },
   { "get_state_valid_until_time", test_get_state_valid_until_time, TT_FORK,
+    NULL, NULL },
+  { "vote", test_vote, TT_FORK,
     NULL, NULL },
   END_OF_TESTCASES
 };

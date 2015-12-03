@@ -793,7 +793,7 @@ is_phase_transition(sr_phase_t next_phase)
   return sr_state->phase != next_phase;
 }
 
-STATIC sr_commit_t *
+static sr_commit_t *
 state_query_get_commit_by_rsa(const char *rsa_fpr)
 {
   tor_assert(rsa_fpr);
