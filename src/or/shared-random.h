@@ -113,7 +113,6 @@ void sr_prepare_new_voting_period(time_t valid_after);
 void sr_decide_srv_post_consensus(void);
 
 void sr_commit_free(sr_commit_t *commit);
-int sr_verify_commit_sig(const sr_commit_t *commit);
 
 void sr_handle_received_commits(smartlist_t *commits,
                                 const ed25519_public_key_t *voter_key);
