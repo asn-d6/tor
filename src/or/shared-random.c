@@ -173,10 +173,10 @@ verify_commit_and_reveal(const sr_commit_t *commit)
   {
     /* We first hash the reveal we just received. */
     char received_hashed_reveal[sizeof(commit->hashed_reveal)];
-    if (crypto_digest256(received_hashed_reveal,
-                         commit->encoded_reveal,
-                         sizeof(commit->encoded_reveal),
-                         DIGEST_SHA256) < 0) {
+    /* Use the invariant length since the encoded reveal variable has an
+     * extra byte for the NULL terminated byte. */
+    if (crypto_digest256(received_hashed_reveal, commit->encoded_reveal,
+                         SR_REVEAL_BASE64_LEN, DIGEST_SHA256) < 0) {
       /* Unable to digest the reveal blob, this is unlikely. */
       goto invalid;
     }
@@ -260,8 +260,9 @@ error:
   return -1;
 }
 
-/* Parse the b64 blob at <b>encoded</b> containin reveal information
-   and store the information in-place in <b>commit</b>. */
+/* Parse the b64 blob at <b>encoded</b> containin reveal information and
+ * store the information in-place in <b>commit</b>. Return 0 on success else
+ * a negative value. */
 STATIC int
 reveal_decode(const char *encoded, sr_commit_t *commit)
 {
@@ -311,7 +312,7 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
  * buffer large enough to put the base64-encoded reveal construction. The
  * format is as follow:
  *     REVEAL = base64-encode( TIMESTAMP || RN )
- * Return 0 on success else a negative value.
+ * Return base64 encoded length on success else a negative value.
  */
 STATIC int
 reveal_encode(sr_commit_t *commit, char *dst, size_t len)
@@ -337,6 +338,7 @@ reveal_encode(sr_commit_t *commit, char *dst, size_t len)
 /* Encode the given commit object to dst which is a buffer large enough to
  * put the base64-encoded commit. The format is as follow:
  *     COMMIT = base64-encode( H(REVEAL) || TIMESTAMP )
+ * Return base64 encoded length on success else a negative value.
  */
 STATIC int
 commit_encode(sr_commit_t *commit, char *dst, size_t len)
@@ -906,9 +908,10 @@ sr_generate_our_commitment(time_t timestamp, authority_cert_t *my_rsa_cert)
   case DIGEST_SHA256:
     /* Only sha256 is supported and the default. */
   default:
+    /* The invariant length is used here since the encoded reveal variable
+     * as an extra byte added for the NULL terminated byte. */
     if (crypto_digest256(commit->hashed_reveal, commit->encoded_reveal,
-                         sizeof(commit->encoded_reveal),
-                         DIGEST_SHA256) < 0) {
+                         SR_REVEAL_BASE64_LEN, DIGEST_SHA256) < 0) {
       goto error;
     }
     break;
