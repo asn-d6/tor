@@ -137,27 +137,17 @@ test_get_state_valid_until_time(void *arg)
 
 extern const char AUTHORITY_CERT_1[];
 
-
-/* In this test we are going to generate our own commit/reveal values
-   and valida them.
-
-   We first generate our values, and then we parse them as if they
-   were received from the network. After we parse both the commit and
-   the reveal, we verify that they inded match. */
+/* In this test we are going to generate a sr_commit_t object and validate
+ * it. We first generate our values, and then we parse them as if they were
+ * received from the network. After we parse both the commit and the reveal,
+ * we verify that they indeed match. */
 static void
-test_generate_commitment(void *arg)
+test_sr_commit(void *arg)
 {
   authority_cert_t *auth_cert = NULL;
   time_t now = time(NULL);
-  sr_commit_t *saved_commit;
-  smartlist_t *commits = smartlist_new();
-
-  (void) arg;
-
-  /* This is the commit we generated */
   sr_commit_t *our_commit = NULL;
-  /* This is our own commit that we parsed */
-  sr_commit_t *parsed_commit = tor_malloc_zero(sizeof(sr_commit_t));
+  smartlist_t *args = smartlist_new();
 
   (void) arg;
 
@@ -169,58 +159,149 @@ test_generate_commitment(void *arg)
 
     options->AuthoritativeDir = 1;
     tt_int_op(0, ==, load_ed_keys(options, now));
-
-    sr_state_init(0);
-    set_sr_phase(SR_PHASE_COMMIT);
   }
 
-  { /* Generate our commit/reveal */
+  /* Generate our commit object and validate it has the appropriate field
+   * that we can then use to build a representation that we'll find in a
+   * vote coming from the network. */
+  {
+    sr_commit_t test_commit;
     our_commit = sr_generate_our_commitment(now, auth_cert);
     tt_assert(our_commit);
+    /* Default and only supported algorithm for now. */
+    tt_assert(our_commit->alg == DIGEST_SHA256);
+    /* We should have a reveal value. */
+    tt_assert(commit_has_reveal_value(our_commit));
+    /* We should have a random value. */
+    tt_assert(!tor_mem_is_zero(our_commit->random_number,
+                               sizeof(our_commit->random_number)));
+    /* Commit and reveal timestamp should be the same. */
+    tt_int_op(our_commit->commit_ts, ==, our_commit->reveal_ts);
+    /* We should have a hashed reveal. */
+    tt_assert(!tor_mem_is_zero(our_commit->hashed_reveal,
+                               sizeof(our_commit->hashed_reveal)));
+    /* Do we have a valid encoded commit and reveal. Note the following only
+     * tests if the generated values are correct. Their could be a bug in
+     * the decode function but we test them seperately. */
+    tt_int_op(0, ==, reveal_decode(our_commit->encoded_reveal,
+                                   &test_commit));
+    tt_int_op(0, ==, commit_decode(our_commit->encoded_commit,
+                                   &test_commit));
   }
 
-  { /* Parse our own commit during the commit phase */
-    smartlist_add(commits, our_commit);
-    sr_handle_received_commits(commits, &our_commit->auth_identity);
-    smartlist_clear(commits);
-  }
-
-  { /* Check that it was accepted */
-    saved_commit = state_query_get_commit_by_rsa(our_commit->rsa_identity_fpr);
-    tt_assert(saved_commit);
-    tt_assert(!commit_has_reveal_value(saved_commit));
-  }
-
-  /* Fast forward to reveal phase! Vzoom! */
-  set_sr_phase(SR_PHASE_REVEAL);
-
-  { /* Parse our own commit & reveal now! */
-    smartlist_add(commits, our_commit);
-    sr_handle_received_commits(commits, &our_commit->auth_identity);
-    smartlist_clear(commits);
-  }
-
-  { /* Check that the reveal was accepted and that the reveal info matches. */
-    saved_commit = state_query_get_commit_by_rsa(our_commit->rsa_identity_fpr);
-    tt_assert(saved_commit);
-    tt_assert(tor_memeq(saved_commit->encoded_reveal,
-                        our_commit->encoded_reveal,
-                        sizeof(our_commit->encoded_reveal)));
+  /* We'll build a list of values from our commit that our parsing function
+   * takes from a vote line and see if we can parse it correctly. */
+  {
+    sr_commit_t *parsed_commit;
+    smartlist_add(args,
+                  tor_strdup(crypto_digest_algorithm_get_name(our_commit->alg)));
+    smartlist_add(args, our_commit->auth_fingerprint);
+    smartlist_add(args, our_commit->rsa_identity_fpr);
+    smartlist_add(args, our_commit->encoded_commit);
+    smartlist_add(args, our_commit->encoded_reveal);
+    parsed_commit = sr_parse_commit(args);
+    tt_assert(parsed_commit);
+    /* That parsed commit should be _EXACTLY_ like our original commit. */
+    tt_mem_op(parsed_commit, OP_EQ, our_commit, sizeof(*parsed_commit));
+    /* Cleanup */
+    tor_free(smartlist_get(args, 0)); /* strdup here. */
+    smartlist_clear(args);
+    sr_commit_free(parsed_commit);
   }
 
  done:
-  smartlist_free(commits);
-  tor_free(parsed_commit);
+  smartlist_free(args);
+  sr_commit_free(our_commit);
+}
+
+/* Test the encoding and decoding function for commit and reveal values. */
+static void
+test_encoding(void *arg)
+{
+  (void) arg;
+  int ret, duper_rand = 42;
+  /* Random number is 32 bytes. */
+  char raw_rand[32];
+  uint64_t ts = 1449159312;
+  char hashed_rand[DIGEST256_LEN], hashed_reveal[DIGEST256_LEN];
+  sr_commit_t parsed_commit;
+
+  /* Encoded commit is: base64-encode( H(H(42)) || 1449159312). Remember
+   * that we do no expose the raw bytes of our PRNG to the network thus
+   * explaining the double H(). */
+  static const char *encoded_commit =
+    "VnpHIJFkjNo+AEQGwCA5mnTu0/XXN5WRRQte3+GtK/oAAAAAVmBqkA==";
+  /* Encoded reveal is: base64-encode( H(42) || 1449159312). */
+  static const char *encoded_reveal =
+    "AAAAAFZgapAS87tMUHatqR+rOln543nqMA+98YfuQEkicHgAbDlXQQ==";
+
+  /* Set up our raw random bytes array. */
+  memset(raw_rand, 0, sizeof(raw_rand));
+  memcpy(raw_rand, &duper_rand, sizeof(duper_rand));
+  /* Hash random number. */
+  ret = crypto_digest256(hashed_rand, raw_rand, sizeof(raw_rand),
+                         DIGEST_SHA256);
+  tt_int_op(0, ==, ret);
+  /* Hash reveal value. */
+  tt_int_op(SR_REVEAL_BASE64_LEN, ==, strlen(encoded_reveal));
+  ret = crypto_digest256(hashed_reveal, encoded_reveal,
+                         strlen(encoded_reveal), DIGEST_SHA256);
+  tt_int_op(0, ==, ret);
+  tt_int_op(SR_COMMIT_BASE64_LEN, ==, strlen(encoded_commit));
+
+  /* Test our commit/reveal decode functions. */
+  {
+    /* Test the reveal encoded value. */
+    tt_int_op(0, ==, reveal_decode(encoded_reveal, &parsed_commit));
+    tt_uint_op(ts, ==, parsed_commit.reveal_ts);
+    tt_mem_op(hashed_rand, OP_EQ, parsed_commit.random_number,
+              sizeof(hashed_rand));
+
+    /* Test the commit encoded value. */
+    memset(&parsed_commit, 0, sizeof(parsed_commit));
+    tt_int_op(0, ==, commit_decode(encoded_commit, &parsed_commit));
+    tt_uint_op(ts, ==, parsed_commit.commit_ts);
+    tt_mem_op(encoded_commit, OP_EQ, parsed_commit.encoded_commit,
+              sizeof(parsed_commit.encoded_commit));
+    tt_mem_op(hashed_reveal, OP_EQ, parsed_commit.hashed_reveal,
+              sizeof(hashed_reveal));
+  }
+
+  /* Test our commit/reveal encode functions. */
+  {
+    /* Test the reveal encode. */
+    char encoded[SR_REVEAL_BASE64_LEN + 1];
+    parsed_commit.commit_ts = ts;
+    memcpy(parsed_commit.random_number, hashed_rand,
+           sizeof(parsed_commit.random_number));
+    ret = reveal_encode(&parsed_commit, encoded, sizeof(encoded));
+    tt_int_op(SR_REVEAL_BASE64_LEN, ==, ret);
+    tt_mem_op(encoded_reveal, OP_EQ, encoded, strlen(encoded_reveal));
+  }
+
+  {
+    /* Test the commit encode. */
+    char encoded[SR_COMMIT_BASE64_LEN + 1];
+    parsed_commit.commit_ts = ts;
+    memcpy(parsed_commit.hashed_reveal, hashed_reveal,
+           sizeof(parsed_commit.hashed_reveal));
+    ret = commit_encode(&parsed_commit, encoded, sizeof(encoded));
+    tt_int_op(SR_COMMIT_BASE64_LEN, ==, ret);
+    tt_mem_op(encoded_commit, OP_EQ, encoded, strlen(encoded_commit));
+  }
+
+ done:
+  ;
 }
 
 struct testcase_t sr_tests[] = {
   { "get_sr_protocol_phase", test_get_sr_protocol_phase, TT_FORK,
     NULL, NULL },
-  { "generate_commitment", test_generate_commitment, TT_FORK,
+  { "sr_commit", test_sr_commit, TT_FORK,
+    NULL, NULL },
+  { "encoding", test_encoding, TT_FORK,
     NULL, NULL },
   { "get_state_valid_until_time", test_get_state_valid_until_time, TT_FORK,
     NULL, NULL },
   END_OF_TESTCASES
 };
-
-
