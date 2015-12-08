@@ -1501,8 +1501,10 @@ router_pick_directory_server_impl(dirinfo_type_t type, int flags,
     if ((type & EXTRAINFO_DIRINFO) &&
         !router_supports_extrainfo(node->identity, is_trusted_extrainfo))
       continue;
-    if (for_guard && node->using_as_guard)
-      continue; /* Don't make the same node a guard twice. */
+    /* Don't make the same node a guard twice and ensure node can be
+       used as a guard. */
+    if (for_guard && (node->using_as_guard || !node->is_possible_guard))
+      continue;
     if (try_excluding &&
         routerset_contains_routerstatus(options->ExcludeNodes, status,
                                         country)) {
