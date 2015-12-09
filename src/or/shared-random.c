@@ -716,6 +716,34 @@ get_n_voters_for_srv_agreement(void)
                                  num_dirauths);
 }
 
+/** Return 1 if we should we keep the SRV voted by <b>n_agreements</b>
+ *  auths. Return 0 if we should ignore it. */
+static int
+should_keep_srv(int n_agreements)
+{
+  /* Check if the most popular SRV has reached majority. */
+  int n_voters = get_n_authorities(V3_DIRINFO);
+  int votes_required_for_majority = (n_voters / 2) + 1;
+
+  if (n_agreements < votes_required_for_majority) {
+    log_warn(LD_DIR, "Didn't reach majority for SRV [%d/%d]!",
+             n_agreements, votes_required_for_majority);
+    return 0;
+  }
+
+  /* Check if the most popular SRV has enough votes according to
+   * NumSRVAgreements */
+  int num_required_agreements = get_n_voters_for_srv_agreement();
+
+  if (n_agreements < num_required_agreements) {
+    log_warn(LD_DIR, "Didn't reach superagreement for SRV [%d/%d]!",
+             n_agreements, num_required_agreements);
+    return 0;
+  }
+
+  return 1;
+}
+
 /* Using a list of <b>votes</b>, return the SRV object from them that does
  * have a majority consensus. If <b>current</b> is set, we look for the
  * current SRV value else the previous one. NULL is returned if no value
@@ -735,20 +763,28 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
 
   tor_assert(votes);
 
+  /* We use this map to reference count each SRV */
   sr_values = digest256map_new();
+  /* We use this list to find the most frequent SRV. */
   sr_digests = smartlist_new();
+
+  /* Walk over votes and register any SRVs found. */
   SMARTLIST_FOREACH_BEGIN(votes, networkstatus_t *, v) {
     if (!v->sr_info.participate) {
       /* Ignore vote that do no participate. */
       continue;
     }
-    /* Choose between the current or previous SR value. */
-    (current == 1) ?
-      (srv = smartlist_get(v->sr_info.current_srv, 0)) :
-      (srv = smartlist_get(v->sr_info.previous_srv, 0));
+
+    /* Do we want previous or current SRV? */
+    if (current) {
+      srv = smartlist_get(v->sr_info.current_srv, 0);
+    } else {
+      srv = smartlist_get(v->sr_info.previous_srv, 0);
+    }
+
+    /* If an SRV was found, add it to our list and also count how many votes
+     * have mentioned this exact SRV. */
     if (srv) {
-      /* Add digest to the list so we can sort it afterwards by the most
-       * frequent digest. */
       smartlist_add(sr_digests, srv->value);
       obj = digest256map_get(sr_values, srv->value);
       if (obj == NULL) {
@@ -760,7 +796,7 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
     }
   } SMARTLIST_FOREACH_END(v);
 
-  /* Sort the digest list, the get most frequent call needs it. */
+  /* Sort the SRV list; it's required for finding its most frequent element. */
   smartlist_sort_digests256(sr_digests);
   value = smartlist_get_most_frequent_digest256(sr_digests);
   if (value == NULL) {
@@ -772,23 +808,9 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
   obj = digest256map_get(sr_values, value);
   tor_assert(obj);
 
-  {  /* Check if this SRV has reached majority. */
-    int n_voters = get_n_authorities(V3_DIRINFO);
-    int votes_required_for_majority = (n_voters / 2) + 1;
-
-    if (obj->count < votes_required_for_majority) {
-      log_warn(LD_DIR, "Didn't reach majority for SRV!");
-      goto end;
-    }
-  }
-
-  { /* Check if this SRV has enough votes according to NumSRVAgreements */
-    int num_required_agreements = get_n_voters_for_srv_agreement();
-
-    if (obj->count < num_required_agreements) {
-      log_warn(LD_DIR, "Didn't reach superagreement for SRV!");
-      goto end;
-    }
+  /* Was this SRV voted by enough auths for us to keep it? */
+  if (!should_keep_srv(obj->count)) {
+    goto end;
   }
 
   /* We found an SRV that we can use! Habemus SRV! */
