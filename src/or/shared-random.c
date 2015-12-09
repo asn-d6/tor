@@ -96,7 +96,13 @@ get_srv_status_from_str(const char *name)
 static sr_srv_t *
 srv_dup(const sr_srv_t *orig)
 {
-  sr_srv_t *dup = tor_malloc_zero(sizeof(sr_srv_t));
+  sr_srv_t *dup = NULL;
+
+  if (!orig) {
+    return NULL;
+  }
+
+  dup = tor_malloc_zero(sizeof(sr_srv_t));
   dup->status = orig->status;
   memcpy(dup->value, orig->value, sizeof(dup->value));
   return dup;
@@ -1226,12 +1232,8 @@ sr_get_string_for_consensus(smartlist_t *votes)
   /* Register any SRVs we decided to trust. */
   /* XXX a bit nasty to register these important things in a function called
      sr_get_string_for_consensus()... */
-  if (prev_srv) {
-    post_consensus_srv[0] = srv_dup(prev_srv);
-  }
-  if (cur_srv) {
-    post_consensus_srv[1]  = srv_dup(cur_srv);
-  }
+  post_consensus_srv[0] = srv_dup(prev_srv);
+  post_consensus_srv[1] = srv_dup(cur_srv);
 
   /* XXX: debugging. */
   log_warn(LD_DIR, "[SR] Shared random line(s) put in the consensus:");
