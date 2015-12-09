@@ -62,8 +62,9 @@ static config_var_t state_vars[] = {
   VAR("Commitment",             LINELIST_S, Commitments, NULL),
   V(Commitments,                LINELIST_V, NULL),
 
-  V(SharedRandPreviousValue,    LINELIST_V, NULL),
-  V(SharedRandCurrentValue,     LINELIST_V, NULL),
+  V(SharedRandValues,           LINELIST_V, NULL),
+  VAR("SharedRandPreviousValue",LINELIST_S, SharedRandValues, NULL),
+  VAR("SharedRandCurrentValue", LINELIST_S, SharedRandValues, NULL),
   { NULL, CONFIG_TYPE_OBSOLETE, 0, NULL }
 };
 
@@ -273,25 +274,13 @@ disk_state_free(sr_disk_state_t *state)
 static sr_disk_state_t *
 disk_state_new(void)
 {
-  config_line_t *line;
   sr_disk_state_t *new_state = tor_malloc_zero(sizeof(*new_state));
 
   new_state->magic_ = SR_DISK_STATE_MAGIC;
   new_state->Version = SR_PROTO_VERSION;
   new_state->ValidUntil = get_state_valid_until_time(time(NULL));
 
-  /* Shared random values. */
-  line = new_state->SharedRandPreviousValue =
-    tor_malloc_zero(sizeof(*line));
-  line->key = tor_strdup(dstate_prev_srv_key);
-  line = new_state->SharedRandCurrentValue=
-    tor_malloc_zero(sizeof(*line));
-  line->key = tor_strdup(dstate_cur_srv_key);
-
-  /* Init Commitments line. */
-  line = new_state->Commitments =
-    tor_malloc_zero(sizeof(*line));
-  line->key = tor_strdup(dstate_commit_key);
+  /* XXX Do we need to initialize Commitments and SharedRandValues here? */
 
   /* Init config format. */
   config_init(&state_format, new_state);
@@ -433,34 +422,39 @@ disk_state_parse_srv(const char *value, sr_srv_t *dst)
   return ret;
 }
 
-/* Parse the SharedRandPreviousValue line from the state. Return 0 on
- * success else -1. */
+/* Parse the SharedRandPreviousValue line from the state.
+ * Return 0 on success else -1. */
 static int
-disk_state_parse_previous_srv(sr_state_t *state,
-                              sr_disk_state_t *disk_state)
+disk_state_parse_sr_values(sr_state_t *state, sr_disk_state_t *disk_state)
 {
-  config_line_t *line = disk_state->SharedRandPreviousValue;
-  tor_assert(!strcasecmp(line->key, dstate_prev_srv_key));
-  if (line->value == NULL) {
-    return 0;
-  }
-  state->previous_srv = tor_malloc_zero(sizeof(*state->previous_srv));
-  return disk_state_parse_srv(line->value, state->previous_srv);
-}
+  config_line_t *line;
 
-/* Parse the SharedRandCurrentValue line from the state. Return 0 on success
- * else -1. */
-static int
-disk_state_parse_current_srv(sr_state_t *state,
-                             sr_disk_state_t *disk_state)
-{
-  config_line_t *line = disk_state->SharedRandCurrentValue;
-  tor_assert(!strcasecmp(line->key, dstate_cur_srv_key));
-  if (line->value == NULL) {
-    return 0;
+  for (line = disk_state->SharedRandValues; line; line = line->next) {
+    if (!strcasecmp(line->key, dstate_prev_srv_key)) {
+      /* Try to parse the previous SRV */
+      if (line->value == NULL) {
+        continue;
+      }
+      state->previous_srv = tor_malloc_zero(sizeof(*state->previous_srv));
+      if (disk_state_parse_srv(line->value, state->previous_srv) < 0) {
+        log_warn(LD_DIR, "Broken previous SRV line in state %s", line->value);
+        return -1;
+      }
+
+    } else if (!strcasecmp(line->key, dstate_cur_srv_key)) {
+      /* Try to parse the current SRV */
+      if (line->value == NULL) {
+        continue;
+      }
+      state->current_srv = tor_malloc_zero(sizeof(*state->current_srv));
+      if (disk_state_parse_srv(line->value, state->current_srv) < 0) {
+        log_warn(LD_DIR, "Broken cur SRV line in state %s", line->value);
+        return -1;
+      }
+    }
   }
-  state->current_srv = tor_malloc_zero(sizeof(*state->current_srv));
-  return disk_state_parse_srv(line->value, state->current_srv);
+
+  return 0;
 }
 
 /* Parse the given disk state and set a newly allocated state. On success,
@@ -478,10 +472,7 @@ disk_state_parse(sr_disk_state_t *new_disk_state)
   (void) get_phase_from_str;
 
   /* Parse the shared random values. */
-  if (disk_state_parse_previous_srv(new_state, new_disk_state) < 0) {
-    goto error;
-  }
-  if (disk_state_parse_current_srv(new_state, new_disk_state) < 0) {
+  if (disk_state_parse_sr_values(new_state, new_disk_state) < 0) {
     goto error;
   }
   /* Parse the commits. */
@@ -544,8 +535,7 @@ static void
 disk_state_reset(void)
 {
   config_free_lines(sr_disk_state->Commitments);
-  config_free_lines(sr_disk_state->SharedRandPreviousValue);
-  config_free_lines(sr_disk_state->SharedRandCurrentValue);
+  config_free_lines(sr_disk_state->SharedRandValues);
   config_free_lines(sr_disk_state->ExtraLines);
   memset(sr_disk_state, 0, sizeof(*sr_disk_state));
   sr_disk_state->magic_ = SR_DISK_STATE_MAGIC;
@@ -569,17 +559,19 @@ disk_state_update(void)
   sr_disk_state->ValidUntil = sr_state->valid_until;
 
   /* Shared random values. */
+  next = &sr_disk_state->SharedRandValues;
+  *next = NULL;
   if (sr_state->previous_srv != NULL) {
-    line = sr_disk_state->SharedRandPreviousValue =
-      tor_malloc_zero(sizeof(*line));
+    *next = line = tor_malloc_zero(sizeof(config_line_t));
     line->key = tor_strdup(dstate_prev_srv_key);
     disk_state_put_srv_line(sr_state->previous_srv, line);
+    next = &(line->next);
   }
   if (sr_state->current_srv != NULL) {
-    line = sr_disk_state->SharedRandCurrentValue =
-      tor_malloc_zero(sizeof(*line));
+    *next = line = tor_malloc_zero(sizeof(*line));
     line->key = tor_strdup(dstate_cur_srv_key);
     disk_state_put_srv_line(sr_state->current_srv, line);
+    next = &(line->next);
   }
 
   /* Parse the commitments and construct config line(s). */
