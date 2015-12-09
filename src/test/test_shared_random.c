@@ -384,6 +384,69 @@ test_vote(void *arg)
   sr_commit_free(our_commit);
 }
 
+const char *sr_state_str = "Version 1\n"
+  "ValidUntil 2666-04-20 07:16:00\n"
+  "Commitment sha256 RkoaSeZBiyJs23P6aOLEyUsumWwjWYnA+DQm1IaKXu8 FA3CEC2C99DC68D3166B9B6E4FA21A4026C2AB1C 7M8GdubCAAdh7WUG0DiwRyxTYRKji7HATa7LLJEZ/UAAAAAAVmfUSg== AAAAAFZn1EojfIheIw42bjK3VqkpYyjsQFSbv/dxNna3Q8hUEPKpOw==\n"
+  "Commitment sha256 2qZjhYjXODdx122TNUlegLLWWDe5R1B449vx2KU9hsI 41E89EDFBFBA44983E21F18F2230A4ECB5BFB543 17aUsYuMeRjd2N1r8yNyg7aHqRa6gf4z7QPoxxAZbp0AAAAAVmfUSg==\n"
+  "Commitment sha256 hujjN0PEfkQlOnBKTH0WlGPOs6PdYoe8tuEMeS6C4cw 36637026573A04110CF3E6B1D201FB9A98B88734 DDDYtripvdOU+XPEUm5xpU64d9IURSds1xSwQsgeB8oAAAAAVmfUSg==\n"
+  "SharedRandCurrentValue fresh F1D59E5B5D8A1334C61222C680ED54549ED9F7509E92845CC6DE90F4A8673852\n"
+  "SharedRandPreviousValue fresh AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n";
+
+/** Create an SR disk state, parse it and validate that the parsing went
+ *  well. Yes! */
+static void
+test_state_load_from_disk(void *arg)
+{
+  int ret;
+  char *dir = tor_strdup(get_fname("test_sr_state"));
+  char *sr_state_path = tor_strdup(get_fname("test_sr_state/sr_state"));
+  sr_state_t *the_sr_state = NULL;
+
+  (void) arg;
+
+  /* First try with a nonexistent path. */
+  ret = disk_state_load_from_disk_impl("NONEXISTENTNONEXISTENT");
+  tt_assert(ret == -ENOENT);
+
+  /* Now create a mock state directory and state file */
+#ifdef _WIN32
+  ret = mkdir(dir);
+#else
+  ret = mkdir(dir, 0700);
+#endif
+  tt_assert(ret == 0);
+  ret = write_str_to_file(sr_state_path, sr_state_str, 0);
+  tt_assert(ret == 0);
+
+  /* Try to load the directory itself. Should fail. */
+  ret = disk_state_load_from_disk_impl(dir);
+  tt_assert(ret == -EINVAL);
+
+  /* State should be non-existent at this point. */
+  the_sr_state = get_sr_state();
+  tt_assert(!the_sr_state);
+
+  /* Now try to load the correct file! */
+  ret = disk_state_load_from_disk_impl(sr_state_path);
+  tt_assert(ret == 0);
+
+  /* Check the content of the state */
+  /* XXX check more deeply!!! */
+  the_sr_state = get_sr_state();
+  tt_assert(the_sr_state);
+  tt_assert(the_sr_state->version == 1);
+  tt_assert(digestmap_size(the_sr_state->commitments) == 3);
+  tt_assert(the_sr_state->current_srv);
+  tt_assert(the_sr_state->current_srv->status == SR_SRV_STATUS_FRESH);
+  tt_assert(the_sr_state->previous_srv);
+
+  /* XXX Now also try loading corrupted state files and make sure parsing fails */
+
+ done:
+  tor_free(dir);
+  tor_free(sr_state_path);
+}
+
 struct testcase_t sr_tests[] = {
   { "get_sr_protocol_phase", test_get_sr_protocol_phase, TT_FORK,
     NULL, NULL },
@@ -394,6 +457,8 @@ struct testcase_t sr_tests[] = {
   { "get_state_valid_until_time", test_get_state_valid_until_time, TT_FORK,
     NULL, NULL },
   { "vote", test_vote, TT_FORK,
+    NULL, NULL },
+  { "state_load_from_disk", test_state_load_from_disk, TT_FORK,
     NULL, NULL },
   END_OF_TESTCASES
 };
