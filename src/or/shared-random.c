@@ -503,33 +503,38 @@ srv_to_ns_string(const sr_srv_t *srv, const char *key)
   return srv_str;
 }
 
-/* Return a heap allocated string that contains the SRV line(s) that should
- * be put in a vote or consensus. Caller must free the returned string.
- * Empty string is returned if there are no SRV. */
+/** Given the previous SRV and the current SRV, return a heap allocated string
+ *  with their data that could be put in a vote or a consensus. Caller must free
+ *  the returned string.  Return NULL if no SRVs were provided. */
 static char *
-get_srv_ns_lines(void)
+get_ns_str_from_sr_values(sr_srv_t *prev_srv, sr_srv_t *cur_srv)
 {
-  char *srv_line = NULL, *srv_str;
-  smartlist_t *lines = smartlist_new();
-  sr_srv_t *srv;
+  smartlist_t *chunks = NULL;
+  char *srv_str;
 
-  /* Compute the previous srv value if one. */
-  srv = sr_state_get_previous_srv();
-  if (srv != NULL) {
-    srv_line = srv_to_ns_string(srv, PREVIOUS_SRV_STR);
-    smartlist_add(lines, srv_line);
+  if (!prev_srv && !cur_srv) {
+    return NULL;
+  }
+
+  chunks = smartlist_new();
+
+  if (prev_srv) {
+    char *srv_line = srv_to_ns_string(prev_srv, PREVIOUS_SRV_STR);
+    smartlist_add(chunks, srv_line);
     log_warn(LD_DIR, "[SR] \t Previous SRV: %s", srv_line);
   }
-  /* Compute current srv value if one. */
-  srv = sr_state_get_current_srv();
-  if (srv != NULL) {
-    srv_line = srv_to_ns_string(srv, CURRENT_SRV_STR);
-    smartlist_add(lines, srv_line);
+
+  if (cur_srv) {
+    char *srv_line = srv_to_ns_string(cur_srv, CURRENT_SRV_STR);
+    smartlist_add(chunks, srv_line);
     log_warn(LD_DIR, "[SR] \t Current SRV: %s", srv_line);
   }
-  srv_str = smartlist_join_strings(lines, "", 0, NULL);
-  SMARTLIST_FOREACH(lines, char *, s, tor_free(s));
-  smartlist_free(lines);
+
+  /* Join the line(s) here in one string to return. */
+  srv_str = smartlist_join_strings(chunks, "", 0, NULL);
+  SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
+  smartlist_free(chunks);
+
   return srv_str;
 }
 
@@ -1173,8 +1178,11 @@ sr_get_string_for_vote(void)
 
   /* Add the SRV value(s) if any. */
   {
-    char *srv_lines = get_srv_ns_lines();
-    smartlist_add(chunks, srv_lines);
+    char *srv_lines = get_ns_str_from_sr_values(sr_state_get_previous_srv(),
+                                                sr_state_get_current_srv());
+    if (srv_lines) {
+      smartlist_add(chunks, srv_lines);
+    }
   }
 
 end:
@@ -1206,43 +1214,30 @@ sr_get_string_for_consensus(smartlist_t *votes)
     goto end;
   }
 
-  /* XXX: There is maybe a way to merge this with get_srv_ns_lines() and
-   * have a more clean common interface for both the vote and consensus when
-   * getting the SRV line(s). */
-  log_warn(LD_DIR, "[SR] Consensus SRV computation:");
-  {
-    smartlist_t *chunks = smartlist_new();
-    /* Get the most frequent previous SRV. */
-    sr_srv_t *srv = get_majority_srv_from_votes(votes, 0);
-    if (srv) {
-      char *line = srv_to_ns_string(srv, PREVIOUS_SRV_STR);
-      smartlist_add(chunks, line);
-      log_warn(LD_DIR, "[SR] \t Previous SRV: %s", line);
-      post_consensus_srv[0] = srv_dup(srv);
-    }
-    /* Get the most frequent current SRV. */
-    srv = get_majority_srv_from_votes(votes, 1);
-    if (srv) {
-      char *line = srv_to_ns_string(srv, CURRENT_SRV_STR);
-      smartlist_add(chunks, line);
-      log_warn(LD_DIR, "[SR] \t Current SRV: %s", line);
-      post_consensus_srv[1]  = srv_dup(srv);
-    }
-    /* Join the line(s) here in one string to return. */
-    srv_str = smartlist_join_strings(chunks, "", 0, NULL);
-    SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
-    smartlist_free(chunks);
-  }
-  /* Avoid sending back an empty string, NULL means no SRV could be decided
-   * for this consensus. */
-  if (strlen(srv_str) == 0) {
+  /* Check the votes and figure out if SRVs should be included in the final
+     consensus. */
+  sr_srv_t *prev_srv = get_majority_srv_from_votes(votes, 0);
+  sr_srv_t *cur_srv = get_majority_srv_from_votes(votes, 1);
+  srv_str = get_ns_str_from_sr_values(prev_srv, cur_srv);
+  if (!srv_str) {
     goto end;
+  }
+
+  /* Register any SRVs we decided to trust. */
+  /* XXX a bit nasty to register these important things in a function called
+     sr_get_string_for_consensus()... */
+  if (prev_srv) {
+    post_consensus_srv[0] = srv_dup(prev_srv);
+  }
+  if (cur_srv) {
+    post_consensus_srv[1]  = srv_dup(cur_srv);
   }
 
   /* XXX: debugging. */
   log_warn(LD_DIR, "[SR] Shared random line(s) put in the consensus:");
   log_warn(LD_DIR, "[SR] \t %s", srv_str);
   return srv_str;
+
  end:
   return NULL;
 }
