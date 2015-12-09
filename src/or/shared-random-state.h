@@ -97,6 +97,8 @@ void sr_state_free(void);
 
 #ifdef SHARED_RANDOM_STATE_PRIVATE
 
+STATIC int disk_state_load_from_disk_impl(const char *fname);
+
 STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
 
 STATIC time_t get_state_valid_until_time(time_t now);
@@ -105,6 +107,9 @@ STATIC time_t get_state_valid_until_time(time_t now);
 
 #ifdef TOR_UNIT_TESTS
 STATIC void set_sr_phase(sr_phase_t phase);
+
+STATIC sr_state_t *get_sr_state(void);
+
 #endif
 
 
