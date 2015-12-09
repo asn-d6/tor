@@ -594,10 +594,22 @@ disk_state_load_from_disk(void)
 {
   int ret;
   char *fname;
+
+  fname = get_datadir_fname(default_fname);
+  ret = disk_state_load_from_disk_impl(fname);
+  tor_free(fname);
+
+  return ret;
+}
+
+/* Helper for disk_state_load_from_disk(). */
+STATIC int
+disk_state_load_from_disk_impl(const char *fname)
+{
+  int ret;
   sr_state_t *parsed_state = NULL;
   sr_disk_state_t *disk_state = NULL;
 
-  fname = get_datadir_fname(default_fname);
   switch (file_status(fname)) {
   case FN_FILE:
   {
@@ -657,6 +669,7 @@ disk_state_load_from_disk(void)
   disk_state_set(disk_state);
   log_notice(LD_DIR, "[SR] State loaded from \"%s\"", fname);
   return 0;
+
 error:
   disk_state_free(disk_state);
   return ret;
@@ -1120,6 +1133,13 @@ set_sr_phase(sr_phase_t phase)
   tor_assert(sr_state);
 
   sr_state->phase = phase;
+}
+
+/** Get the SR state. Used only by unit tests */
+sr_state_t *
+get_sr_state(void)
+{
+  return sr_state;
 }
 #endif
 
