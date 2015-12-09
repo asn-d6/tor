@@ -69,8 +69,7 @@ typedef struct sr_disk_state_t {
   /* All commitments seen that are valid. */
   config_line_t *Commitments;
   /* Previous and current shared random value. */
-  config_line_t *SharedRandPreviousValue;
-  config_line_t *SharedRandCurrentValue;
+  config_line_t *SharedRandValues;
   /* Extra Lines for configuration we might not know. */
   config_line_t *ExtraLines;
 } sr_disk_state_t;
