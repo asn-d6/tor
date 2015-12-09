@@ -219,7 +219,8 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  voter->contact,
                  shared_random_cert_chain_str ?
                            shared_random_cert_chain_str : "",
-                 shared_random_vote_str);
+                 shared_random_vote_str ?
+                           shared_random_vote_str : "");
 
     tor_free(params);
     tor_free(flags);
