@@ -377,6 +377,7 @@ AM_CONDITIONAL(THREADS_PTHREADS, test "$bwin32" = "false")
 AC_CHECK_FUNCS(
         _NSGetEnviron \
         accept4 \
+	arc4random_buf \
         backtrace \
         backtrace_symbols_fd \
         clock_gettime \
@@ -1369,7 +1370,7 @@ fi
 # bionic and other platforms have various broken mlockall subsystems.
 # Some systems don't have a working mlockall, some aren't linkable,
 # and some have it but don't declare it.
-AC_CHECK_FUNCS(mlockall)
+AC_CHECK_FUNCS(mlockall mlock)
 AC_CHECK_DECLS([mlockall], , , [
 #ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>

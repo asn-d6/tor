@@ -17,6 +17,7 @@
 #include "torint.h"
 #include "testsupport.h"
 #include "compat.h"
+#include "crypto_rng.h"
 
 /*
   Macro to create an arbitrary OpenSSL version number as used by
@@ -278,9 +279,8 @@ int crypto_expand_key_material_rfc5869_sha256(
 
 /* random numbers */
 int crypto_seed_rng(void) ATTR_WUR;
-MOCK_DECL(void,crypto_rand,(char *to, size_t n));
-void crypto_rand_unmocked(char *to, size_t n);
 void crypto_strongest_rand(uint8_t *out, size_t out_len);
+int crypto_strongest_rand_raw(uint8_t *out, size_t out_len);
 int crypto_rand_int(unsigned int max);
 int crypto_rand_int_range(unsigned int min, unsigned int max);
 uint64_t crypto_rand_uint64_range(uint64_t min, uint64_t max);

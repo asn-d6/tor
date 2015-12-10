@@ -2596,7 +2596,7 @@ crypto_strongest_rand_fallback(uint8_t *out, size_t out_len)
  * storing it into <b>out</b>. Return 0 on success, -1 on failure.  A maximum
  * request size of 256 bytes is imposed.
  */
-static int
+int
 crypto_strongest_rand_raw(uint8_t *out, size_t out_len)
 {
   static const size_t sanity_min_size = 16;
@@ -2698,44 +2698,12 @@ crypto_seed_rng(void)
 
   memwipe(buf, 0, sizeof(buf));
 
-  if ((rand_poll_ok || load_entropy_ok) && RAND_status() == 1)
+  if ((rand_poll_ok || load_entropy_ok) && RAND_status() == 1) {
+    crypto_init_shake_prng();
     return 0;
-  else
+  } else {
     return -1;
-}
-
-/** Write <b>n</b> bytes of strong random data to <b>to</b>. Supports mocking
- * for unit tests.
- *
- * This function is not allowed to fail; if it would fail to generate strong
- * entropy, it must terminate the process instead.
- */
-MOCK_IMPL(void,
-crypto_rand, (char *to, size_t n))
-{
-  crypto_rand_unmocked(to, n);
-}
-
-/** Write <b>n</b> bytes of strong random data to <b>to</b>.  Most callers
- * will want crypto_rand instead.
- *
- * This function is not allowed to fail; if it would fail to generate strong
- * entropy, it must terminate the process instead.
- */
-void
-crypto_rand_unmocked(char *to, size_t n)
-{
-  int r;
-  if (n == 0)
-    return;
-
-  tor_assert(n < INT_MAX);
-  tor_assert(to);
-  r = RAND_bytes((unsigned char*)to, (int)n);
-  /* We consider a PRNG failure non-survivable. Let's assert so that we get a
-   * stack trace about where it happened.
-   */
-  tor_assert(r >= 0);
+  }
 }
 
 /** Return a pseudorandom integer, chosen uniformly from the values

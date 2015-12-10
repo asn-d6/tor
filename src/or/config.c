@@ -1120,6 +1120,7 @@ options_act_reversible(const or_options_t *old_options, char **msg)
   if (running_tor && options->RunAsDaemon) {
     /* No need to roll back, since you can't change the value. */
     start_daemon();
+    crypto_shake_prng_postfork();
   }
 
 #ifdef HAVE_SYSTEMD
