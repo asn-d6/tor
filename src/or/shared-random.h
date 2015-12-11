@@ -51,18 +51,10 @@ typedef enum {
   SR_PHASE_REVEAL  = 2,
 } sr_phase_t;
 
-/* Shared random value status. */
-typedef enum {
-  SR_SRV_STATUS_FRESH =    0,
-  SR_SRV_STATUS_NONFRESH = 1,
-} sr_srv_status_t;
-
 /* A shared random value object that contains its status and value. */
 typedef struct sr_srv_t {
-  /* Is this value a fresh value meaning it was succesfully computed or
-   * non-fresh which means we didn't have enough reveal values thus we used
-   * the fallback computation method. */
-  sr_srv_status_t status;
+  /* The number of reveal values used to derive this SRV. */
+  int num_reveals;
   /* The actual value. This is the stored result of HMAC-SHA256. */
   uint8_t value[DIGEST256_LEN];
 } sr_srv_t;
@@ -119,9 +111,6 @@ void sr_handle_received_commits(smartlist_t *commits,
 
 sr_commit_t *sr_parse_commit(smartlist_t *args);
 sr_srv_t *sr_parse_srv(smartlist_t *args);
-
-sr_srv_status_t sr_get_srv_status_from_str(const char *name);
-const char *sr_get_srv_status_str(sr_srv_status_t status);
 
 void sr_compute_srv(void);
 char *sr_get_string_for_vote(void);
