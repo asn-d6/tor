@@ -939,8 +939,8 @@ sr_state_get_phase(void)
 }
 
 /* Return the previous SRV value from our state. Value CAN be NULL. */
-sr_srv_t *
-sr_state_get_previous_srv(void)
+MOCK_IMPL(sr_srv_t *,
+sr_state_get_previous_srv,(void))
 {
   sr_srv_t *srv;
   state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_PREVSRV, NULL,
@@ -975,8 +975,8 @@ sr_state_set_current_srv(sr_srv_t *srv)
 }
 
 /* Return a pointer to the commits map from our state. CANNOT be NULL. */
-digestmap_t *
-sr_state_get_commits(void)
+MOCK_IMPL(digestmap_t *,
+sr_state_get_commits,(void))
 {
   digestmap_t *commits;
   state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_COMMITS,
