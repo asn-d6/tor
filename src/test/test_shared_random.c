@@ -389,8 +389,8 @@ const char *sr_state_str = "Version 1\n"
   "Commitment sha256 RkoaSeZBiyJs23P6aOLEyUsumWwjWYnA+DQm1IaKXu8 FA3CEC2C99DC68D3166B9B6E4FA21A4026C2AB1C 7M8GdubCAAdh7WUG0DiwRyxTYRKji7HATa7LLJEZ/UAAAAAAVmfUSg== AAAAAFZn1EojfIheIw42bjK3VqkpYyjsQFSbv/dxNna3Q8hUEPKpOw==\n"
   "Commitment sha256 2qZjhYjXODdx122TNUlegLLWWDe5R1B449vx2KU9hsI 41E89EDFBFBA44983E21F18F2230A4ECB5BFB543 17aUsYuMeRjd2N1r8yNyg7aHqRa6gf4z7QPoxxAZbp0AAAAAVmfUSg==\n"
   "Commitment sha256 hujjN0PEfkQlOnBKTH0WlGPOs6PdYoe8tuEMeS6C4cw 36637026573A04110CF3E6B1D201FB9A98B88734 DDDYtripvdOU+XPEUm5xpU64d9IURSds1xSwQsgeB8oAAAAAVmfUSg==\n"
-  "SharedRandCurrentValue fresh F1D59E5B5D8A1334C61222C680ED54549ED9F7509E92845CC6DE90F4A8673852\n"
-  "SharedRandPreviousValue fresh AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n";
+  "SharedRandCurrentValue 3 F1D59E5B5D8A1334C61222C680ED54549ED9F7509E92845CC6DE90F4A8673852\n"
+  "SharedRandPreviousValue 4 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n";
 
 /** Create an SR disk state, parse it and validate that the parsing went
  *  well. Yes! */
@@ -437,7 +437,7 @@ test_state_load_from_disk(void *arg)
   tt_assert(the_sr_state->version == 1);
   tt_assert(digestmap_size(the_sr_state->commitments) == 3);
   tt_assert(the_sr_state->current_srv);
-  tt_assert(the_sr_state->current_srv->status == SR_SRV_STATUS_FRESH);
+  tt_assert(the_sr_state->current_srv->num_reveals == 3);
   tt_assert(the_sr_state->previous_srv);
 
   /* XXX Now also try loading corrupted state files and make sure parsing fails */
