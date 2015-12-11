@@ -58,9 +58,6 @@
 #include "routerlist.h"
 #include "shared-random-state.h"
 
-/* String representation of a shared random value status. */
-static const char *srv_status_str[] = { "fresh", "non-fresh" };
-
 /* Prefix of shared random values in a string. */
 #define PREVIOUS_SRV_STR "shared-rand-previous-value"
 #define CURRENT_SRV_STR "shared-rand-current-value"
@@ -74,24 +71,6 @@ static const char *srv_status_str[] = { "fresh", "non-fresh" };
  * decided from majority, pointer is NULL. */
 static sr_srv_t *post_consensus_srv[2];
 
-/* Return a status value from a string. */
-static sr_srv_status_t
-get_srv_status_from_str(const char *name)
-{
-  unsigned int i;
-  sr_srv_status_t status = -1;
-
-  tor_assert(name);
-
-  for (i = 0; i < ARRAY_LENGTH(srv_status_str); i++) {
-    if (!strcmp(name, srv_status_str[i])) {
-      status = i;
-      break;
-    }
-  }
-  return status;
-}
-
 /* Return a heap allocated copy of <b>orig</b>. */
 static sr_srv_t *
 srv_dup(const sr_srv_t *orig)
@@ -103,7 +82,7 @@ srv_dup(const sr_srv_t *orig)
   }
 
   dup = tor_malloc_zero(sizeof(sr_srv_t));
-  dup->status = orig->status;
+  dup->num_reveals = orig->num_reveals;
   memcpy(dup->value, orig->value, sizeof(dup->value));
   return dup;
 }
@@ -429,7 +408,7 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   crypto_hmac_sha256((char *) srv->value,
                      hashed_reveals, DIGEST256_LEN,
                      msg, sizeof(msg));
-  srv->status = SR_SRV_STATUS_FRESH;
+  srv->num_reveals = reveal_num;
 
   /* XXX: debugging. */
   log_warn(LD_DIR, "[SR] Computed shared random details:");
@@ -504,8 +483,8 @@ srv_to_ns_string(const sr_srv_t *srv, const char *key)
   tor_assert(key);
   base16_encode(srv_hash_encoded, sizeof(srv_hash_encoded),
                 (const char *) srv->value, sizeof(srv->value));
-  tor_asprintf(&srv_str, "%s %s %s\n", key,
-               sr_get_srv_status_str(srv->status), srv_hash_encoded);
+  tor_asprintf(&srv_str, "%s %d %s\n", key,
+               srv->num_reveals, srv_hash_encoded);
   return srv_str;
 }
 
@@ -842,20 +821,6 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
   return srv;
 }
 
-/* Return a string representation of a srv status. */
-const char *
-sr_get_srv_status_str(sr_srv_status_t status)
-{
-  switch (status) {
-  case SR_SRV_STATUS_FRESH:
-  case SR_SRV_STATUS_NONFRESH:
-    return srv_status_str[status];
-  default:
-    /* Unknown status shouldn't be possible. */
-    tor_assert(0);
-  }
-}
-
 /* Free a commit object. */
 void
 sr_commit_free(sr_commit_t *commit)
@@ -1033,24 +998,29 @@ end:
  * returned on error.
  *
  * The arguments' order:
- *    status, value
+ *    num_reveals, value
  */
 sr_srv_t *
 sr_parse_srv(smartlist_t *args)
 {
   char *value;
+  int num_reveals, ok;
   sr_srv_t *srv = NULL;
-  sr_srv_status_t status;
 
   tor_assert(args);
 
-  /* First argument is the status. */
-  status = get_srv_status_from_str(smartlist_get(args, 0));
-  if (status < 0) {
+  if (smartlist_len(args) < 2) {
+    goto end;
+  }
+
+  /* First argument is the number of reveal values */
+  num_reveals = tor_parse_long(smartlist_get(args, 0),
+                               10, 0, INT32_MAX, &ok, NULL);
+  if (!ok) {
     goto end;
   }
   srv = tor_malloc_zero(sizeof(*srv));
-  srv->status = status;
+  srv->num_reveals = num_reveals;
 
   /* Second and last argument is the shared random value it self. */
   value = smartlist_get(args, 1);

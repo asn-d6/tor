@@ -526,8 +526,7 @@ disk_state_put_srv_line(sr_srv_t *srv, config_line_t *line)
   }
   base16_encode(encoded, sizeof(encoded), (const char *) srv->value,
                 sizeof(srv->value));
-  tor_asprintf(&line->value, "%s %s", sr_get_srv_status_str(srv->status),
-               encoded);
+  tor_asprintf(&line->value, "%d %s", srv->num_reveals, encoded);
 }
 
 /* Reset disk state that is free allocated memory and zeroed the object. */
