@@ -412,7 +412,8 @@ disk_state_parse_srv(const char *value, sr_srv_t *dst)
   if (srv == NULL) {
     goto error;
   }
-  memcpy(dst, srv, sizeof(*srv));
+  dst->num_reveals = srv->num_reveals;
+  memcpy(dst->value, srv->value, sizeof(dst->value));
   tor_free(srv);
   ret = 0;
 
@@ -700,7 +701,7 @@ disk_state_save_to_disk(void)
                "# Tor shared random state file last generated on %s "
                "local time\n"
                "# Other times below are in UTC\n"
-               "# You *do not* edit this file.\n\n%s",
+               "# Please *do not* edit this file.\n\n%s",
                tbuf, state);
   tor_free(state);
   fname = get_datadir_fname(default_fname);
@@ -1004,15 +1005,10 @@ sr_state_update(time_t now)
   /* Are we in a phase transition that is the next phase is not the same as
    * the current one? */
   if (is_phase_transition(next_phase)) {
-    switch (next_phase) {
-    case SR_PHASE_COMMIT:
-      /* We were in the reveal phase or we are just starting so this is a
-       * new protocol run. */
+    if (next_phase == SR_PHASE_COMMIT) {
+      /* If we are transitioning into commit phase, then we are starting a new
+         protocol run. */
       new_protocol_run(next_round_time);
-      break;
-    case SR_PHASE_REVEAL:
-      /* We were in the commit phase thus now in reveal. */
-      break;
     }
     /* Set the new phase for this round */
     sr_state->phase = next_phase;
