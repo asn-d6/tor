@@ -288,6 +288,11 @@ main(int c, const char **v)
     return 1;
   }
 
+#ifdef USE_PTHREADS
+  /* Kludge for the tests. */
+  pthread_atfork(NULL, NULL, crypto_shake_prng_postfork);
+#endif
+
   atexit(remove_directory);
 
   int have_failed = (tinytest_main(c, v, testgroups) != 0);
