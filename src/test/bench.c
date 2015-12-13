@@ -22,6 +22,7 @@ const char tor_git_revision[] = "";
 #include <openssl/ec.h>
 #include <openssl/ecdh.h>
 #include <openssl/obj_mac.h>
+#include <openssl/rand.h>
 
 #include "config.h"
 #include "crypto_curve25519.h"
@@ -106,6 +107,54 @@ bench_aes(void)
            NANOCOUNT(start, end, iters*len));
   }
   crypto_cipher_free(c);
+}
+
+static void
+bench_rng(void)
+{
+  int n = 5000000;
+  int i;
+  uint64_t start, end;
+  unsigned t = 0;
+  char *buf = tor_malloc_zero(16384);
+  reset_perftime();
+
+  start = perftime();
+  for (i = 0; i < n; ++i) {
+    crypto_rand_unmocked(buf, 16);
+    t += buf[0];
+  }
+  end = perftime();
+  printf("crypto_rand: %.2f nsec per 16 bytes.\n", NANOCOUNT(start, end, n));
+
+  start = perftime();
+  for (i = 0; i < n; ++i) {
+    RAND_bytes((unsigned char *) buf, 16);
+    t += buf[0];
+  }
+  end = perftime();
+  printf("RAND_bytes: %.2f nsec per 16 bytes.\n", NANOCOUNT(start, end, n));
+
+  n /= 500;
+  start = perftime();
+  for (i = 0; i < n; ++i) {
+    crypto_rand_unmocked(buf, 16384);
+    t += buf[0];
+  }
+  end = perftime();
+  printf("crypto_rand: %.2f usec per 16K.\n", MICROCOUNT(start, end, n));
+
+  start = perftime();
+  for (i = 0; i < n; ++i) {
+    RAND_bytes((unsigned char *) buf, 16384);
+    t += buf[0];
+  }
+  end = perftime();
+  printf("RAND_bytes: %.2f usec per 16K.\n", MICROCOUNT(start, end, n));
+
+  printf("Dummy value: %u\n", t);
+
+  tor_free(buf);
 }
 
 static void
@@ -630,6 +679,7 @@ static struct benchmark_t benchmarks[] = {
   ENT(siphash),
   ENT(digest),
   ENT(aes),
+  ENT(rng),
   ENT(onion_TAP),
   ENT(onion_ntor),
   ENT(ed25519),
