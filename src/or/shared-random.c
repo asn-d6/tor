@@ -735,7 +735,7 @@ should_keep_srv(int n_agreements)
  * have a majority consensus. If <b>current</b> is set, we look for the
  * current SRV value else the previous one. NULL is returned if no value
  * could be found that has majority. */
-static sr_srv_t *
+STATIC sr_srv_t *
 get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
 {
   const uint8_t *value;
