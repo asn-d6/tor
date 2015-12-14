@@ -300,16 +300,8 @@ networkstatus_vote_free(networkstatus_t *ns)
                       sr_commit_free(c));
     smartlist_free(ns->sr_info.commits);
   }
-  if (ns->sr_info.previous_srv) {
-    SMARTLIST_FOREACH(ns->sr_info.previous_srv, sr_srv_t *, srv,
-                      tor_free(srv));
-    smartlist_free(ns->sr_info.previous_srv);
-  }
-  if (ns->sr_info.current_srv) {
-    SMARTLIST_FOREACH(ns->sr_info.current_srv, sr_srv_t *, srv,
-                      tor_free(srv));
-    smartlist_free(ns->sr_info.current_srv);
-  }
+  tor_free(ns->sr_info.previous_srv);
+  tor_free(ns->sr_info.current_srv);
 
   memwipe(ns, 11, sizeof(*ns));
   tor_free(ns);
