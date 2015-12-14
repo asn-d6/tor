@@ -763,11 +763,7 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
     }
 
     /* Do we want previous or current SRV? */
-    if (current) {
-      srv = smartlist_get(v->sr_info.current_srv, 0);
-    } else {
-      srv = smartlist_get(v->sr_info.previous_srv, 0);
-    }
+    srv = current ? v->sr_info.current_srv : v->sr_info.previous_srv;
 
     /* If an SRV was found, add it to our list and also count how many votes
      * have mentioned this exact SRV. */

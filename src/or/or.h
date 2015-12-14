@@ -2500,8 +2500,8 @@ typedef struct networkstatus_sr_info_t {
   unsigned int participate:1;
   /* Both vote and consensus: Current and previous SRV. If list is empty,
    * this means none were found in either the consensus or vote. */
-  smartlist_t *previous_srv;
-  smartlist_t *current_srv;
+  struct sr_srv_t *previous_srv;
+  struct sr_srv_t *current_srv;
   /* Vote only: List of commitments. */
   smartlist_t *commits;
 } networkstatus_sr_info_t;
