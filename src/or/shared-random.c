@@ -739,7 +739,7 @@ static sr_srv_t *
 get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
 {
   const uint8_t *value;
-  sr_srv_t *srv = NULL;
+  sr_srv_t *the_srv = NULL;
   smartlist_t *sr_digests;
   digest256map_t *sr_values;
   struct srv_obj_t {
@@ -757,26 +757,29 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
 
   /* Walk over votes and register any SRVs found. */
   SMARTLIST_FOREACH_BEGIN(votes, networkstatus_t *, v) {
+    sr_srv_t *srv_tmp = NULL;
+
     if (!v->sr_info.participate) {
       /* Ignore vote that do no participate. */
       continue;
     }
 
     /* Do we want previous or current SRV? */
-    srv = current ? v->sr_info.current_srv : v->sr_info.previous_srv;
+    srv_tmp = current ? v->sr_info.current_srv : v->sr_info.previous_srv;
+    if (!srv_tmp) {
+      continue;
+    }
 
     /* If an SRV was found, add it to our list and also count how many votes
      * have mentioned this exact SRV. */
-    if (srv) {
-      smartlist_add(sr_digests, srv->value);
-      obj = digest256map_get(sr_values, srv->value);
-      if (obj == NULL) {
-        obj = tor_malloc_zero(sizeof(struct srv_obj_t));
-        obj->srv = srv;
-        digest256map_set(sr_values, srv->value, obj);
-      }
-      obj->count++;
+    smartlist_add(sr_digests, srv_tmp->value);
+    obj = digest256map_get(sr_values, srv_tmp->value);
+    if (obj == NULL) {
+      obj = tor_malloc_zero(sizeof(struct srv_obj_t));
+      obj->srv = srv_tmp;
+      digest256map_set(sr_values, srv_tmp->value, obj);
     }
+    obj->count++;
   } SMARTLIST_FOREACH_END(v);
 
   /* Sort the SRV list; it's required for finding its most frequent element. */
@@ -797,7 +800,7 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
   }
 
   /* We found an SRV that we can use! Habemus SRV! */
-  srv = obj->srv;
+  the_srv = obj->srv;
 
   {
     /** XXX debugging */
@@ -811,7 +814,7 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
    * Only the map frees the allocated object. */
   smartlist_free(sr_digests);
   digest256map_free(sr_values, tor_free_);
-  return srv;
+  return the_srv;
 }
 
 /* Free a commit object. */
