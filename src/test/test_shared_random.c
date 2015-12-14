@@ -7,8 +7,10 @@
 #include "shared-random.h"
 #include "shared-random-state.h"
 #include "routerkeys.h"
+#include "routerlist.h"
 #include "router.h"
 #include "routerparse.h"
+#include "networkstatus.h"
 
 static void
 test_get_sr_protocol_phase(void *arg)
@@ -586,6 +588,88 @@ test_sr_compute_srv(void *arg)
   UNMOCK(sr_state_get_commits);
 }
 
+/** Return a minimal vote document with a current SRV value set to
+ *  <b>srv</b>. */
+static networkstatus_t *
+get_test_vote_with_curr_srv(const char *srv)
+{
+  networkstatus_t *vote = tor_malloc_zero(sizeof(networkstatus_t));
+
+  vote->type = NS_TYPE_VOTE;
+  vote->sr_info.participate = 1;
+  vote->sr_info.current_srv = tor_malloc_zero(sizeof(sr_srv_t));
+  vote->sr_info.current_srv->num_reveals = 42;
+  memcpy(vote->sr_info.current_srv->value,
+         srv,
+         sizeof(vote->sr_info.current_srv->value));
+
+  return vote;
+}
+
+
+/* Test the function that picks the right SRV given a bunch of votes. Make sure
+ * that the function returns an SRV iff the majority/agreement requirements are
+ * met. */
+static void
+test_sr_get_majority_srv_from_votes(void *arg)
+{
+  sr_srv_t *chosen_srv;
+  smartlist_t *votes = smartlist_new();
+  or_options_t *options = get_options_mutable();
+
+#define SRV_1 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+#define SRV_2 "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+
+  (void) arg;
+
+  /* The test relies on the dirauth list being initialized. */
+  tt_int_op(get_n_authorities(V3_DIRINFO), >=, 9);
+
+  { /* Prepare voting environment with just a single vote. */
+    networkstatus_t *vote = get_test_vote_with_curr_srv(SRV_1);
+    smartlist_add(votes, vote);
+  }
+
+  /* Since it's only one vote with an SRV, it should not achieve majority and
+     hence no SRV will be returned. */
+  chosen_srv = get_majority_srv_from_votes(votes, 1);
+  tt_assert(!chosen_srv);
+
+  { /* Now put in 8 more votes. Let SRV_1 have majority. */
+    int i;
+    /* Now 7 votes believe in SRV_1 */
+    for (i = 0; i < 6; i++) {
+      networkstatus_t *vote = get_test_vote_with_curr_srv(SRV_1);
+      smartlist_add(votes, vote);
+    }
+    /* and 2 votes believe in SRV_2 */
+    for (i = 0; i < 2; i++) {
+      networkstatus_t *vote = get_test_vote_with_curr_srv(SRV_2);
+      smartlist_add(votes, vote);
+    }
+
+    tt_int_op(smartlist_len(votes), ==, 9);
+  }
+
+  /* Now we achieve majority for SRV_1, but not the AuthDirNumSRVAgreements
+     requirement. So still not picking an SRV. */
+  chosen_srv = get_majority_srv_from_votes(votes, 1);
+  tt_assert(!chosen_srv);
+
+  /* Lower the AuthDirNumSRVAgreements requirement and let's try again.
+   * This time it must work. */
+  options->AuthDirNumSRVAgreements = 7;
+  chosen_srv = get_majority_srv_from_votes(votes, 1);
+  tt_assert(chosen_srv);
+  tt_int_op(chosen_srv->num_reveals, ==, 42);
+  tt_mem_op(chosen_srv->value, OP_EQ, SRV_1, sizeof(chosen_srv->value));
+
+ done:
+  SMARTLIST_FOREACH(votes, networkstatus_t *, vote,
+                    networkstatus_vote_free(vote));
+  smartlist_free(votes);
+}
+
 struct testcase_t sr_tests[] = {
   { "get_sr_protocol_phase", test_get_sr_protocol_phase, TT_FORK,
     NULL, NULL },
@@ -600,5 +684,7 @@ struct testcase_t sr_tests[] = {
   { "state_load_from_disk", test_state_load_from_disk, TT_FORK,
     NULL, NULL },
   { "sr_compute_srv", test_sr_compute_srv, TT_FORK, NULL, NULL },
+  { "sr_get_majority_srv_from_votes", test_sr_get_majority_srv_from_votes,
+    TT_FORK, NULL, NULL },
   END_OF_TESTCASES
 };

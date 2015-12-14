@@ -130,6 +130,9 @@ STATIC int reveal_decode(const char *encoded, sr_commit_t *commit);
 
 STATIC int commit_has_reveal_value(const sr_commit_t *commit);
 
+STATIC sr_srv_t *get_majority_srv_from_votes(smartlist_t *votes,
+                                             unsigned int current);
+
 #endif /* SHARED_RANDOM_PRIVATE */
 
 #endif /* TOR_SHARED_RANDOM_H */
