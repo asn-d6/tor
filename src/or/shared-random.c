@@ -699,8 +699,8 @@ get_n_voters_for_srv_agreement(void)
   num_dirauths = get_n_authorities(V3_DIRINFO);
   /* If the params is not found, default value should always be the maximum
    * number of trusted authorities. Let's not take any chances. */
-  return networkstatus_get_param(NULL, "NumSRVAgreements", num_dirauths, 1,
-                                 num_dirauths);
+  return networkstatus_get_param(NULL, "AuthDirNumSRVAgreements",
+                                 num_dirauths, 1, num_dirauths);
 }
 
 /** Return 1 if we should we keep the SRV voted by <b>n_agreements</b>
