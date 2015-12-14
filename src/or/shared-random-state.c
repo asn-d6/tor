@@ -100,24 +100,6 @@ get_phase_str(sr_phase_t phase)
   }
 }
 
-/* Return a phase value from a name string. */
-static sr_phase_t
-get_phase_from_str(const char *name)
-{
-  unsigned int i;
-  sr_phase_t phase = -1;
-
-  tor_assert(name);
-
-  for (i = 0; i < ARRAY_LENGTH(phase_str); i++) {
-    if (!strcmp(name, phase_str[i])) {
-      phase = i;
-      break;
-    }
-  }
-  return phase;
-}
-
 /* Return the voting interval of the tor vote subsystem. */
 static int
 get_voting_interval(void)
@@ -471,8 +453,6 @@ disk_state_parse(sr_disk_state_t *new_disk_state)
 
   new_state->version = new_disk_state->Version;
   new_state->valid_until = new_disk_state->ValidUntil;
-  /* XXX: useless... */
-  (void) get_phase_from_str;
 
   /* Parse the shared random values. */
   if (disk_state_parse_sr_values(new_state, new_disk_state) < 0) {
