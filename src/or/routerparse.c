@@ -2971,29 +2971,28 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
   return -1;
 }
 
+/** Check if a shared random value of type <b>srv_type</b> is in
+ *  <b>tokens</b>. If there is, parse it and set it to <b>srv_out</b>. Return -1
+ *  on failure, 0 on success. The resulting srv is allocated on the heap and
+ *  it's the responsibility of the caller to free it. */
 static int
-extract_one_srv(smartlist_t *tokens, directory_keyword k, sr_srv_t **srv_out)
+extract_one_srv(smartlist_t *tokens, directory_keyword srv_type, sr_srv_t **srv_out)
 {
   int ret = -1;
   directory_token_t *tok;
   sr_srv_t *srv = NULL;
-  smartlist_t *value, *chunks;
+  smartlist_t *chunks;
 
   tor_assert(tokens);
 
   chunks = smartlist_new();
-  value = find_all_by_keyword(tokens, k);
-  if (value == NULL) {
+  tok = find_opt_by_keyword(tokens, srv_type);
+  if (!tok) {
     /* That's fine, no SRV is allowed. */
     ret = 0;
     goto end;
   }
-  if (smartlist_len(value) > 1) {
-    /* Multiple SRV of same type is _NEVER_ suppose to happen. */
-    goto end;
-  }
-  tok = smartlist_get(value, 0);
-  /* First element is the status */
+  /* First element is the number of reveals */
   smartlist_add(chunks, tok->args[0]);
   /* Second element is the value itself. */
   smartlist_add(chunks, tok->args[1]);
@@ -3009,9 +3008,10 @@ extract_one_srv(smartlist_t *tokens, directory_keyword k, sr_srv_t **srv_out)
   return ret;
 }
 
+/** Extract any shared random values found in <b>tokens</b> and place them in
+ *  the networkstatus <b>ns</b>. Return -1 on failure, 0 on success. */
 static int
-extract_shared_random_srvs(networkstatus_t *ns,
-                           smartlist_t *tokens)
+extract_shared_random_srvs(networkstatus_t *ns, smartlist_t *tokens)
 {
   sr_srv_t *prev_srv = NULL, *cur_srv = NULL;
 
