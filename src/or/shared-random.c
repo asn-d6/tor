@@ -668,7 +668,7 @@ save_commit_during_reveal_phase(const sr_commit_t *commit)
 }
 
 /* Save <b>commit</b> to our persistent state. Depending on the current phase,
- * different actions are taken. */
+ * different actions are taken. Steals reference of <b>commit</b>. */
 static void
 save_commit_to_state(sr_commit_t *commit)
 {
@@ -681,6 +681,7 @@ save_commit_to_state(sr_commit_t *commit)
     break;
   case SR_PHASE_REVEAL:
     save_commit_during_reveal_phase(commit);
+    sr_commit_free(commit);
     break;
   default:
     tor_assert(0);
