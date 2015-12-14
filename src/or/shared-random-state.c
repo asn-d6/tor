@@ -221,6 +221,8 @@ state_free(sr_state_t *state)
   }
   tor_free(state->fname);
   digestmap_free(state->commitments, commit_free_);
+  tor_free(state->current_srv);
+  tor_free(state->previous_srv);
   tor_free(state);
 }
 
