@@ -1084,20 +1084,25 @@ sr_state_remove_commit(const ed25519_public_key_t *key)
   state_query(SR_STATE_ACTION_DEL, SR_STATE_OBJ_COMMIT, (void *) key, NULL);
 }
 
-/* Set the <b>reveal</b> value in <b>commit</b>. This commit MUST come from
- * our current state. Once modified, the disk state is updated. */
+/* Copy the reveal information from <b>commit</b> into <b>saved_commit</b>. This
+ * commit MUST come from our current state. Once modified, the disk state is
+ * updated. */
 void
-sr_state_set_commit_reveal(sr_commit_t *commit, const char *encoded_reveal)
+sr_state_copy_reveal_info(sr_commit_t *saved_commit, const sr_commit_t *commit)
 {
+  tor_assert(saved_commit);
   tor_assert(commit);
-  tor_assert(encoded_reveal);
 
-  strncpy(commit->encoded_reveal, encoded_reveal,
-          sizeof(commit->encoded_reveal));
+  saved_commit->reveal_ts = commit->reveal_ts;
+  memcpy(saved_commit->random_number, commit->random_number,
+         sizeof(saved_commit->random_number));
+
+  strlcpy(saved_commit->encoded_reveal, commit->encoded_reveal,
+          sizeof(saved_commit->encoded_reveal));
   state_query(SR_STATE_ACTION_SAVE, 0, NULL, NULL);
   /* XXX: debugging. */
   log_warn(LD_DIR, "[SR] \t \t Reveal value learned %s (for commit %s)",
-           commit->encoded_reveal, commit->encoded_commit);
+           saved_commit->encoded_reveal, saved_commit->encoded_commit);
 }
 
 /* Cleanup and free our disk and memory state. */

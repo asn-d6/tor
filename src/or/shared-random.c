@@ -660,11 +660,7 @@ save_commit_during_reveal_phase(const sr_commit_t *commit)
   tor_assert(same_commits);
 
   /* Copy reveal information to our saved commit. */
-  saved_commit->reveal_ts = commit->reveal_ts;
-  memcpy(saved_commit->random_number, commit->random_number,
-         sizeof(commit->random_number));
-
-  sr_state_set_commit_reveal(saved_commit, commit->encoded_reveal);
+  sr_state_copy_reveal_info(saved_commit, commit);
 }
 
 /* Save <b>commit</b> to our persistent state. Depending on the current phase,

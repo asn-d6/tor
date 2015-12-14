@@ -87,8 +87,8 @@ MOCK_DECL(digestmap_t *,sr_state_get_commits,(void));
 sr_commit_t *sr_state_get_commit_by_rsa(const char *rsa_fpr);
 void sr_state_add_commit(sr_commit_t *commit);
 void sr_state_remove_commit(const ed25519_public_key_t *key);
-void sr_state_set_commit_reveal(sr_commit_t *commit,
-                                const char *encoded_reveal);
+void sr_state_copy_reveal_info(sr_commit_t *saved_commit,
+                                const sr_commit_t *commit);
 
 void sr_state_update(time_t now);
 int sr_state_init(int save_to_disk);
