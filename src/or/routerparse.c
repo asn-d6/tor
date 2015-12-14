@@ -3002,24 +3002,20 @@ extract_one_srv(smartlist_t *tokens, directory_keyword srv_type, sr_srv_t **srv_
 static int
 extract_shared_random_srvs(networkstatus_t *ns, smartlist_t *tokens)
 {
-  sr_srv_t *prev_srv = NULL, *cur_srv = NULL;
-
   tor_assert(ns);
   tor_assert(tokens);
 
   /* We extract both and on error, everything is stopped because it means
    * the votes is malformed for the shared random value(s). */
-  if (extract_one_srv(tokens, K_PREVIOUS_SRV, &prev_srv) < 0 ||
-      extract_one_srv(tokens, K_CURRENT_SRV, &cur_srv) < 0) {
+  if (extract_one_srv(tokens, K_PREVIOUS_SRV, &ns->sr_info.previous_srv) < 0) {
     goto err;
   }
-  if (prev_srv) {
-    smartlist_add(ns->sr_info.previous_srv, prev_srv);
+  if (extract_one_srv(tokens, K_CURRENT_SRV, &ns->sr_info.current_srv) < 0) {
+    goto err;
   }
-  if (cur_srv) {
-    smartlist_add(ns->sr_info.current_srv, cur_srv);
-  }
+
   return 0;
+
  err:
   return -1;
 }
@@ -3387,8 +3383,6 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
   }
   /* For both a vote and consensus, extract the shared random values. */
   if (ns->type != NS_TYPE_OPINION) {
-    ns->sr_info.previous_srv = smartlist_new();
-    ns->sr_info.current_srv = smartlist_new();
     if (extract_shared_random_srvs(ns, tokens) < 0) {
       log_warn(LD_DIR, "Unable to parse SRV(s)");
       goto err;
