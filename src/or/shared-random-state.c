@@ -589,6 +589,7 @@ STATIC int
 disk_state_load_from_disk_impl(const char *fname)
 {
   int ret;
+  char *content = NULL;
   sr_state_t *parsed_state = NULL;
   sr_disk_state_t *disk_state = NULL;
 
@@ -596,7 +597,7 @@ disk_state_load_from_disk_impl(const char *fname)
   case FN_FILE:
   {
     config_line_t *lines = NULL;
-    char *errmsg = NULL, *content;
+    char *errmsg = NULL;
 
     /* Every error in this code path will return EINVAL. */
     ret = -EINVAL;
@@ -649,11 +650,13 @@ disk_state_load_from_disk_impl(const char *fname)
   }
   state_set(parsed_state);
   disk_state_set(disk_state);
+  tor_free(content);
   log_notice(LD_DIR, "[SR] State loaded from \"%s\"", fname);
   return 0;
 
 error:
   disk_state_free(disk_state);
+  tor_free(content);
   return ret;
 }
 
