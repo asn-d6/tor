@@ -2897,12 +2897,14 @@ extract_ed25519_keys_from_vote(networkstatus_t *ns, smartlist_t *tokens)
   return -1;
 }
 
-/** DOCDOCDOC */
+/** Parse and extract all SR commits from <b>tokens</b> and place them in
+ *  <b>ns</b>. Return -1 on failure, and 0 on success. */
 static int
 extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
 {
+  int retval = -1;
   char rsa_identity_fpr[FINGERPRINT_LEN + 1];
-  smartlist_t *chunks;
+  smartlist_t *chunks = NULL;
 
   tor_assert(ns);
   tor_assert(tokens);
@@ -2947,17 +2949,19 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
     if (commit == NULL) {
       /* Commitment couldn't be parsed. Stop right now since this vote is
        * clearly malformed. */
-      smartlist_free(chunks);
       goto err;
     }
     /* Add newly created commit object to the vote. */
     smartlist_add(ns->sr_info.commits, commit);
   } SMARTLIST_FOREACH_END(tok);
-  smartlist_free(chunks);
+
  end:
-  return 0;
+  retval = 0;
+
  err:
-  return -1;
+  smartlist_free(chunks);
+  smartlist_free(commits);
+  return retval;
 }
 
 /** Check if a shared random value of type <b>srv_type</b> is in
