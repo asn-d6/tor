@@ -1,5 +1,6 @@
 #define SHARED_RANDOM_PRIVATE
 #define SHARED_RANDOM_STATE_PRIVATE
+#define CONFIG_PRIVATE
 
 #include "or.h"
 #include "test.h"
@@ -623,6 +624,7 @@ test_sr_get_majority_srv_from_votes(void *arg)
   (void) arg;
 
   /* The test relies on the dirauth list being initialized. */
+  add_default_trusted_dir_authorities(V3_DIRINFO);
   tt_int_op(get_n_authorities(V3_DIRINFO), >=, 9);
 
   { /* Prepare voting environment with just a single vote. */
