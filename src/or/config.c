@@ -898,7 +898,7 @@ static const char *default_authorities[] = {
  * but only add them insofar as they share bits with <b>type</b>.
  * Each authority's bits are restricted to the bits shared with <b>type</b>.
  * If <b>type</b> is ALL_DIRINFO or NO_DIRINFO (zero), add all authorities. */
-static void
+STATIC void
 add_default_trusted_dir_authorities(dirinfo_type_t type)
 {
   int i;
