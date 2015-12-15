@@ -140,6 +140,8 @@ smartlist_t *get_options_for_server_transport(const char *transport);
 extern struct config_format_t options_format;
 #endif
 
+STATIC void add_default_trusted_dir_authorities(dirinfo_type_t type);
+
 STATIC port_cfg_t *port_cfg_new(size_t namelen);
 STATIC void port_cfg_free(port_cfg_t *port);
 STATIC void or_options_free(or_options_t *options);
