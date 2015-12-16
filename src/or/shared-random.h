@@ -135,6 +135,9 @@ STATIC int verify_commit_and_reveal(const sr_commit_t *commit);
 STATIC sr_srv_t *get_majority_srv_from_votes(smartlist_t *votes,
                                              unsigned int current);
 
+STATIC void save_commit_to_state(sr_commit_t *commit);
+
+
 #endif /* SHARED_RANDOM_PRIVATE */
 
 #endif /* TOR_SHARED_RANDOM_H */

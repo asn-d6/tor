@@ -48,7 +48,7 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 #define SR_DISK_STATE_MAGIC 42424242
 /* Each protocol phase has 12 rounds  */
 /* XXX: Testing: #define SHARED_RANDOM_N_ROUNDS 12 */
-#define SHARED_RANDOM_N_ROUNDS 3
+#define SHARED_RANDOM_N_ROUNDS 12
 
 static int
 disk_state_validate_cb(void *old_state, void *state, void *default_state,
@@ -930,8 +930,8 @@ sr_state_get_phase(void)
 }
 
 /* Return the previous SRV value from our state. Value CAN be NULL. */
-MOCK_IMPL(sr_srv_t *,
-sr_state_get_previous_srv,(void))
+sr_srv_t *
+sr_state_get_previous_srv(void)
 {
   sr_srv_t *srv;
   state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_PREVSRV, NULL,
@@ -980,8 +980,8 @@ sr_state_clean_srvs(void)
 }
 
 /* Return a pointer to the commits map from our state. CANNOT be NULL. */
-MOCK_IMPL(digestmap_t *,
-sr_state_get_commits,(void))
+digestmap_t *
+sr_state_get_commits(void)
 {
   digestmap_t *commits;
   state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_COMMITS,
@@ -1150,16 +1150,19 @@ get_sr_state(void)
 /* Initialize the disk and memory state. Return 0 on success else a negative
  * value on error. */
 int
-sr_state_init(int save_to_disk)
+sr_state_init(int save_to_disk, int read_from_disk)
 {
-  int ret;
+  int ret = -ENOENT;
 
   /* We shouldn't have those assigned. */
   tor_assert(sr_disk_state == NULL);
   tor_assert(sr_state == NULL);
 
   /* First, we have to try to load the state from disk. */
-  ret = disk_state_load_from_disk();
+  if (read_from_disk) {
+    ret = disk_state_load_from_disk();
+  }
+
   if (ret < 0) {
     switch (-ret) {
     case EINVAL:

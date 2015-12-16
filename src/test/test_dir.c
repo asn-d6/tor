@@ -1779,7 +1779,7 @@ test_a_networkstatus(
   tt_assert(!dir_common_authority_pk_init(&cert1, &cert2, &cert3,
                                           &sign_skey_1, &sign_skey_2,
                                           &sign_skey_3));
-  sr_state_init(0);
+  sr_state_init(0, 0);
 
   /* Parse certificates and keys. */
   cert1 = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
