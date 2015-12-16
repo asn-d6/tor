@@ -960,6 +960,20 @@ sr_state_set_current_srv(sr_srv_t *srv)
               NULL);
 }
 
+/** Clean all the SRVs in our state. */
+void
+sr_state_clean_srvs(void)
+{
+  sr_srv_t *previous_srv = sr_state_get_previous_srv();
+  sr_srv_t *current_srv = sr_state_get_current_srv();
+
+  tor_free(previous_srv);
+  sr_state_set_previous_srv(NULL);
+
+  tor_free(current_srv);
+  sr_state_set_current_srv(NULL);
+}
+
 /* Return a pointer to the commits map from our state. CANNOT be NULL. */
 MOCK_IMPL(digestmap_t *,
 sr_state_get_commits,(void))
