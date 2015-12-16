@@ -298,6 +298,31 @@ test_encoding(void *arg)
   ;
 }
 
+/** Setup some SRVs in our SR state. If <b>also_current</b> is set, then set
+ *  both current and previous SRVs.
+ *  Helper of test_vote() and test_sr_compute_srv(). */
+static void
+test_sr_setup_srv(int also_current)
+{
+  sr_srv_t *srv = tor_malloc_zero(sizeof(sr_srv_t));
+  srv->num_reveals = 42;
+  memcpy(srv->value,
+         "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
+         sizeof(srv->value));
+
+ sr_state_set_previous_srv(srv);
+
+ if (also_current) {
+   srv = tor_malloc_zero(sizeof(sr_srv_t));
+   srv->num_reveals = 128;
+   memcpy(srv->value,
+          "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+          sizeof(srv->value));
+
+   sr_state_set_current_srv(srv);
+ }
+}
+
 /* Test anything that has to do with SR protocol and vote. */
 static void
 test_vote(void *arg)
@@ -337,7 +362,10 @@ test_vote(void *arg)
     tt_assert(saved_commit);
   }
 
-  {
+  /* Also setup the SRVs */
+  test_sr_setup_srv(1);
+
+  { /* Now test the vote generation */
     smartlist_t *chunks = smartlist_new();
     smartlist_t *tokens = smartlist_new();
     /* Get our vote line and validate it. */
@@ -345,7 +373,7 @@ test_vote(void *arg)
     tt_assert(lines);
     /* Split the lines. We expect 2 here. */
     ret = smartlist_split_string(chunks, lines, "\n", SPLIT_IGNORE_BLANK, 0);
-    tt_int_op(ret, ==, 2);
+    tt_int_op(ret, ==, 4);
     tt_str_op(smartlist_get(chunks, 0), OP_EQ, "shared-rand-participate");
     /* Get our commitment line and will validate it agains our commit. The
      * format is as follow:
@@ -373,6 +401,34 @@ test_vote(void *arg)
     sr_commit_t *parsed_commit = sr_parse_commit(args);
     tt_assert(parsed_commit);
     tt_mem_op(parsed_commit, ==, our_commit, sizeof(*our_commit));
+
+    /* minor cleanup */
+    SMARTLIST_FOREACH(tokens, char *, s, tor_free(s));
+    smartlist_clear(tokens);
+
+    /* Now test the previous SRV */
+    char *prev_srv_line = smartlist_get(chunks, 2);
+    tt_assert(prev_srv_line);
+    ret = smartlist_split_string(tokens, prev_srv_line, " ", 0, 0);
+    tt_int_op(ret, ==, 3);
+    tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-previous-value");
+    tt_str_op(smartlist_get(tokens, 1), OP_EQ, "42");
+    tt_str_op(smartlist_get(tokens, 2), OP_EQ,
+           "5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A");
+
+    /* minor cleanup */
+    SMARTLIST_FOREACH(tokens, char *, s, tor_free(s));
+    smartlist_clear(tokens);
+
+    /* Now test the current SRV */
+    char *current_srv_line = smartlist_get(chunks, 3);
+    tt_assert(current_srv_line);
+    ret = smartlist_split_string(tokens, current_srv_line, " ", 0, 0);
+    tt_int_op(ret, ==, 3);
+    tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-current-value");
+    tt_str_op(smartlist_get(tokens, 1), OP_EQ, "128");
+    tt_str_op(smartlist_get(tokens, 2), OP_EQ,
+           "4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E");
 
     /* Clean up */
     sr_commit_free(parsed_commit);
@@ -552,20 +608,6 @@ test_sr_setup_commits(void)
   ;
 }
 
-/** Generate a specially crafted previous SRV value (based on the test
- *  vector at sr_srv_calc_ref.py). Helper of test_sr_compute_srv(). */
-static void
-test_sr_setup_srv(void)
-{
-  sr_srv_t *srv = tor_malloc_zero(sizeof(sr_srv_t));
-  srv->num_reveals = 42;
-  memcpy(srv->value,
-         "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
-         sizeof(srv->value));
-
-  sr_state_set_previous_srv(srv);
-}
-
 /** Verify that the SRV generation procedure is proper by testing it against
  *  the test vector from ./sr_srv_calc_ref.py. */
 static void
@@ -580,7 +622,7 @@ test_sr_compute_srv(void *arg)
 
   /* Setup the commits for this unittest */
   test_sr_setup_commits();
-  test_sr_setup_srv();
+  test_sr_setup_srv(0);
 
   /* Now switch to reveal phase */
   set_sr_phase(SR_PHASE_REVEAL);
