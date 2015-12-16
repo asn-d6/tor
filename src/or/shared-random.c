@@ -62,15 +62,6 @@
 #define PREVIOUS_SRV_STR "shared-rand-previous-value"
 #define CURRENT_SRV_STR "shared-rand-current-value"
 
-/* When we compute a consensus, the majority decides on shared random values
- * (if any) and they are saved in this array. Once we are done and about to
- * post the newly computed consensus, we'll update our state with the values
- * in this array so we have all authorities using the same values.
- *
- * Index 0 is the previous value and 1 is the current. If no value could be
- * decided from majority, pointer is NULL. */
-static sr_srv_t *post_consensus_srv[2];
-
 /* Return a heap allocated copy of <b>orig</b>. */
 static sr_srv_t *
 srv_dup(const sr_srv_t *orig)
@@ -1195,12 +1186,6 @@ sr_get_string_for_consensus(smartlist_t *votes)
     goto end;
   }
 
-  /* Register any SRVs we decided to trust. */
-  /* XXX a bit nasty to register these important things in a function called
-     sr_get_string_for_consensus()... */
-  post_consensus_srv[0] = srv_dup(prev_srv);
-  post_consensus_srv[1] = srv_dup(cur_srv);
-
   /* XXX: debugging. */
   log_warn(LD_DIR, "[SR] Shared random line(s) put in the consensus:");
   log_warn(LD_DIR, "[SR] \t %s", srv_str);
@@ -1210,18 +1195,23 @@ sr_get_string_for_consensus(smartlist_t *votes)
   return NULL;
 }
 
-/* Update the SRV(s) that the majority has decided once the consensus is
- * ready to be posted. */
+/* We just computed a new <b>consensus</b>. Update our state with the SRVs from
+ * the consensus (might be NULL as well). Register the SRVs in our SR state and
+ * prepare for the upcoming protocol round. */
 void
-sr_decide_srv_post_consensus(void)
+sr_decide_srv_post_consensus(const networkstatus_t *consensus)
 {
-  /* Set the SRV(s) in our state even if both are NULL, it doesn't matter
-   * this is what the majority has decided. */
-  sr_state_set_previous_srv(post_consensus_srv[0]);
-  sr_state_set_current_srv(post_consensus_srv[1]);
-  /* Ownership of all object have been passed to the state so simply reset
-   * the array for the next period without freeing the object. */
-  post_consensus_srv[0] = post_consensus_srv[1] = NULL;
+  /* Start by freeing the current SRVs since the SRVs we believed during voting
+   * do not really matter. Now that all the votes are in, we use the majority's
+   * opinion on which are the active SRVs. */
+  sr_state_clean_srvs();
+
+  /* Set the majority voted SRVs in our state even if both are NULL. It doesn't
+   * matter this is what the majority has decided. */
+  if (consensus) {
+    sr_state_set_previous_srv(srv_dup(consensus->sr_info.previous_srv));
+    sr_state_set_current_srv(srv_dup(consensus->sr_info.current_srv));
+  }
 
   /* Make sure our state is coherent for the next voting period. */
   sr_state_update(time(NULL));
