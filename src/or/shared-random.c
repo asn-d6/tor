@@ -129,7 +129,7 @@ commit_log(const sr_commit_t *commit)
 /* Make sure that the commitment and reveal information in <b>commit</b>
  * match. If they match return 0, return -1 otherwise. This function MUST be
  * used everytime we receive a new reveal value. */
-static int
+STATIC int
 verify_commit_and_reveal(const sr_commit_t *commit)
 {
   tor_assert(commit);
