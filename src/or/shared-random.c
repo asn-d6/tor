@@ -348,13 +348,18 @@ sr_cleanup(void)
 
 /* Using <b>commit</b>, return a newly allocated string containing the
  * authority identity fingerprint concatenated with its encoded reveal
- * value. It's the caller responsibility to free the memory. This can't fail
- * thus a valid string is always returned. */
+ * value. It's the caller responsibility to free the memory. Return NULL if
+ * this is not a commit to be used for SRV calculation. */
 static char *
 get_srv_element_from_commit(const sr_commit_t *commit)
 {
   char *element;
   tor_assert(commit);
+
+  if (!commit_has_reveal_value(commit)) {
+    return NULL;
+  }
+
   tor_asprintf(&element, "%s%s", commit->auth_fingerprint,
                commit->encoded_reveal);
   return element;
@@ -923,7 +928,7 @@ error:
 void
 sr_compute_srv(void)
 {
-  size_t reveal_num;
+  size_t reveal_num = 0;
   char *reveals = NULL;
   smartlist_t *chunks, *commits;
   digestmap_t *state_commits;
@@ -933,11 +938,6 @@ sr_compute_srv(void)
    * protocol run is about to start. */
   tor_assert(sr_state_get_phase() == SR_PHASE_REVEAL);
   state_commits = sr_state_get_commits();
-
-  /* XXX: Let's make sure those conditions to compute an SRV are solid and
-   * cover all cases. While writing this I'm still unsure of those. */
-  reveal_num = digestmap_size(state_commits);
-  tor_assert(reveal_num < UINT8_MAX);
 
   commits = smartlist_new();
   chunks = smartlist_new();
@@ -954,7 +954,10 @@ sr_compute_srv(void)
    * computation. */
   SMARTLIST_FOREACH_BEGIN(commits, const sr_commit_t *, c) {
     char *element = get_srv_element_from_commit(c);
-    smartlist_add(chunks, element);
+    if (element) {
+      smartlist_add(chunks, element);
+      reveal_num++;
+    }
   } SMARTLIST_FOREACH_END(c);
   smartlist_free(commits);
 
@@ -971,6 +974,7 @@ sr_compute_srv(void)
       log_warn(LD_DIR, "[SR] Unable to hash the reveals. Stopping.");
       goto end;
     }
+    tor_assert(reveal_num < UINT8_MAX);
     current_srv = generate_srv(hashed_reveals, (uint8_t) reveal_num,
                                sr_state_get_previous_srv());
     sr_state_set_current_srv(current_srv);
