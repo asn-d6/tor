@@ -318,7 +318,7 @@ test_vote(void *arg)
     options->AuthoritativeDir = 1;
     tt_int_op(0, ==, load_ed_keys(options, now));
 
-    sr_state_init(0);
+    sr_state_init(0, 0);
     /* Set ourself in reveal phase so we can parse the reveal value in the
      * vote as well. */
     set_sr_phase(SR_PHASE_REVEAL);
@@ -451,16 +451,14 @@ test_state_load_from_disk(void *arg)
   tor_free(sr_state_path);
 }
 
-/** Generate and return three specially crafted commits (based on the test
- *  vector at sr_srv_calc_ref.py).
- *  Helper of test_sr_compute_srv(). Mocks sr_state_get_commits(). */
-static digestmap_t *
-sr_state_get_commits_mocked(void)
+/** Generate three specially crafted commits (based on the test
+ *  vector at sr_srv_calc_ref.py). Helper of test_sr_compute_srv(). */
+static void
+test_sr_setup_commits(void)
 {
   time_t now = time(NULL);
-  sr_commit_t *commit_a, *commit_b, *commit_c;
+  sr_commit_t *commit_a, *commit_b, *commit_c, *commit_d;
   authority_cert_t *auth_cert = NULL;
-  digestmap_t *commits = digestmap_new();
 
 
   {  /* Setup a minimal dirauth environment for this test  */
@@ -473,14 +471,16 @@ sr_state_get_commits_mocked(void)
     tt_int_op(0, ==, load_ed_keys(options, now));
   }
 
-  /* Generate three dummy commitments according to sr_srv_calc_ref.py */
+  /* Generate three dummy commits according to sr_srv_calc_ref.py .  Then
+     register them to the SR state. Also register a fourth commit 'd' with no
+     reveal info, to make sure that it will get ignored during SRV calculation. */
 
   { /* Commit from auth 'a' */
     commit_a = sr_generate_our_commitment(now, auth_cert);
     tt_assert(commit_a);
 
     /* Do some surgery on the commit */
-    strlcpy(commit_a->auth_fingerprint,
+    strlcpy(commit_a->rsa_identity_fpr,
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             sizeof(commit_a->rsa_identity_fpr));
     strlcpy(commit_a->auth_fingerprint,
@@ -496,7 +496,7 @@ sr_state_get_commits_mocked(void)
     tt_assert(commit_b);
 
     /* Do some surgery on the commit */
-    strlcpy(commit_b->auth_fingerprint,
+    strlcpy(commit_b->rsa_identity_fpr,
             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             sizeof(commit_b->rsa_identity_fpr));
     strlcpy(commit_b->auth_fingerprint,
@@ -504,7 +504,7 @@ sr_state_get_commits_mocked(void)
             sizeof(commit_b->auth_fingerprint));
     strlcpy(commit_b->encoded_reveal,
             "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-            sizeof(commit_b->encoded_reveal));
+          sizeof(commit_b->encoded_reveal));
   }
 
   { /* Commit from auth 'c' */
@@ -512,7 +512,7 @@ sr_state_get_commits_mocked(void)
     tt_assert(commit_c);
 
     /* Do some surgery on the commit */
-    strlcpy(commit_c->auth_fingerprint,
+    strlcpy(commit_c->rsa_identity_fpr,
             "ccccccccccccccccccccccccccccccccccccccccccccccccc",
             sizeof(commit_c->rsa_identity_fpr));
     strlcpy(commit_c->auth_fingerprint,
@@ -523,32 +523,47 @@ sr_state_get_commits_mocked(void)
             sizeof(commit_c->encoded_reveal));
   }
 
-  /* Put them in commits and return them! */
-  digestmap_set(commits,
-                commit_a->rsa_identity_fpr, commit_a);
-  digestmap_set(commits,
-                commit_b->rsa_identity_fpr, commit_b);
-  digestmap_set(commits,
-                commit_c->rsa_identity_fpr, commit_c);
+  { /* Commit from auth 'd' */
+    commit_d = sr_generate_our_commitment(now, auth_cert);
+    tt_assert(commit_d);
 
-  return commits;
+    /* Do some surgery on the commit */
+    strlcpy(commit_d->rsa_identity_fpr,
+            "ddddddddddddddddddddddddddddddddddddddddddddddddd",
+            sizeof(commit_d->rsa_identity_fpr));
+    strlcpy(commit_d->auth_fingerprint,
+            "ddddddddddddddddddddddddddddddddddddddddddd",
+            sizeof(commit_d->auth_fingerprint));
+    /* Clean up its reveal info */
+    memset(commit_d->encoded_reveal, 0, sizeof(commit_d->encoded_reveal));
+    tt_assert(!commit_has_reveal_value(commit_d));
+  }
+
+  /* Register commits to state (during commit phase) */
+  set_sr_phase(SR_PHASE_COMMIT);
+  save_commit_to_state(commit_a);
+  save_commit_to_state(commit_b);
+  save_commit_to_state(commit_c);
+  save_commit_to_state(commit_d);
+
+  return;
 
  done:
-  return NULL;
+  ;
 }
 
 /** Generate a specially crafted previous SRV value (based on the test
- *  vector at sr_srv_calc_ref.py).
- *  Helper of test_sr_compute_srv().  Mocks sr_state_get_previous_srv(). */
-static sr_srv_t *
-sr_state_get_previous_srv_mocked(void)
+ *  vector at sr_srv_calc_ref.py). Helper of test_sr_compute_srv(). */
+static void
+test_sr_setup_srv(void)
 {
   sr_srv_t *srv = tor_malloc_zero(sizeof(sr_srv_t));
   srv->num_reveals = 42;
   memcpy(srv->value,
          "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
          sizeof(srv->value));
-  return srv;
+
+  sr_state_set_previous_srv(srv);
 }
 
 /** Verify that the SRV generation procedure is proper by testing it against
@@ -561,18 +576,14 @@ test_sr_compute_srv(void *arg)
 
 #define SRV_TEST_VECTOR "BD2D7C0D3F9680585828389C787E3D478C3DDFCD1EB39E42A9D7B49D1ABCB7FC"
 
-  /* Mock the necessary functions to inject our test data into
-     sr_compute_srv(). */
-  MOCK(sr_state_get_commits,
-       sr_state_get_commits_mocked);
-  MOCK(sr_state_get_previous_srv,
-       sr_state_get_previous_srv_mocked);
+  sr_state_init(0, 0);
 
-  {
-    sr_state_init(0);
-    /* Set ourself in reveal phase */
-    set_sr_phase(SR_PHASE_REVEAL);
-  }
+  /* Setup the commits for this unittest */
+  test_sr_setup_commits();
+  test_sr_setup_srv();
+
+  /* Now switch to reveal phase */
+  set_sr_phase(SR_PHASE_REVEAL);
 
   /* Compute the SRV */
   sr_compute_srv();
@@ -580,14 +591,13 @@ test_sr_compute_srv(void *arg)
   /* Check the result against the test vector */
   current_srv = sr_state_get_current_srv();
   tt_assert(current_srv);
+  tt_int_op(current_srv->num_reveals, ==, 3);
   tt_str_op(hex_str((char*)current_srv->value, 32),
             ==,
             SRV_TEST_VECTOR);
-  tt_int_op(current_srv->num_reveals, ==, 3);
 
  done:
-  UNMOCK(sr_state_get_previous_srv);
-  UNMOCK(sr_state_get_commits);
+  ;
 }
 
 /** Return a minimal vote document with a current SRV value set to
