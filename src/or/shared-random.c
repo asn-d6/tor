@@ -661,7 +661,7 @@ save_commit_during_reveal_phase(const sr_commit_t *commit)
 
 /* Save <b>commit</b> to our persistent state. Depending on the current phase,
  * different actions are taken. Steals reference of <b>commit</b>. */
-static void
+STATIC void
 save_commit_to_state(sr_commit_t *commit)
 {
   sr_phase_t phase = sr_state_get_phase();
@@ -830,7 +830,7 @@ sr_commit_free(sr_commit_t *commit)
 int
 sr_init(int save_to_disk)
 {
-  return sr_state_init(save_to_disk);
+  return sr_state_init(save_to_disk, 1);
 }
 
 /* Save our state to disk and cleanup everything. */

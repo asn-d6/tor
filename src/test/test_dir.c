@@ -1902,7 +1902,7 @@ test_a_networkstatus(
   tt_assert(rs_test);
   tt_assert(vrs_test);
 
-  sr_state_init(0);
+  sr_state_init(0, 0);
 
   /* Parse certificates and keys. */
   cert1 = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
