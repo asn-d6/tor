@@ -495,7 +495,7 @@ test_state_load_from_disk(void *arg)
   the_sr_state = get_sr_state();
   tt_assert(the_sr_state);
   tt_assert(the_sr_state->version == 1);
-  tt_assert(digestmap_size(the_sr_state->commitments) == 3);
+  tt_assert(digestmap_size(the_sr_state->commits) == 3);
   tt_assert(the_sr_state->current_srv);
   tt_assert(the_sr_state->current_srv->num_reveals == 3);
   tt_assert(the_sr_state->previous_srv);
