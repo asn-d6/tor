@@ -51,7 +51,7 @@ typedef struct sr_state_t {
 
   /* A map of all the receive commitments for the protocol run. This is
    * indexed by authority RSA identity digest. */
-  digestmap_t *commitments;
+  digestmap_t *commits;
 
   /* Current and previous shared random value. See section [SRCALC] in
    * proposal 250 for details on how this is constructed. */
