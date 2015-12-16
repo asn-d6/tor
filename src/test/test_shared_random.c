@@ -190,6 +190,7 @@ test_sr_commit(void *arg)
                                    &test_commit));
     tt_int_op(0, ==, commit_decode(our_commit->encoded_commit,
                                    &test_commit));
+    tt_int_op(0, ==, verify_commit_and_reveal(our_commit));
   }
 
   /* We'll build a list of values from our commit that our parsing function
