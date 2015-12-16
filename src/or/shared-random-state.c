@@ -186,7 +186,7 @@ commit_add_to_state(sr_commit_t *commit, sr_state_t *state)
   tor_assert(commit);
   tor_assert(state);
 
-  saved_commit = digestmap_set(state->commitments, commit->rsa_identity_fpr,
+  saved_commit = digestmap_set(state->commits, commit->rsa_identity_fpr,
                                commit);
   tor_assert(saved_commit == NULL);
 }
@@ -207,7 +207,7 @@ state_free(sr_state_t *state)
     return;
   }
   tor_free(state->fname);
-  digestmap_free(state->commitments, commit_free_);
+  digestmap_free(state->commits, commit_free_);
   tor_free(state->current_srv);
   tor_free(state->previous_srv);
   tor_free(state);
@@ -227,7 +227,7 @@ state_new(const char *fname)
   }
   new_state->fname = tor_strdup(fname);
   new_state->version = SR_PROTO_VERSION;
-  new_state->commitments = digestmap_new();
+  new_state->commits = digestmap_new();
   new_state->phase = get_sr_protocol_phase(now);
   /* We can't use a valid-after time here since we don't have one if we are
    * just botting for instance. In any case, we use now which is fine even
@@ -563,7 +563,7 @@ disk_state_update(void)
 
   /* Parse the commitments and construct config line(s). */
   next = &sr_disk_state->Commitments;
-  DIGESTMAP_FOREACH(sr_state->commitments, key, sr_commit_t *, commit) {
+  DIGESTMAP_FOREACH(sr_state->commits, key, sr_commit_t *, commit) {
     *next = line = tor_malloc_zero(sizeof(*line));
     line->key = tor_strdup(dstate_commit_key);
     disk_state_put_commit_line(commit, line);
@@ -725,7 +725,7 @@ reset_state_for_new_protocol_run(time_t valid_after)
   sr_state->valid_until = get_state_valid_until_time(valid_after);
 
   /* We are in a new protocol run so cleanup commitments. */
-  DIGESTMAP_FOREACH_MODIFY(sr_state->commitments, key, sr_commit_t *, c) {
+  DIGESTMAP_FOREACH_MODIFY(sr_state->commits, key, sr_commit_t *, c) {
     sr_commit_free(c);
     MAP_DEL_CURRENT(key);
   } DIGESTMAP_FOREACH_END;
@@ -792,7 +792,7 @@ static sr_commit_t *
 state_query_get_commit_by_rsa(const char *rsa_fpr)
 {
   tor_assert(rsa_fpr);
-  return digestmap_get(sr_state->commitments, rsa_fpr);
+  return digestmap_get(sr_state->commits, rsa_fpr);
 }
 /* Helper function: This handles the GET state action using an
  * <b>obj_type</b> and <b>data</b> needed for the action. */
@@ -808,7 +808,7 @@ state_query_get_(sr_state_object_t obj_type, void *data)
     break;
   }
   case SR_STATE_OBJ_COMMITS:
-    obj = sr_state->commitments;
+    obj = sr_state->commits;
     break;
   case SR_STATE_OBJ_CURSRV:
     obj = sr_state->current_srv;
@@ -867,7 +867,7 @@ state_query_del_(sr_state_object_t obj_type, void *data)
   case SR_STATE_OBJ_COMMIT:
   {
     const char *identity = data;
-    digestmap_remove(sr_state->commitments, identity);
+    digestmap_remove(sr_state->commits, identity);
     break;
   }
   /* The following object are _NOT_ suppose to be removed. */
@@ -1017,7 +1017,7 @@ sr_state_update(time_t now)
     /* Set the new phase for this round */
     sr_state->phase = next_phase;
   } else if (sr_state->phase == SR_PHASE_COMMIT &&
-             digestmap_size(sr_state->commitments) == 0) {
+             digestmap_size(sr_state->commits) == 0) {
     /* We are _NOT_ in a transition phase so if we are in the commit phase
      * and have no commit, generate one. Chances are that we are booting up
      * so let's have a commit in our state for the next voting period. */
