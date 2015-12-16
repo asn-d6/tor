@@ -90,14 +90,19 @@ static const config_format_t state_format = {
 static const char *
 get_phase_str(sr_phase_t phase)
 {
+  const char *the_string = NULL;
+
   switch (phase) {
   case SR_PHASE_COMMIT:
   case SR_PHASE_REVEAL:
-    return phase_str[phase];
+    the_string = phase_str[phase];
+    break;
   default:
     /* Unknown phase shouldn't be possible. */
     tor_assert(0);
   }
+
+  return the_string;
 }
 
 /* Return the voting interval of the tor vote subsystem. */
