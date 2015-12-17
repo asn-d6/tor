@@ -859,10 +859,8 @@ state_query_put_(sr_state_object_t obj_type, void *data)
 /* Helper function: This handles the DEL state action using an
  * <b>obj_type</b> and <b>data</b> needed for the action. */
 static void
-state_query_del_all_(sr_state_object_t obj_type, void *data)
+state_query_del_all_(sr_state_object_t obj_type)
 {
-  tor_assert(data);
-
   switch (obj_type) {
   case SR_STATE_OBJ_COMMIT:
   {
@@ -907,7 +905,7 @@ state_query(sr_state_action_t action, sr_state_object_t obj_type,
     state_query_put_(obj_type, data);
     break;
   case SR_STATE_ACTION_DEL_ALL:
-    state_query_del_all_(obj_type, data);
+    state_query_del_all_(obj_type);
     break;
   case SR_STATE_ACTION_SAVE:
     /* Only trigger a disk state save. */
