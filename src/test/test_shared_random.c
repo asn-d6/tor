@@ -801,6 +801,12 @@ test_utils(void *arg)
     tt_int_op(commit_is_authoritative(&commit, &kp.pubkey), ==, 0);
   }
 
+  /* Testing get_phase_str(). */
+  {
+    tt_str_op(get_phase_str(SR_PHASE_REVEAL), ==, "reveal");
+    tt_str_op(get_phase_str(SR_PHASE_COMMIT), ==, "commit");
+  }
+
  done:
   return;
 }

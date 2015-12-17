@@ -87,7 +87,7 @@ static const config_format_t state_format = {
 };
 
 /* Return a string representation of a protocol phase. */
-static const char *
+STATIC const char *
 get_phase_str(sr_phase_t phase)
 {
   const char *the_string = NULL;
