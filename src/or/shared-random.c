@@ -195,9 +195,9 @@ commit_decode(const char *encoded, sr_commit_t *commit)
 {
   int decoded_len = 0;
   size_t offset = 0;
-  /* Needs an extra byte for the base64 decode calculation matches the
-   * binary length once decoded. */
-  char b64_decoded[SR_COMMIT_LEN + 2]; /* XXXX why + 2 */
+  /* XXX: Needs two extra bytes for the base64 decode calculation matches
+   * the binary length once decoded. #17868. */
+  char b64_decoded[SR_COMMIT_LEN + 2];
 
   tor_assert(encoded);
   tor_assert(commit);
@@ -243,8 +243,8 @@ STATIC int
 reveal_decode(const char *encoded, sr_commit_t *commit)
 {
   int decoded_len = 0;
-  /* Needs two extra bytes for the base64 decode calculation matches the
-   * binary length once decoded. */
+  /* XXX: Needs two extra bytes for the base64 decode calculation matches
+   * the binary length once decoded. #17868. */
   char b64_decoded[SR_REVEAL_LEN + 2];
 
   tor_assert(encoded);
