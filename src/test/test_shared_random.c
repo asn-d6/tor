@@ -725,6 +725,65 @@ test_sr_get_majority_srv_from_votes(void *arg)
   smartlist_free(votes);
 }
 
+static void
+test_utils(void *arg)
+{
+  (void) arg;
+
+  /* Testing srv_dup(). */
+  {
+    sr_srv_t *srv = NULL, *dup_srv = NULL;
+    const char *srv_value =
+      "BD2D7C0D3F9680585828389C787E3D478C3DDFCD1EB39E42A9D7B49D1ABCB7FC";
+    srv = tor_malloc_zero(sizeof(*srv));
+    srv->num_reveals = 42;
+    memcpy(srv->value, srv_value, sizeof(srv->value));
+    dup_srv = srv_dup(srv);
+    tt_assert(dup_srv);
+    tt_int_op(dup_srv->num_reveals, ==, srv->num_reveals);
+    tt_mem_op(dup_srv->value, OP_EQ, srv->value, sizeof(srv->value));
+    tor_free(srv);
+    tor_free(dup_srv);
+  }
+
+  /* Testing commitments_are_the_same(). Currently, the check is to test the
+   * value of the encoded commit so let's make sure that actually works. */
+  {
+    /* Payload of 55 bytes that is the length of
+     * sr_commit_t->encoded_commit. */
+    const char *payload =
+      "\x5d\xb9\x60\xb6\xcc\x51\x68\x52\x31\xd9\x88\x88\x71\x71\xe0\x30"
+      "\x59\x55\x7f\xcd\x61\xc0\x4b\x05\xb8\xcd\xc1\x48\xe9\xcd\x16\x1f"
+      "\x70\x15\x0c\xfc\xd3\x1a\x75\xd0\x93\x6c\xc4\xe0\x5c\xbe\xe2\x18"
+      "\xc7\xaf\x72\xb6\x7c\x9b\x52";
+    sr_commit_t commit1, commit2;
+    memcpy(commit1.encoded_commit, payload, sizeof(commit1.encoded_commit));
+    memcpy(commit2.encoded_commit, payload, sizeof(commit2.encoded_commit));
+    tt_int_op(commitments_are_the_same(&commit1, &commit2), ==, 1);
+    /* Let's corrupt one of them. */
+    memset(commit1.encoded_commit, 'A', sizeof(commit1.encoded_commit));
+    tt_int_op(commitments_are_the_same(&commit1, &commit2), ==, 0);
+  }
+
+  /* Testing commit_is_authoritative(). */
+  {
+    const char *seed = "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY";
+    ed25519_keypair_t kp;
+    sr_commit_t commit;
+
+    ed25519_secret_key_from_seed(&kp.seckey, (const uint8_t *) seed);
+    ed25519_public_key_generate(&kp.pubkey, &kp.seckey);
+    memcpy(&commit.auth_identity, &kp.pubkey, sizeof(commit.auth_identity));
+    tt_int_op(commit_is_authoritative(&commit, &kp.pubkey), ==, 1);
+    /* Change the pubkey. */
+    memset(&commit.auth_identity, 0, sizeof(commit.auth_identity));
+    tt_int_op(commit_is_authoritative(&commit, &kp.pubkey), ==, 0);
+  }
+
+ done:
+  return;
+}
+
 struct testcase_t sr_tests[] = {
   { "get_sr_protocol_phase", test_get_sr_protocol_phase, TT_FORK,
     NULL, NULL },
@@ -741,5 +800,6 @@ struct testcase_t sr_tests[] = {
   { "sr_compute_srv", test_sr_compute_srv, TT_FORK, NULL, NULL },
   { "sr_get_majority_srv_from_votes", test_sr_get_majority_srv_from_votes,
     TT_FORK, NULL, NULL },
+  { "utils", test_utils, TT_FORK, NULL, NULL },
   END_OF_TESTCASES
 };
