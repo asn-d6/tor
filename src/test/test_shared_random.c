@@ -193,6 +193,27 @@ test_sr_commit(void *arg)
     tt_int_op(0, ==, verify_commit_and_reveal(our_commit));
   }
 
+  /* Let's make sure our verify commit and reveal function works. We'll
+   * make it fail a bit with known failure case. */
+  {
+    /* Copy our commit so we don't alter it for the rest of testing. */
+    sr_commit_t test_commit;
+    memcpy(&test_commit, our_commit, sizeof(test_commit));
+
+    /* Timestamp MUST match. */
+    test_commit.commit_ts = test_commit.reveal_ts - 42;
+    tt_int_op(-1, ==, verify_commit_and_reveal(&test_commit));
+    memcpy(&test_commit, our_commit, sizeof(test_commit));
+    tt_int_op(0, ==, verify_commit_and_reveal(&test_commit));
+
+    /* Hashed reveal must match the H(encoded_reveal). */
+    memset(test_commit.hashed_reveal, 'X',
+           sizeof(test_commit.hashed_reveal));
+    tt_int_op(-1, ==, verify_commit_and_reveal(&test_commit));
+    memcpy(&test_commit, our_commit, sizeof(test_commit));
+    tt_int_op(0, ==, verify_commit_and_reveal(&test_commit));
+  }
+
   /* We'll build a list of values from our commit that our parsing function
    * takes from a vote line and see if we can parse it correctly. */
   {
