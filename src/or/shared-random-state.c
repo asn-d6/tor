@@ -58,6 +58,7 @@ disk_state_validate_cb(void *old_state, void *state, void *default_state,
 static config_var_t state_vars[] = {
   V(Version,                    INT, "1"),
   V(ValidUntil,                 ISOTIME, NULL),
+  V(CreationTime,               ISOTIME, NULL),
 
   VAR("Commitment",             LINELIST_S, Commitments, NULL),
   V(Commitments,                LINELIST_V, NULL),
@@ -217,9 +218,8 @@ state_free(sr_state_t *state)
  * default file name is used. This function does NOT initialize the state
  * timestamp, phase or shared random value. NULL is never returned. */
 static sr_state_t *
-state_new(const char *fname)
+state_new(const char *fname, time_t now)
 {
-  time_t now = time(NULL);
   sr_state_t *new_state = tor_malloc_zero(sizeof(*new_state));
   /* If file name is not provided, use default. */
   if (fname == NULL) {
@@ -235,6 +235,7 @@ state_new(const char *fname)
    * min) this will be updated accordingly and in the meantime you won't
    * participate in the SR protocol by a lack of reveal values. */
   new_state->valid_until = get_state_valid_until_time(now);
+  new_state->creation_time = now;
   return new_state;
 }
 
@@ -261,15 +262,14 @@ disk_state_free(sr_disk_state_t *state)
 
 /* Allocate a new disk state, initialized it and return it. */
 static sr_disk_state_t *
-disk_state_new(void)
+disk_state_new(time_t now)
 {
   sr_disk_state_t *new_state = tor_malloc_zero(sizeof(*new_state));
 
   new_state->magic_ = SR_DISK_STATE_MAGIC;
   new_state->Version = SR_PROTO_VERSION;
-  new_state->ValidUntil = get_state_valid_until_time(time(NULL));
-
-  /* XXX Do we need to initialize Commitments and SharedRandValues here? */
+  new_state->ValidUntil = get_state_valid_until_time(now);
+  new_state->CreationTime = now;
 
   /* Init config format. */
   config_init(&state_format, new_state);
@@ -452,12 +452,13 @@ disk_state_parse_sr_values(sr_state_t *state, sr_disk_state_t *disk_state)
 static sr_state_t *
 disk_state_parse(sr_disk_state_t *new_disk_state)
 {
-  sr_state_t *new_state = state_new(default_fname);
+  sr_state_t *new_state = state_new(default_fname, time(NULL));
 
   tor_assert(new_disk_state);
 
   new_state->version = new_disk_state->Version;
   new_state->valid_until = new_disk_state->ValidUntil;
+  new_state->creation_time = new_disk_state->CreationTime;
 
   /* Parse the shared random values. */
   if (disk_state_parse_sr_values(new_state, new_disk_state) < 0) {
@@ -544,6 +545,7 @@ disk_state_update(void)
    * construct something. */
   sr_disk_state->Version = sr_state->version;
   sr_disk_state->ValidUntil = sr_state->valid_until;
+  sr_disk_state->CreationTime = sr_state->creation_time;
 
   /* Shared random values. */
   next = &sr_disk_state->SharedRandValues;
@@ -606,7 +608,7 @@ disk_state_load_from_disk_impl(const char *fname)
 
     /* Every error in this code path will return EINVAL. */
     ret = -EINVAL;
-    disk_state = disk_state_new();
+    disk_state = disk_state_new(time(NULL));
 
     /* Read content of file so we can parse it. */
     if ((content = read_file_to_str(fname, 0, NULL)) == NULL) {
@@ -723,6 +725,7 @@ reset_state_for_new_protocol_run(time_t valid_after)
 
   /* Reset valid-until */
   sr_state->valid_until = get_state_valid_until_time(valid_after);
+  sr_state->creation_time = valid_after;
 
   /* We are in a new protocol run so cleanup commitments. */
   sr_state_delete_commits();
@@ -1000,6 +1003,11 @@ sr_state_update(time_t valid_after)
 
   tor_assert(sr_state);
 
+  if (valid_after <= sr_state->creation_time) {
+    log_warn(LD_GENERAL, "[SR] Asked to update state twice. Ignoring.");
+    return;
+  }
+
   /* Get phase of upcoming round. */
   next_phase = get_sr_protocol_phase(valid_after);
 
@@ -1027,6 +1035,8 @@ sr_state_update(time_t valid_after)
       sr_state_add_commit(our_commitment);
     }
   }
+
+  sr_state->creation_time = valid_after;
 
   /* Count the current round */
   if (sr_state->phase == SR_PHASE_COMMIT) {
@@ -1167,9 +1177,10 @@ sr_state_init(int save_to_disk, int read_from_disk)
        * obviously unusable and replace it by an new fresh state below. */
     case ENOENT:
       {
+        time_t now = time(NULL);
         /* No state on disk so allocate our states for the first time. */
-        sr_state_t *new_state = state_new(default_fname);
-        sr_disk_state_t *new_disk_state = disk_state_new();
+        sr_state_t *new_state = state_new(default_fname, now);
+        sr_disk_state_t *new_disk_state = disk_state_new(now);
         state_set(new_state);
         /* It's important to set our disk state pointer since the save call
          * below uses it to synchronized it with our memory state.  */
