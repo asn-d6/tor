@@ -811,6 +811,61 @@ test_utils(void *arg)
   return;
 }
 
+static void
+test_state_transition(void *arg)
+{
+  authority_cert_t *auth_cert = NULL;
+  sr_state_t *state = NULL;
+  time_t now = time(NULL);
+
+  (void) arg;
+
+  {  /* Setup a minimal dirauth environment for this test  */
+    or_options_t *options = get_options_mutable();
+    auth_cert = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
+    tt_assert(auth_cert);
+    options->AuthoritativeDir = 1;
+    tt_int_op(0, ==, load_ed_keys(options, now));
+    sr_state_init(0, 0);
+    state = get_sr_state();
+    tt_assert(state);
+  }
+
+  /* Test our state reset for a new protocol run. */
+  {
+    /* Add a commit to the state so we can test if the reset cleans the
+     * commits. Also, change all params that we expect to be updated. */
+    sr_commit_t *commit = sr_generate_our_commitment(now, auth_cert);
+    tt_assert(commit);
+    sr_state_add_commit(commit);
+    tt_int_op(digestmap_size(state->commits), ==, 1);
+    state->n_reveal_rounds = 42;
+    state->n_commit_rounds = 43;
+    state->n_protocol_runs = 44;
+    reset_state_for_new_protocol_run(now);
+    tt_int_op(state->n_reveal_rounds, ==, 0);
+    tt_int_op(state->n_commit_rounds, ==, 0);
+    tt_int_op(state->n_protocol_runs, ==, 45);
+    tt_int_op(digestmap_size(state->commits), ==, 0);
+  }
+
+  /* Test SRV rotation in our state. */
+  {
+    sr_srv_t *cur, *prev;
+    test_sr_setup_srv(1);
+    cur = sr_state_get_current_srv();
+    tt_assert(cur);
+    /* After, current srv should be the previous and then set to NULL. */
+    state_rotate_srv();
+    prev = sr_state_get_previous_srv();
+    tt_assert(prev == cur);
+    tt_assert(!sr_state_get_current_srv());
+  }
+
+ done:
+  return;
+}
+
 struct testcase_t sr_tests[] = {
   { "get_sr_protocol_phase", test_get_sr_protocol_phase, TT_FORK,
     NULL, NULL },
@@ -828,5 +883,6 @@ struct testcase_t sr_tests[] = {
   { "sr_get_majority_srv_from_votes", test_sr_get_majority_srv_from_votes,
     TT_FORK, NULL, NULL },
   { "utils", test_utils, TT_FORK, NULL, NULL },
+  { "state_transition", test_state_transition, TT_FORK, NULL, NULL },
   END_OF_TESTCASES
 };

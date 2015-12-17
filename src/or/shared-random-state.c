@@ -711,7 +711,7 @@ done:
 
 /* Reset our state to prepare for a new protocol run. Once this returns, all
  * commitments in the state will be removed and freed. */
-static void
+STATIC void
 reset_state_for_new_protocol_run(time_t valid_after)
 {
   tor_assert(sr_state);
@@ -733,7 +733,7 @@ reset_state_for_new_protocol_run(time_t valid_after)
 
 /* Rotate SRV value by freeing the previous value, assigning the current
  * value to the previous one and nullifying the current one. */
-static void
+STATIC void
 state_rotate_srv(void)
 {
   /* Get a pointer to the previous SRV so we can free it after rotation. */
