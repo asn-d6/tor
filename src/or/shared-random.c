@@ -708,7 +708,7 @@ should_keep_srv(int n_agreements)
   int votes_required_for_majority = (n_voters / 2) + 1;
 
   if (n_agreements < votes_required_for_majority) {
-    log_warn(LD_DIR, "Didn't reach majority for SRV [%d/%d]!",
+    log_warn(LD_DIR, "[SR] Didn't reach majority for SRV [%d/%d]!",
              n_agreements, votes_required_for_majority);
     return 0;
   }
@@ -718,7 +718,7 @@ should_keep_srv(int n_agreements)
   int num_required_agreements = get_n_voters_for_srv_agreement();
 
   if (n_agreements < num_required_agreements) {
-    log_warn(LD_DIR, "Didn't reach superagreement for SRV [%d/%d]!",
+    log_warn(LD_DIR, "[SR] Didn't reach superagreement for SRV [%d/%d]!",
              n_agreements, num_required_agreements);
     return 0;
   }
