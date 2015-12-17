@@ -1215,7 +1215,4 @@ sr_decide_srv_post_consensus(const networkstatus_t *consensus)
     sr_state_set_previous_srv(srv_dup(consensus->sr_info.previous_srv));
     sr_state_set_current_srv(srv_dup(consensus->sr_info.current_srv));
   }
-
-  /* Make sure our state is coherent for the next voting period. */
-  sr_state_update(time(NULL));
 }

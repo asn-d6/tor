@@ -20,7 +20,7 @@
 #include "routerparse.h"
 #include "entrynodes.h" /* needed for guardfraction methods */
 #include "torcert.h"
-#include "shared-random.h"
+#include "shared-random-state.h"
 
 /**
  * \file dirvote.c
@@ -2723,6 +2723,9 @@ dirvote_perform_vote(void)
   }
   if (!(ns = dirserv_generate_networkstatus_vote_obj(key, cert)))
     return -1;
+
+  /* Update the shared randomness state for this upcoming voting period */
+  sr_state_update(ns->valid_after);
 
   contents = format_networkstatus_vote(key, ns);
   networkstatus_vote_free(ns);
