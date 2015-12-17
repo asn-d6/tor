@@ -725,10 +725,7 @@ reset_state_for_new_protocol_run(time_t valid_after)
   sr_state->valid_until = get_state_valid_until_time(valid_after);
 
   /* We are in a new protocol run so cleanup commitments. */
-  DIGESTMAP_FOREACH_MODIFY(sr_state->commits, key, sr_commit_t *, c) {
-    sr_commit_free(c);
-    MAP_DEL_CURRENT(key);
-  } DIGESTMAP_FOREACH_END;
+  sr_state_delete_commits();
 }
 
 /* Rotate SRV value by freeing the previous value, assigning the current
@@ -859,15 +856,18 @@ state_query_put_(sr_state_object_t obj_type, void *data)
 /* Helper function: This handles the DEL state action using an
  * <b>obj_type</b> and <b>data</b> needed for the action. */
 static void
-state_query_del_(sr_state_object_t obj_type, void *data)
+state_query_del_all_(sr_state_object_t obj_type, void *data)
 {
   tor_assert(data);
 
   switch (obj_type) {
   case SR_STATE_OBJ_COMMIT:
   {
-    const char *identity = data;
-    digestmap_remove(sr_state->commits, identity);
+    /* We are in a new protocol run so cleanup commitments. */
+    DIGESTMAP_FOREACH_MODIFY(sr_state->commits, key, sr_commit_t *, c) {
+      sr_commit_free(c);
+      MAP_DEL_CURRENT(key);
+    } DIGESTMAP_FOREACH_END;
     break;
   }
   /* The following object are _NOT_ suppose to be removed. */
@@ -903,8 +903,8 @@ state_query(sr_state_action_t action, sr_state_object_t obj_type,
   case SR_STATE_ACTION_PUT:
     state_query_put_(obj_type, data);
     break;
-  case SR_STATE_ACTION_DEL:
-    state_query_del_(obj_type, data);
+  case SR_STATE_ACTION_DEL_ALL:
+    state_query_del_all_(obj_type, data);
     break;
   case SR_STATE_ACTION_SAVE:
     /* Only trigger a disk state save. */
@@ -1080,12 +1080,11 @@ sr_state_add_commit(sr_commit_t *commit)
            commit->auth_fingerprint);
 }
 
-/* Remove a commit entry identified by <b>key</b> from our state. */
+/* Remove all commits from our state. */
 void
-sr_state_remove_commit(const ed25519_public_key_t *key)
+sr_state_delete_commits(void)
 {
-  tor_assert(key);
-  state_query(SR_STATE_ACTION_DEL, SR_STATE_OBJ_COMMIT, (void *) key, NULL);
+  state_query(SR_STATE_ACTION_DEL_ALL, SR_STATE_OBJ_COMMIT, NULL, NULL);
 }
 
 /* Copy the reveal information from <b>commit</b> into <b>saved_commit</b>. This
