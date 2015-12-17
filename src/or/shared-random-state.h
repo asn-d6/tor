@@ -91,7 +91,7 @@ void sr_state_delete_commits(void);
 void sr_state_copy_reveal_info(sr_commit_t *saved_commit,
                                 const sr_commit_t *commit);
 
-void sr_state_update(time_t now);
+void sr_state_update(time_t valid_after);
 int sr_state_init(int save_to_disk, int read_from_disk);
 void sr_state_save(void);
 void sr_state_free(void);
