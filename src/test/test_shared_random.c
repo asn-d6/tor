@@ -861,6 +861,15 @@ test_state_transition(void *arg)
     tt_assert(commit);
     sr_state_add_commit(commit);
     tt_int_op(digestmap_size(state->commits), ==, 1);
+    /* Let's test our delete feature. */
+    sr_state_delete_commits();
+    tt_int_op(digestmap_size(state->commits), ==, 0);
+    /* Add it back so we can continue the rest of the test because after
+     * deletiong our commit will be freed so generate a new one. */
+    commit = sr_generate_our_commitment(now, mock_cert);
+    tt_assert(commit);
+    sr_state_add_commit(commit);
+    tt_int_op(digestmap_size(state->commits), ==, 1);
     state->n_reveal_rounds = 42;
     state->n_commit_rounds = 43;
     state->n_protocol_runs = 44;
