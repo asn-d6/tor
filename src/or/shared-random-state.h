@@ -105,6 +105,7 @@ STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
 STATIC time_t get_state_valid_until_time(time_t now);
 STATIC const char *get_phase_str(sr_phase_t phase);
 STATIC void reset_state_for_new_protocol_run(time_t valid_after);
+STATIC void new_protocol_run(time_t valid_after);
 STATIC void state_rotate_srv(void);
 
 #endif /* SHARED_RANDOM_STATE_PRIVATE */
