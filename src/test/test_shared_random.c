@@ -910,6 +910,13 @@ test_state_transition(void *arg)
     tt_int_op(state->n_protocol_runs, ==, 46);
   }
 
+  /* Cleanup of SRVs. */
+  {
+    sr_state_clean_srvs();
+    tt_assert(!sr_state_get_current_srv());
+    tt_assert(!sr_state_get_previous_srv());
+  }
+
  done:
   return;
 }
