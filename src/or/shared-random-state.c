@@ -994,17 +994,14 @@ sr_state_get_commits(void)
  * <b>valid_after</b>. Don't call this function twice in the same voting
  * period. */
 void
-sr_state_update(time_t now)
+sr_state_update(time_t valid_after)
 {
-  time_t next_round_time;
   sr_phase_t next_phase;
 
   tor_assert(sr_state);
 
-  /* Get time of the next round so we can know which phase is coming up. */
-  next_round_time =
-    get_start_time_of_current_round(now) + get_voting_interval();
-  next_phase = get_sr_protocol_phase(next_round_time);
+  /* Get phase of upcoming round. */
+  next_phase = get_sr_protocol_phase(valid_after);
 
   /* Are we in a phase transition that is the next phase is not the same as
    * the current one? */
@@ -1012,7 +1009,7 @@ sr_state_update(time_t now)
     if (next_phase == SR_PHASE_COMMIT) {
       /* If we are transitioning into commit phase, then we are starting a new
          protocol run. */
-      new_protocol_run(next_round_time);
+      new_protocol_run(valid_after);
     }
     /* Set the new phase for this round */
     sr_state->phase = next_phase;
@@ -1022,7 +1019,7 @@ sr_state_update(time_t now)
      * and have no commit, generate one. Chances are that we are booting up
      * so let's have a commit in our state for the next voting period. */
     sr_commit_t *our_commitment =
-      sr_generate_our_commitment(next_round_time, get_my_v3_authority_cert());
+      sr_generate_our_commitment(valid_after, get_my_v3_authority_cert());
     if (our_commitment) {
       /* Add our commitment to our state. In case we are unable to create one
        * (highly unlikely), we won't vote for this protocol run since our
@@ -1042,7 +1039,7 @@ sr_state_update(time_t now)
 
   { /* XXX: debugging. */
     char tbuf[ISO_TIME_LEN + 1];
-    format_iso_time(tbuf, next_round_time);
+    format_iso_time(tbuf, valid_after);
     log_warn(LD_DIR, "[SR] ------------------------------");
     log_warn(LD_DIR, "[SR] State prepared for new voting period (%s). "
              "Current phase is %s (%d/%d).",
