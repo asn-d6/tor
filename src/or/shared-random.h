@@ -136,7 +136,11 @@ STATIC sr_srv_t *get_majority_srv_from_votes(smartlist_t *votes,
                                              unsigned int current);
 
 STATIC void save_commit_to_state(sr_commit_t *commit);
-
+STATIC sr_srv_t *srv_dup(const sr_srv_t *orig);
+STATIC int commitments_are_the_same(const sr_commit_t *commit_one,
+                                    const sr_commit_t *commit_two);
+STATIC int commit_is_authoritative(const sr_commit_t *commit,
+                                   const ed25519_public_key_t *identity);
 
 #endif /* SHARED_RANDOM_PRIVATE */
 

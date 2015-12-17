@@ -63,7 +63,7 @@
 #define CURRENT_SRV_STR "shared-rand-current-value"
 
 /* Return a heap allocated copy of <b>orig</b>. */
-static sr_srv_t *
+STATIC sr_srv_t *
 srv_dup(const sr_srv_t *orig)
 {
   sr_srv_t *dup = NULL;
@@ -521,7 +521,7 @@ get_ns_str_from_sr_values(sr_srv_t *prev_srv, sr_srv_t *cur_srv)
 
 /* Return 1 iff the two commits have the same commitment values. This
  * function does not care about reveal values. */
-static int
+STATIC int
 commitments_are_the_same(const sr_commit_t *commit_one,
                          const sr_commit_t *commit_two)
 {
@@ -537,7 +537,7 @@ commitments_are_the_same(const sr_commit_t *commit_one,
 /* We just received a commit from the vote of authority with
  * <b>identity_digest</b>. Return 1 if this commit is authorititative that
  * is, it belongs to the authority that voted it. Else return 0 if not. */
-static int
+STATIC int
 commit_is_authoritative(const sr_commit_t *commit,
                         const ed25519_public_key_t *identity)
 {
