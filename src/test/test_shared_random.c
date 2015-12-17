@@ -811,19 +811,29 @@ test_utils(void *arg)
   return;
 }
 
+static authority_cert_t *mock_cert;
+
+static authority_cert_t *
+get_my_v3_authority_cert_m(void)
+{
+  tor_assert(mock_cert);
+  return mock_cert;
+}
+
 static void
 test_state_transition(void *arg)
 {
-  authority_cert_t *auth_cert = NULL;
   sr_state_t *state = NULL;
   time_t now = time(NULL);
 
   (void) arg;
 
+  MOCK(get_my_v3_authority_cert, get_my_v3_authority_cert_m);
+
   {  /* Setup a minimal dirauth environment for this test  */
     or_options_t *options = get_options_mutable();
-    auth_cert = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
-    tt_assert(auth_cert);
+    mock_cert = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
+    tt_assert(mock_cert);
     options->AuthoritativeDir = 1;
     tt_int_op(0, ==, load_ed_keys(options, now));
     sr_state_init(0, 0);
@@ -835,7 +845,7 @@ test_state_transition(void *arg)
   {
     /* Add a commit to the state so we can test if the reset cleans the
      * commits. Also, change all params that we expect to be updated. */
-    sr_commit_t *commit = sr_generate_our_commitment(now, auth_cert);
+    sr_commit_t *commit = sr_generate_our_commitment(now, mock_cert);
     tt_assert(commit);
     sr_state_add_commit(commit);
     tt_int_op(digestmap_size(state->commits), ==, 1);
@@ -860,6 +870,32 @@ test_state_transition(void *arg)
     prev = sr_state_get_previous_srv();
     tt_assert(prev == cur);
     tt_assert(!sr_state_get_current_srv());
+  }
+
+  /* New protocol run. */
+  {
+    sr_srv_t *cur;
+    /* Setup some new SRVs so we can confirm that a new protocol run
+     * actually makes them rotate and compute new ones. */
+    test_sr_setup_srv(1);
+    cur = sr_state_get_current_srv();
+    tt_assert(cur);
+    set_sr_phase(SR_PHASE_REVEAL);
+    new_protocol_run(now);
+    /* Rotation happened. */
+    tt_assert(sr_state_get_previous_srv() == cur);
+    /* We are going into COMMIT phase so we had to rotate our SRVs. Usually
+     * our current SRV would be NULL but a new protocol run should make us
+     * compute a new SRV. */
+    tt_assert(sr_state_get_current_srv());
+    /* Also, make sure we did change the current. */
+    tt_assert(sr_state_get_current_srv() != cur);
+    /* We should have our commitment alone. */
+    tt_int_op(digestmap_size(state->commits), ==, 1);
+    tt_int_op(state->n_reveal_rounds, ==, 0);
+    tt_int_op(state->n_commit_rounds, ==, 0);
+    /* 46 here since we were at 45 just before. */
+    tt_int_op(state->n_protocol_runs, ==, 46);
   }
 
  done:

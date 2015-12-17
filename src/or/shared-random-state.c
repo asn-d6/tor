@@ -747,7 +747,7 @@ state_rotate_srv(void)
 
 /** This is the first round of the new protocol run starting at
  *  <b>valid_after</b>. Do the necessary housekeeping. */
-static void
+STATIC void
 new_protocol_run(time_t valid_after)
 {
   sr_commit_t *our_commitment = NULL;
