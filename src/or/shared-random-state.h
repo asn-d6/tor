@@ -103,6 +103,7 @@ STATIC int disk_state_load_from_disk_impl(const char *fname);
 STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
 
 STATIC time_t get_state_valid_until_time(time_t now);
+STATIC const char *get_phase_str(sr_phase_t phase);
 
 #endif /* SHARED_RANDOM_STATE_PRIVATE */
 
