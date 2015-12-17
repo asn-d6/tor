@@ -810,6 +810,7 @@ test_utils(void *arg)
   /* Testing phase transition */
   {
     sr_state_init(0, 0);
+    set_sr_phase(SR_PHASE_COMMIT);
     tt_int_op(is_phase_transition(SR_PHASE_REVEAL), ==, 1);
     tt_int_op(is_phase_transition(SR_PHASE_COMMIT), ==, 0);
     set_sr_phase(SR_PHASE_REVEAL);
