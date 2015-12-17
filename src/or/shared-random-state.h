@@ -37,6 +37,8 @@ typedef struct sr_state_t {
   char *fname;
   /* Version of the protocol. */
   uint8_t version;
+  /* Creation time (the valid-after of the consensus) */
+  time_t creation_time;
   /* Until when this state is valid? */
   time_t valid_until;
   /* Protocol phase. */
@@ -64,6 +66,8 @@ typedef struct sr_disk_state_t {
   uint32_t magic_;
   /* Version of the protocol. */
   int Version;
+  /* Creation time of this state */
+  time_t CreationTime;
   /* State valid until? */
   time_t ValidUntil;
   /* All commitments seen that are valid. */
