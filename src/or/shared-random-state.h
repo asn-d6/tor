@@ -8,10 +8,10 @@
 
 /* Action that can be performed on the state for any objects. */
 typedef enum {
-  SR_STATE_ACTION_GET   = 1,
-  SR_STATE_ACTION_PUT   = 2,
-  SR_STATE_ACTION_DEL   = 3,
-  SR_STATE_ACTION_SAVE  = 4,
+  SR_STATE_ACTION_GET     = 1,
+  SR_STATE_ACTION_PUT     = 2,
+  SR_STATE_ACTION_DEL_ALL = 3,
+  SR_STATE_ACTION_SAVE    = 4,
 } sr_state_action_t;
 
 /* Object in the state that can be queried through the state API. */
@@ -87,7 +87,7 @@ void sr_state_clean_srvs(void);
 digestmap_t *sr_state_get_commits(void);
 sr_commit_t *sr_state_get_commit_by_rsa(const char *rsa_fpr);
 void sr_state_add_commit(sr_commit_t *commit);
-void sr_state_remove_commit(const ed25519_public_key_t *key);
+void sr_state_delete_commits(void);
 void sr_state_copy_reveal_info(sr_commit_t *saved_commit,
                                 const sr_commit_t *commit);
 
