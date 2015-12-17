@@ -544,8 +544,7 @@ commit_is_authoritative(const sr_commit_t *commit,
   tor_assert(commit);
   tor_assert(identity);
 
-  return !fast_memcmp(&commit->auth_identity, identity,
-                      sizeof(commit->auth_identity));
+  return ed25519_pubkey_eq(&commit->auth_identity, identity);
 }
 
 /* Decide if <b>commit</b> can be added to our state that is check if the
