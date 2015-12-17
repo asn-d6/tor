@@ -807,6 +807,18 @@ test_utils(void *arg)
     tt_str_op(get_phase_str(SR_PHASE_COMMIT), ==, "commit");
   }
 
+  /* Testing phase transition */
+  {
+    sr_state_init(0, 0);
+    tt_int_op(is_phase_transition(SR_PHASE_REVEAL), ==, 1);
+    tt_int_op(is_phase_transition(SR_PHASE_COMMIT), ==, 0);
+    set_sr_phase(SR_PHASE_REVEAL);
+    tt_int_op(is_phase_transition(SR_PHASE_REVEAL), ==, 0);
+    tt_int_op(is_phase_transition(SR_PHASE_COMMIT), ==, 1);
+    /* Junk. */
+    tt_int_op(is_phase_transition(42), ==, 1);
+  }
+
  done:
   return;
 }
