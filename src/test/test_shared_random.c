@@ -931,10 +931,100 @@ test_state_transition(void *arg)
   return;
 }
 
+static void
+test_keep_commit(void *arg)
+{
+  authority_cert_t *auth_cert;
+  ed25519_keypair_t kp;
+  sr_commit_t *commit = NULL, *dup_commit = NULL;
+  sr_state_t *state;
+  time_t now = time(NULL);
+  const char *seed = "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY";
+
+  (void) arg;
+
+  {  /* Setup a minimal dirauth environment for this test  */
+    or_options_t *options = get_options_mutable();
+    auth_cert = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
+    tt_assert(auth_cert);
+    options->AuthoritativeDir = 1;
+    tt_int_op(0, ==, load_ed_keys(options, now));
+    /* Have an ed key that is not the one from our commit. */
+    ed25519_secret_key_from_seed(&kp.seckey, (const uint8_t *) seed);
+    ed25519_public_key_generate(&kp.pubkey, &kp.seckey);
+    sr_state_init(0, 0);
+    state = get_sr_state();
+  }
+
+  /* Test this very important function that tells us if we should keep a
+   * commit or not in our state. Most of it depends on the phase and what's
+   * in the commit so we'll change the commit as we go. */
+  commit = sr_generate_our_commitment(now, auth_cert);
+  tt_assert(commit);
+  /* Set us in COMMIT phase for starter. */
+  set_sr_phase(SR_PHASE_COMMIT);
+  /* We should never keep a commit from a non authoritative authority. */
+  tt_int_op(should_keep_commit(commit, &kp.pubkey), ==, 0);
+  /* This should NOT be kept because it has a reveal value in it. */
+  tt_assert(commit_has_reveal_value(commit));
+  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 0);
+  /* Add it to the state which should return to not keep it. */
+  sr_state_add_commit(commit);
+  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 0);
+  /* Remove it from state so we can continue our testing. */
+  digestmap_remove(state->commits, commit->rsa_identity_fpr);
+  /* Let's remove our reveal value which should make it OK to keep it. */
+  memset(commit->encoded_reveal, 0, sizeof(commit->encoded_reveal));
+  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 1);
+
+  /* Let's reset our commit and go into REVEAL phase. */
+  sr_commit_free(commit);
+  commit = sr_generate_our_commitment(now, auth_cert);
+  tt_assert(commit);
+  /* Dup the commit so we have one with and one without a reveal value. */
+  dup_commit = tor_malloc_zero(sizeof(*dup_commit));
+  memcpy(dup_commit, commit, sizeof(*dup_commit));
+  memset(dup_commit->encoded_reveal, 0, sizeof(dup_commit->encoded_reveal));
+  set_sr_phase(SR_PHASE_REVEAL);
+  /* We should never keep a commit from a non authoritative authority. */
+  tt_int_op(should_keep_commit(commit, &kp.pubkey), ==, 0);
+  /* We shouldn't accept a commit that is not in our state. */
+  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 0);
+  /* Important to add the commit _without_ the reveal here. */
+  sr_state_add_commit(dup_commit);
+  tt_int_op(digestmap_size(state->commits), ==, 1);
+  /* Our commit should be valid that is authoritative, contains a reveal, be
+   * in the state and commitment and reveal values match. */
+  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 1);
+  /* The commit shouldn't be kept if it's not verified that is no matchin
+   * hashed reveal. */
+  {
+    /* Let's save the hash reveal so we can restore it. */
+    sr_commit_t place_holder;
+    memcpy(place_holder.hashed_reveal, commit->hashed_reveal,
+           sizeof(place_holder.hashed_reveal));
+    memset(commit->hashed_reveal, 0, sizeof(commit->hashed_reveal));
+    tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 0);
+    memcpy(commit->hashed_reveal, place_holder.hashed_reveal,
+           sizeof(commit->hashed_reveal));
+  }
+  /* We shouldn't keep a commit that has no reveal. */
+  tt_int_op(should_keep_commit(dup_commit, &dup_commit->auth_identity), ==, 0);
+  /* We must not keep a commit that is not the same from the commit phase. */
+  memset(commit->encoded_commit, 0, sizeof(commit->encoded_commit));
+  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 0);
+
+ done:
+  sr_commit_free(commit);
+  sr_commit_free(dup_commit);
+}
+
 struct testcase_t sr_tests[] = {
   { "get_sr_protocol_phase", test_get_sr_protocol_phase, TT_FORK,
     NULL, NULL },
   { "sr_commit", test_sr_commit, TT_FORK,
+    NULL, NULL },
+  { "keep_commit", test_keep_commit, TT_FORK,
     NULL, NULL },
   { "encoding", test_encoding, TT_FORK,
     NULL, NULL },

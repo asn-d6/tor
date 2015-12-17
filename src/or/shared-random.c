@@ -551,7 +551,7 @@ commit_is_authoritative(const sr_commit_t *commit,
  * commit is authoritative. Return 1 if the commit should be added to our
  * state or 0 if not. If it's authoritative, the commit is flagged
  * accordingly. */
-static int
+STATIC int
 should_keep_commit(sr_commit_t *commit,
                    const ed25519_public_key_t *voter_key)
 {

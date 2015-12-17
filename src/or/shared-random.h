@@ -141,6 +141,8 @@ STATIC int commitments_are_the_same(const sr_commit_t *commit_one,
                                     const sr_commit_t *commit_two);
 STATIC int commit_is_authoritative(const sr_commit_t *commit,
                                    const ed25519_public_key_t *identity);
+STATIC int should_keep_commit(sr_commit_t *commit,
+                              const ed25519_public_key_t *voter_key);
 
 #endif /* SHARED_RANDOM_PRIVATE */
 
