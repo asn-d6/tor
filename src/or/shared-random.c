@@ -640,7 +640,7 @@ should_keep_commit(sr_commit_t *commit,
 
 /* We are during reveal phase and we found <b>commit</b> in a vote that contains
  * reveal values that we could use. Update the commit we have in our state. */
-static void
+STATIC void
 save_commit_during_reveal_phase(const sr_commit_t *commit)
 {
   sr_commit_t *saved_commit;

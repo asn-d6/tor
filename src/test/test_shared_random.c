@@ -535,6 +535,7 @@ test_sr_setup_commits(void)
 {
   time_t now = time(NULL);
   sr_commit_t *commit_a, *commit_b, *commit_c, *commit_d;
+  sr_commit_t *place_holder = tor_malloc_zero(sizeof(*place_holder));
   authority_cert_t *auth_cert = NULL;
 
 
@@ -612,6 +613,7 @@ test_sr_setup_commits(void)
             "ddddddddddddddddddddddddddddddddddddddddddd",
             sizeof(commit_d->auth_fingerprint));
     /* Clean up its reveal info */
+    memcpy(place_holder, commit_d, sizeof(*place_holder));
     memset(commit_d->encoded_reveal, 0, sizeof(commit_d->encoded_reveal));
     tt_assert(!commit_has_reveal_value(commit_d));
   }
@@ -622,11 +624,20 @@ test_sr_setup_commits(void)
   save_commit_to_state(commit_b);
   save_commit_to_state(commit_c);
   save_commit_to_state(commit_d);
+  tt_int_op(digestmap_size(get_sr_state()->commits), ==, 4);
 
-  return;
+  /* Now during REVEAL phase save commit D by restauring its reveal. */
+  set_sr_phase(SR_PHASE_REVEAL);
+  save_commit_to_state(place_holder);
+  tt_mem_op(commit_d->encoded_reveal, OP_EQ, place_holder->encoded_reveal,
+            sizeof(commit_d->encoded_reveal));
+  /* Go back to an empty encoded reveal value. */
+  memset(commit_d->encoded_reveal, 0, sizeof(commit_d->encoded_reveal));
+  memset(commit_d->random_number, 0, sizeof(commit_d->random_number));
+  tt_assert(!commit_has_reveal_value(commit_d));
 
  done:
-  ;
+  return;
 }
 
 /** Verify that the SRV generation procedure is proper by testing it against
