@@ -107,6 +107,7 @@ STATIC const char *get_phase_str(sr_phase_t phase);
 STATIC void reset_state_for_new_protocol_run(time_t valid_after);
 STATIC void new_protocol_run(time_t valid_after);
 STATIC void state_rotate_srv(void);
+STATIC int is_phase_transition(sr_phase_t next_phase);
 
 #endif /* SHARED_RANDOM_STATE_PRIVATE */
 

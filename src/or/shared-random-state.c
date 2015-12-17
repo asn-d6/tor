@@ -782,7 +782,7 @@ new_protocol_run(time_t valid_after)
 
 /* Return 1 iff the <b>next_phase</b> is a phase transition from the current
  * phase that is it's different. */
-static int
+STATIC int
 is_phase_transition(sr_phase_t next_phase)
 {
   return sr_state->phase != next_phase;
