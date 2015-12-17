@@ -143,6 +143,7 @@ STATIC int commit_is_authoritative(const sr_commit_t *commit,
                                    const ed25519_public_key_t *identity);
 STATIC int should_keep_commit(sr_commit_t *commit,
                               const ed25519_public_key_t *voter_key);
+STATIC void save_commit_during_reveal_phase(const sr_commit_t *commit);
 
 #endif /* SHARED_RANDOM_PRIVATE */
 
