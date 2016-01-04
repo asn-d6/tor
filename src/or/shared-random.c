@@ -432,7 +432,7 @@ get_vote_line_from_commit(const sr_commit_t *commit)
 {
   char *vote_line = NULL;
   sr_phase_t current_phase = sr_state_get_phase();
-  static const char *commit_str_key = "shared-rand-commitment";
+  static const char *commit_str_key = "shared-rand-commit";
 
   log_warn(LD_DIR, "[SR] Encoding commit for vote:");
   commit_log(commit);
@@ -884,7 +884,7 @@ sr_save_and_cleanup(void)
  * <b>timestamp</b>. If <b>my_cert</b> is provided use it as our authority
  * certificate (used in unittests). */
 sr_commit_t *
-sr_generate_our_commitment(time_t timestamp, authority_cert_t *my_rsa_cert)
+sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
 {
   sr_commit_t *commit = NULL;
   char fingerprint[FINGERPRINT_LEN+1];

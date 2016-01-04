@@ -169,7 +169,7 @@ test_sr_commit(void *arg)
    * vote coming from the network. */
   {
     sr_commit_t test_commit;
-    our_commit = sr_generate_our_commitment(now, auth_cert);
+    our_commit = sr_generate_our_commit(now, auth_cert);
     tt_assert(our_commit);
     /* Default and only supported algorithm for now. */
     tt_assert(our_commit->alg == DIGEST_SHA256);
@@ -375,7 +375,7 @@ test_vote(void *arg)
    * vote coming from the network. */
   {
     sr_commit_t *saved_commit;
-    our_commit = sr_generate_our_commitment(now, auth_cert);
+    our_commit = sr_generate_our_commit(now, auth_cert);
     tt_assert(our_commit);
     sr_state_add_commit(our_commit);
     /* Make sure it's there. */
@@ -404,7 +404,7 @@ test_vote(void *arg)
     tt_assert(commit_line);
     ret = smartlist_split_string(tokens, commit_line, " ", 0, 0);
     tt_int_op(ret, ==, 5);
-    tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-commitment");
+    tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-commit");
     tt_str_op(smartlist_get(tokens, 1), OP_EQ,
               our_commit->auth_fingerprint);
     tt_str_op(smartlist_get(tokens, 2), OP_EQ,
@@ -467,9 +467,9 @@ test_vote(void *arg)
 
 const char *sr_state_str = "Version 1\n"
   "ValidUntil 2666-04-20 07:16:00\n"
-  "Commitment sha256 RkoaSeZBiyJs23P6aOLEyUsumWwjWYnA+DQm1IaKXu8 FA3CEC2C99DC68D3166B9B6E4FA21A4026C2AB1C 7M8GdubCAAdh7WUG0DiwRyxTYRKji7HATa7LLJEZ/UAAAAAAVmfUSg== AAAAAFZn1EojfIheIw42bjK3VqkpYyjsQFSbv/dxNna3Q8hUEPKpOw==\n"
-  "Commitment sha256 2qZjhYjXODdx122TNUlegLLWWDe5R1B449vx2KU9hsI 41E89EDFBFBA44983E21F18F2230A4ECB5BFB543 17aUsYuMeRjd2N1r8yNyg7aHqRa6gf4z7QPoxxAZbp0AAAAAVmfUSg==\n"
-  "Commitment sha256 hujjN0PEfkQlOnBKTH0WlGPOs6PdYoe8tuEMeS6C4cw 36637026573A04110CF3E6B1D201FB9A98B88734 DDDYtripvdOU+XPEUm5xpU64d9IURSds1xSwQsgeB8oAAAAAVmfUSg==\n"
+  "Commit sha256 RkoaSeZBiyJs23P6aOLEyUsumWwjWYnA+DQm1IaKXu8 FA3CEC2C99DC68D3166B9B6E4FA21A4026C2AB1C 7M8GdubCAAdh7WUG0DiwRyxTYRKji7HATa7LLJEZ/UAAAAAAVmfUSg== AAAAAFZn1EojfIheIw42bjK3VqkpYyjsQFSbv/dxNna3Q8hUEPKpOw==\n"
+  "Commit sha256 2qZjhYjXODdx122TNUlegLLWWDe5R1B449vx2KU9hsI 41E89EDFBFBA44983E21F18F2230A4ECB5BFB543 17aUsYuMeRjd2N1r8yNyg7aHqRa6gf4z7QPoxxAZbp0AAAAAVmfUSg==\n"
+  "Commit sha256 hujjN0PEfkQlOnBKTH0WlGPOs6PdYoe8tuEMeS6C4cw 36637026573A04110CF3E6B1D201FB9A98B88734 DDDYtripvdOU+XPEUm5xpU64d9IURSds1xSwQsgeB8oAAAAAVmfUSg==\n"
   "SharedRandCurrentValue 3 F1D59E5B5D8A1334C61222C680ED54549ED9F7509E92845CC6DE90F4A8673852\n"
   "SharedRandPreviousValue 4 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n";
 
@@ -554,7 +554,7 @@ test_sr_setup_commits(void)
      reveal info, to make sure that it will get ignored during SRV calculation. */
 
   { /* Commit from auth 'a' */
-    commit_a = sr_generate_our_commitment(now, auth_cert);
+    commit_a = sr_generate_our_commit(now, auth_cert);
     tt_assert(commit_a);
 
     /* Do some surgery on the commit */
@@ -570,7 +570,7 @@ test_sr_setup_commits(void)
   }
 
   { /* Commit from auth 'b' */
-    commit_b = sr_generate_our_commitment(now, auth_cert);
+    commit_b = sr_generate_our_commit(now, auth_cert);
     tt_assert(commit_b);
 
     /* Do some surgery on the commit */
@@ -586,7 +586,7 @@ test_sr_setup_commits(void)
   }
 
   { /* Commit from auth 'c' */
-    commit_c = sr_generate_our_commitment(now, auth_cert);
+    commit_c = sr_generate_our_commit(now, auth_cert);
     tt_assert(commit_c);
 
     /* Do some surgery on the commit */
@@ -602,7 +602,7 @@ test_sr_setup_commits(void)
   }
 
   { /* Commit from auth 'd' */
-    commit_d = sr_generate_our_commitment(now, auth_cert);
+    commit_d = sr_generate_our_commit(now, auth_cert);
     tt_assert(commit_d);
 
     /* Do some surgery on the commit */
@@ -629,7 +629,7 @@ test_sr_setup_commits(void)
   save_commit_to_state(commit_d);
   tt_int_op(digestmap_size(get_sr_state()->commits), ==, 4);
 
-  /* Now during REVEAL phase save commit D by restauring its reveal. */
+  /* Now during REVEAL phase save commit D by restoring its reveal. */
   set_sr_phase(SR_PHASE_REVEAL);
   save_commit_to_state(place_holder);
   tt_str_op(commit_d->encoded_reveal, OP_EQ,
@@ -872,7 +872,7 @@ test_state_transition(void *arg)
   {
     /* Add a commit to the state so we can test if the reset cleans the
      * commits. Also, change all params that we expect to be updated. */
-    sr_commit_t *commit = sr_generate_our_commitment(now, mock_cert);
+    sr_commit_t *commit = sr_generate_our_commit(now, mock_cert);
     tt_assert(commit);
     sr_state_add_commit(commit);
     tt_int_op(digestmap_size(state->commits), ==, 1);
@@ -881,7 +881,7 @@ test_state_transition(void *arg)
     tt_int_op(digestmap_size(state->commits), ==, 0);
     /* Add it back so we can continue the rest of the test because after
      * deletiong our commit will be freed so generate a new one. */
-    commit = sr_generate_our_commitment(now, mock_cert);
+    commit = sr_generate_our_commit(now, mock_cert);
     tt_assert(commit);
     sr_state_add_commit(commit);
     tt_int_op(digestmap_size(state->commits), ==, 1);
@@ -973,7 +973,7 @@ test_keep_commit(void *arg)
   /* Test this very important function that tells us if we should keep a
    * commit or not in our state. Most of it depends on the phase and what's
    * in the commit so we'll change the commit as we go. */
-  commit = sr_generate_our_commitment(now, auth_cert);
+  commit = sr_generate_our_commit(now, auth_cert);
   tt_assert(commit);
   /* Set us in COMMIT phase for starter. */
   set_sr_phase(SR_PHASE_COMMIT);
@@ -993,7 +993,7 @@ test_keep_commit(void *arg)
 
   /* Let's reset our commit and go into REVEAL phase. */
   sr_commit_free(commit);
-  commit = sr_generate_our_commitment(now, auth_cert);
+  commit = sr_generate_our_commit(now, auth_cert);
   tt_assert(commit);
   /* Dup the commit so we have one with and one without a reveal value. */
   dup_commit = tor_malloc_zero(sizeof(*dup_commit));
