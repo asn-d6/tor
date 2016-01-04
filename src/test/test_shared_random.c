@@ -612,6 +612,9 @@ test_sr_setup_commits(void)
     strlcpy(commit_d->auth_fingerprint,
             "ddddddddddddddddddddddddddddddddddddddddddd",
             sizeof(commit_d->auth_fingerprint));
+    strlcpy(commit_d->encoded_reveal,
+            "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+            sizeof(commit_d->encoded_reveal));
     /* Clean up its reveal info */
     memcpy(place_holder, commit_d, sizeof(*place_holder));
     memset(commit_d->encoded_reveal, 0, sizeof(commit_d->encoded_reveal));
@@ -629,8 +632,8 @@ test_sr_setup_commits(void)
   /* Now during REVEAL phase save commit D by restauring its reveal. */
   set_sr_phase(SR_PHASE_REVEAL);
   save_commit_to_state(place_holder);
-  tt_mem_op(commit_d->encoded_reveal, OP_EQ, place_holder->encoded_reveal,
-            sizeof(commit_d->encoded_reveal));
+  tt_str_op(commit_d->encoded_reveal, OP_EQ,
+            "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD");
   /* Go back to an empty encoded reveal value. */
   memset(commit_d->encoded_reveal, 0, sizeof(commit_d->encoded_reveal));
   memset(commit_d->random_number, 0, sizeof(commit_d->random_number));
