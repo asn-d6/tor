@@ -33,7 +33,7 @@ static sr_state_t *sr_state = NULL;
 static sr_disk_state_t *sr_disk_state = NULL;
 
 /* Disk state file keys. */
-static const char *dstate_commit_key = "Commitment";
+static const char *dstate_commit_key = "Commit";
 static const char *dstate_prev_srv_key = "SharedRandPreviousValue";
 static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 
@@ -60,8 +60,8 @@ static config_var_t state_vars[] = {
   V(ValidUntil,                 ISOTIME, NULL),
   V(CreationTime,               ISOTIME, NULL),
 
-  VAR("Commitment",             LINELIST_S, Commitments, NULL),
-  V(Commitments,                LINELIST_V, NULL),
+  VAR("Commit",             LINELIST_S, Commits, NULL),
+  V(Commits,                LINELIST_V, NULL),
 
   V(SharedRandValues,           LINELIST_V, NULL),
   VAR("SharedRandPreviousValue",LINELIST_S, SharedRandValues, NULL),
@@ -332,7 +332,7 @@ disk_state_validate_cb(void *old_state, void *state, void *default_state,
   return 0;
 }
 
-/* Parse the Commitment line(s) in the disk state and translate them to the
+/* Parse the Commit line(s) in the disk state and translate them to the
  * the memory state. Return 0 on success else -1 on error. */
 static int
 disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
@@ -343,7 +343,7 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
   tor_assert(state);
   tor_assert(disk_state);
 
-  for (line = disk_state->Commitments; line; line = line->next) {
+  for (line = disk_state->Commits; line; line = line->next) {
     sr_commit_t *commit = NULL;
 
     /* Extra safety. */
@@ -522,7 +522,7 @@ disk_state_put_srv_line(sr_srv_t *srv, config_line_t *line)
 static void
 disk_state_reset(void)
 {
-  config_free_lines(sr_disk_state->Commitments);
+  config_free_lines(sr_disk_state->Commits);
   config_free_lines(sr_disk_state->SharedRandValues);
   config_free_lines(sr_disk_state->ExtraLines);
   memset(sr_disk_state, 0, sizeof(*sr_disk_state));
@@ -563,8 +563,8 @@ disk_state_update(void)
     next = &(line->next);
   }
 
-  /* Parse the commitments and construct config line(s). */
-  next = &sr_disk_state->Commitments;
+  /* Parse the commits and construct config line(s). */
+  next = &sr_disk_state->Commits;
   DIGESTMAP_FOREACH(sr_state->commits, key, sr_commit_t *, commit) {
     *next = line = tor_malloc_zero(sizeof(*line));
     line->key = tor_strdup(dstate_commit_key);
@@ -712,7 +712,7 @@ done:
 }
 
 /* Reset our state to prepare for a new protocol run. Once this returns, all
- * commitments in the state will be removed and freed. */
+ * commits in the state will be removed and freed. */
 STATIC void
 reset_state_for_new_protocol_run(time_t valid_after)
 {
@@ -727,7 +727,7 @@ reset_state_for_new_protocol_run(time_t valid_after)
   sr_state->valid_until = get_state_valid_until_time(valid_after);
   sr_state->creation_time = valid_after;
 
-  /* We are in a new protocol run so cleanup commitments. */
+  /* We are in a new protocol run so cleanup commits. */
   sr_state_delete_commits();
 }
 
@@ -770,8 +770,8 @@ new_protocol_run(time_t valid_after)
            sr_state->n_protocol_runs);
 
   /* Generate fresh commitments for this protocol run */
-  our_commitment = sr_generate_our_commitment(valid_after,
-                                              get_my_v3_authority_cert());
+  our_commitment = sr_generate_our_commit(valid_after,
+                                          get_my_v3_authority_cert());
   if (our_commitment) {
     /* Add our commitment to our state. In case we are unable to create one
      * (highly unlikely), we won't vote for this protocol run since our
@@ -1024,13 +1024,13 @@ sr_state_update(time_t valid_after)
     /* We are _NOT_ in a transition phase so if we are in the commit phase
      * and have no commit, generate one. Chances are that we are booting up
      * so let's have a commit in our state for the next voting period. */
-    sr_commit_t *our_commitment =
-      sr_generate_our_commitment(valid_after, get_my_v3_authority_cert());
-    if (our_commitment) {
+    sr_commit_t *our_commit =
+      sr_generate_our_commit(valid_after, get_my_v3_authority_cert());
+    if (our_commit) {
       /* Add our commitment to our state. In case we are unable to create one
        * (highly unlikely), we won't vote for this protocol run since our
        * commitment won't be in our state. */
-      sr_state_add_commit(our_commitment);
+      sr_state_add_commit(our_commit);
     }
   }
 

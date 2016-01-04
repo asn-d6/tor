@@ -70,8 +70,8 @@ typedef struct sr_disk_state_t {
   time_t CreationTime;
   /* State valid until? */
   time_t ValidUntil;
-  /* All commitments seen that are valid. */
-  config_line_t *Commitments;
+  /* All commits seen that are valid. */
+  config_line_t *Commits;
   /* Previous and current shared random value. */
   config_line_t *SharedRandValues;
   /* Extra Lines for configuration we might not know. */
