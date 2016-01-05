@@ -47,7 +47,6 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 /* Our persistent state magic number. Yes we got the 42s! */
 #define SR_DISK_STATE_MAGIC 42424242
 /* Each protocol phase has 12 rounds  */
-/* XXX: Testing: #define SHARED_RANDOM_N_ROUNDS 12 */
 #define SHARED_RANDOM_N_ROUNDS 12
 
 static int
