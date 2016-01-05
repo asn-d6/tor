@@ -684,14 +684,7 @@ save_commit_to_state(sr_commit_t *commit)
 static int
 get_n_voters_for_srv_agreement(void)
 {
-  int num_dirauths;
-  const or_options_t *options = get_options();
-
-  if (options->AuthDirNumSRVAgreements) {
-    return options->AuthDirNumSRVAgreements;
-  }
-
-  num_dirauths = get_n_authorities(V3_DIRINFO);
+  int num_dirauths = get_n_authorities(V3_DIRINFO);
   /* If the params is not found, default value should always be the maximum
    * number of trusted authorities. Let's not take any chances. */
   return networkstatus_get_param(NULL, "AuthDirNumSRVAgreements",
