@@ -320,12 +320,9 @@ disk_state_validate_cb(void *old_state, void *state, void *default_state,
   (void) default_state;
   (void) old_state;
 
-  /* XXX: Validate phase, version, time, commitments and SRV
-   * format. This is called by config_dump which is just before we are about
-   * to write it to disk so we should verify the format and not parse
-   * everything again. At that point, our global memory state has been
-   * copied to the disk state so it's fair to assume it's trustable. So,
-   * only verify the format of the strings. */
+  /* This is called by config_dump which is just before we are about to
+   * write it to disk. At that point, our global memory state has been
+   * copied to the disk state so it's fair to assume it's trustable. */
   (void) state;
   (void) msg;
   return 0;
