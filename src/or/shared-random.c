@@ -707,20 +707,24 @@ should_keep_srv(int n_agreements)
   int n_voters = get_n_authorities(V3_DIRINFO);
   int votes_required_for_majority = (n_voters / 2) + 1;
 
+  /* We need at the very least majority to keep a value. */
   if (n_agreements < votes_required_for_majority) {
     log_warn(LD_DIR, "[SR] Didn't reach majority for SRV [%d/%d]!",
              n_agreements, votes_required_for_majority);
     return 0;
   }
 
-  /* Check if the most popular SRV has enough votes according to
-   * NumSRVAgreements */
-  int num_required_agreements = get_n_voters_for_srv_agreement();
+  /* When we just computed a new SRV, we need to reach our super majority in
+   * order to keep it. */
+  if (sr_state_fresh_srv_is_set()) {
+    /* Check if we've reached super majority for this new SRV value. */
+    int num_required_agreements = get_n_voters_for_srv_agreement();
 
-  if (n_agreements < num_required_agreements) {
-    log_warn(LD_DIR, "[SR] Didn't reach superagreement for SRV [%d/%d]!",
-             n_agreements, num_required_agreements);
-    return 0;
+    if (n_agreements < num_required_agreements) {
+      log_warn(LD_DIR, "[SR] Didn't reach superagreement for SRV [%d/%d]!",
+               n_agreements, num_required_agreements);
+      return 0;
+    }
   }
 
   return 1;
@@ -977,6 +981,8 @@ sr_compute_srv(void)
     current_srv = generate_srv(hashed_reveals, (uint8_t) reveal_num,
                                sr_state_get_previous_srv());
     sr_state_set_current_srv(current_srv);
+    /* We have a fresh SRV, flag our state. */
+    sr_state_set_fresh_srv();
   }
 
 end:
@@ -1215,4 +1221,8 @@ sr_decide_srv_post_consensus(const networkstatus_t *consensus)
     sr_state_set_previous_srv(srv_dup(consensus->sr_info.previous_srv));
     sr_state_set_current_srv(srv_dup(consensus->sr_info.current_srv));
   }
+
+  /* Reset the fresh flag of the SRV so we know that from now on we don't
+   * have a new SRV to vote for thus no need for super majority. */
+  sr_state_unset_fresh_srv();
 }
