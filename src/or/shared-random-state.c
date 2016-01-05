@@ -1113,6 +1113,29 @@ sr_state_copy_reveal_info(sr_commit_t *saved_commit, const sr_commit_t *commit)
            saved_commit->encoded_reveal, saved_commit->encoded_commit);
 }
 
+/* Set the fresh SRV flag from our state. This doesn't need to trigger a
+ * disk state synchronization so we directly change the state. */
+void
+sr_state_set_fresh_srv(void)
+{
+  sr_state->fresh_srv = 1;
+}
+
+/* Unset the fresh SRV flag from our state. This doesn't need to trigger a
+ * disk state synchronization so we directly change the state. */
+void
+sr_state_unset_fresh_srv(void)
+{
+  sr_state->fresh_srv = 0;
+}
+
+/* Return the value of the fresh SRV flag. */
+unsigned int
+sr_state_fresh_srv_is_set(void)
+{
+  return sr_state->fresh_srv;
+}
+
 /* Cleanup and free our disk and memory state. */
 void
 sr_state_free(void)

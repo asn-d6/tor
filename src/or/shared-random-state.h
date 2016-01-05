@@ -59,6 +59,19 @@ typedef struct sr_state_t {
    * proposal 250 for details on how this is constructed. */
   sr_srv_t *previous_srv;
   sr_srv_t *current_srv;
+
+  /* Indicate if the state contains a fresh SRV that is the current SR value
+   * has just been generated thus different from the previous phase.  This
+   * is used when voting so we know if we should use the super majority or
+   * not when deciding on keeping it for the consensus. It is _always_ set
+   * to 0 post consensus.
+   *
+   * EDGE CASE: if an authority computes a new SRV then immediately reboots
+   * and, once back up, votes for the current round, it won't know if the
+   * SRV is fresh or not ultimately making it _NOT_ use the super majority
+   * when deciding to put or not the SRV in the consensus. This is for now
+   * an acceptable very rare edge case. */
+  unsigned int fresh_srv:1;
 } sr_state_t;
 
 /* Persistent state of the protocol, as saved to disk. */
@@ -94,6 +107,9 @@ void sr_state_add_commit(sr_commit_t *commit);
 void sr_state_delete_commits(void);
 void sr_state_copy_reveal_info(sr_commit_t *saved_commit,
                                 const sr_commit_t *commit);
+unsigned int sr_state_fresh_srv_is_set(void);
+void sr_state_set_fresh_srv(void);
+void sr_state_unset_fresh_srv(void);
 
 void sr_state_update(time_t valid_after);
 int sr_state_init(int save_to_disk, int read_from_disk);
