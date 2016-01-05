@@ -723,6 +723,49 @@ should_keep_srv(int n_agreements)
   return 1;
 }
 
+/* From a given list of <b>commits<b/>, check if there are commits with the
+ * same authority key and if so return 0 indicating that at least two
+ * commits were found to have the same authority key. Return 1 if all
+ * commits have unique authority key. */
+static int
+check_commit_identity_uniqueness(const smartlist_t *commits,
+                                 const ed25519_public_key_t *voter_key)
+{
+  int ret = 1;
+  digestmap_t *dirauth_keys;
+
+  tor_assert(commits);
+  tor_assert(voter_key);
+
+  /* We'll use a map here for each authority key. As we go through the
+   * commit, we'll add the commit to the map indexed by the authority key
+   * so if one is already in, we have an issue. */
+  dirauth_keys = digestmap_new();
+
+  SMARTLIST_FOREACH_BEGIN(commits, sr_commit_t *, commit) {
+    sr_commit_t *c_ptr = digestmap_get(dirauth_keys,
+                                       commit->rsa_identity_fpr);
+    if (c_ptr != NULL) {
+      char b64_voter_key[ED25519_SIG_BASE64_LEN + 1];
+      /* Protocol violation. Stop everything and ignore any commits from
+       * that vote. */
+      ed25519_public_to_base64(b64_voter_key, voter_key);
+      /* XXX: is LD_BUG right here? Maybe it should be at LD_PROTOCOL and at
+       * LOG_PROTOCOL_WARN ? */
+      log_warn(LD_BUG, "[SR] Vote from authority key %s has multiple "
+                       "commits from authority RSA key %s.",
+               b64_voter_key, c_ptr->rsa_identity_fpr);
+      ret = 0;
+      goto end;
+    }
+    digestmap_set(dirauth_keys, commit->rsa_identity_fpr, commit);
+  } SMARTLIST_FOREACH_END(commit);
+
+ end:
+  digestmap_free(dirauth_keys, NULL);
+  return ret;
+}
+
 /* Using a list of <b>votes</b>, return the SRV object from them that does
  * have a majority consensus. If <b>current</b> is set, we look for the
  * current SRV value else the previous one. NULL is returned if no value
@@ -1089,7 +1132,15 @@ sr_handle_received_commits(smartlist_t *commits,
   /* It's possible if our vote has seen _NO_ commits because it doesn't
    * contain any. */
   if (commits == NULL) {
-    return;
+    goto end;
+  }
+
+  /* First, go over each commit and make sure that there is one commit per
+   * authority. If we find at least two commits from the same authority, the
+   * vote MUST be ignored because it violates the protocol. The following
+   * function will issue a warning if it's the case. */
+  if (!check_commit_identity_uniqueness(commits, voter_key)) {
+    goto end;
   }
 
   SMARTLIST_FOREACH_BEGIN(commits, sr_commit_t *, commit) {
@@ -1103,6 +1154,9 @@ sr_handle_received_commits(smartlist_t *commits,
     /* Everything lines up: save this commit to state then! */
     save_commit_to_state(commit);
   } SMARTLIST_FOREACH_END(commit);
+
+ end:
+  return;
 }
 
 /* Return a heap-allocated string containing commits that should be put in
