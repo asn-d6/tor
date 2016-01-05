@@ -933,6 +933,8 @@ sr_generate_our_commitment(time_t timestamp, authority_cert_t *my_rsa_cert)
   switch (commit->alg) {
   case DIGEST_SHA1:
   case DIGEST_SHA512:
+  case DIGEST_SHA3_256:
+  case DIGEST_SHA3_512:
     tor_assert(0);
   case DIGEST_SHA256:
     /* Only sha256 is supported and the default. */
