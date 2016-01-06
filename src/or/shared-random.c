@@ -93,6 +93,7 @@
 /* String prefix of shared random values in votes/consensuses. */
 static const char *previous_srv_str = "shared-rand-previous-value";
 static const char *current_srv_str = "shared-rand-current-value";
+static const char *commit_ns_str = "shared-rand-commit";
 
 /* Return a heap allocated copy of the SRV <b>orig</b>. */
 STATIC sr_srv_t *
@@ -464,7 +465,6 @@ get_vote_line_from_commit(const sr_commit_t *commit)
 {
   char *vote_line = NULL;
   sr_phase_t current_phase = sr_state_get_phase();
-  static const char *commit_str_key = "shared-rand-commit";
 
   log_warn(LD_DIR, "[SR] Encoding commit for vote:");
   commit_log(commit);
@@ -472,7 +472,7 @@ get_vote_line_from_commit(const sr_commit_t *commit)
   switch (current_phase) {
   case SR_PHASE_COMMIT:
     tor_asprintf(&vote_line, "%s %s %s %s\n",
-                 commit_str_key,
+                 commit_ns_str,
                  commit->auth_fingerprint,
                  crypto_digest_algorithm_get_name(commit->alg),
                  commit->encoded_commit);
@@ -486,7 +486,7 @@ get_vote_line_from_commit(const sr_commit_t *commit)
       reveal_str = "";
     }
     tor_asprintf(&vote_line, "%s %s %s %s %s\n",
-                 commit_str_key,
+                 commit_ns_str,
                  commit->auth_fingerprint,
                  crypto_digest_algorithm_get_name(commit->alg),
                  commit->encoded_commit, reveal_str);
@@ -741,7 +741,7 @@ should_keep_srv(int n_agreements)
 
   /* When we just computed a new SRV, we need to have super majority in order
    * to keep it. */
-  if (sr_state_fresh_srv_is_set()) {
+  if (sr_state_srv_is_fresh()) {
     /* Check if we have super majority for this new SRV value. */
     int num_required_agreements = get_n_voters_for_srv_agreement();
 
