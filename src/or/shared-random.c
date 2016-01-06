@@ -62,7 +62,7 @@
  *
  * - We treat consensuses as the ground truth, so everytime we generate a new
  *   consensus we update our SR state accordingly even if our local view was
- *   different (see sr_decide_srv_post_consensus()).
+ *   different (see sr_act_post_consensus()).
  *
  *
  * Terminology:
@@ -1230,7 +1230,7 @@ sr_get_string_for_consensus(smartlist_t *votes)
  * the consensus (might be NULL as well). Register the SRVs in our SR state and
  * prepare for the upcoming protocol round. */
 void
-sr_decide_srv_post_consensus(const networkstatus_t *consensus)
+sr_act_post_consensus(const networkstatus_t *consensus)
 {
   /* Start by freeing the current SRVs since the SRVs we believed during voting
    * do not really matter. Now that all the votes are in, we use the majority's

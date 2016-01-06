@@ -3184,9 +3184,9 @@ dirvote_compute_consensuses(void)
     goto err;
   }
 
-  /* Make sure our shared random state will now use what the majority has
-   * decided that is what's in the valid consensus. */
-  sr_decide_srv_post_consensus(pending[FLAV_MICRODESC].consensus);
+  /* A new consensus has been created: pass it to the shared random subsystem
+     to update the SR state. */
+  sr_act_post_consensus(pending[FLAV_MICRODESC].consensus);
 
   dirvote_clear_pending_consensuses();
   memcpy(pending_consensuses, pending, sizeof(pending));
