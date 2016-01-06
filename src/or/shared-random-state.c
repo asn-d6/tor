@@ -59,8 +59,8 @@ static config_var_t state_vars[] = {
   V(ValidUntil,                 ISOTIME, NULL),
   V(CreationTime,               ISOTIME, NULL),
 
-  VAR("Commit",             LINELIST_S, Commits, NULL),
-  V(Commits,                LINELIST_V, NULL),
+  VAR("Commit",                 LINELIST_S, Commits, NULL),
+  V(Commits,                    LINELIST_V, NULL),
 
   V(SharedRandValues,           LINELIST_V, NULL),
   VAR("SharedRandPreviousValue",LINELIST_S, SharedRandValues, NULL),
