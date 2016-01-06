@@ -1050,6 +1050,10 @@ sr_parse_commit(smartlist_t *args)
   const char *rsa_identity_fpr;
   sr_commit_t *commit = NULL;
 
+  if (smartlist_len(args) < 4) {
+    goto error;
+  }
+
   /* First argument is the algorithm. */
   value = smartlist_get(args, 0);
   alg = crypto_digest_algorithm_parse_name(value);
