@@ -853,22 +853,6 @@ sr_commit_free(sr_commit_t *commit)
   tor_free(commit);
 }
 
-/* Initialize shared random subsystem. This MUST be called early in the boot
- * process of tor. Return 0 on success else -1 on error. */
-int
-sr_init(int save_to_disk)
-{
-  return sr_state_init(save_to_disk, 1);
-}
-
-/* Save our state to disk and cleanup everything. */
-void
-sr_save_and_cleanup(void)
-{
-  sr_state_save();
-  sr_cleanup();
-}
-
 /* Generate the commitment/reveal value for the protocol run starting at
  * <b>timestamp</b>. <b>my_rsa_cert</b> is our authority RSA certificate. */
 sr_commit_t *
@@ -1247,4 +1231,20 @@ sr_act_post_consensus(const networkstatus_t *consensus)
   /* Reset the fresh flag of the SRV so we know that from now on we don't
    * have a new SRV to vote for thus no need for super majority. */
   sr_state_unset_fresh_srv();
+}
+
+/* Initialize shared random subsystem. This MUST be called early in the boot
+ * process of tor. Return 0 on success else -1 on error. */
+int
+sr_init(int save_to_disk)
+{
+  return sr_state_init(save_to_disk, 1);
+}
+
+/* Save our state to disk and cleanup everything. */
+void
+sr_save_and_cleanup(void)
+{
+  sr_state_save();
+  sr_cleanup();
 }
