@@ -1,10 +1,12 @@
 #define SHARED_RANDOM_PRIVATE
 #define SHARED_RANDOM_STATE_PRIVATE
 #define CONFIG_PRIVATE
+#define DIRVOTE_PRIVATE
 
 #include "or.h"
 #include "test.h"
 #include "config.h"
+#include "dirvote.h"
 #include "shared-random.h"
 #include "shared-random-state.h"
 #include "routerkeys.h"
@@ -695,13 +697,14 @@ get_test_vote_with_curr_srv(const char *srv)
   return vote;
 }
 
+static networkstatus_t *mock_consensus = NULL;
+
 /* Mock function to return the value located in the options instead of the
  * consensus so we can modify it at will. */
-static int
-mock_get_n_voters_for_srv_agreement(void)
+static networkstatus_t *
+mock_networkstatus_get_latest_consensus(void)
 {
-  or_options_t *options = get_options_mutable();
-  return options->AuthDirNumSRVAgreements;
+  return mock_consensus;
 }
 
 /* Test the function that picks the right SRV given a bunch of votes. Make sure
@@ -712,7 +715,6 @@ test_sr_get_majority_srv_from_votes(void *arg)
 {
   sr_srv_t *chosen_srv;
   smartlist_t *votes = smartlist_new();
-  or_options_t *options = get_options_mutable();
 
 #define SRV_1 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 #define SRV_2 "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
@@ -760,20 +762,38 @@ test_sr_get_majority_srv_from_votes(void *arg)
   chosen_srv = get_majority_srv_from_votes(votes, 1);
   tt_assert(!chosen_srv);
 
-  /* Lower the AuthDirNumSRVAgreements requirement and let's try again.
-   * This time it must work. */
-  MOCK(get_n_voters_for_srv_agreement, mock_get_n_voters_for_srv_agreement);
-  options->AuthDirNumSRVAgreements = 7;
+  /* We will now lower the AuthDirNumSRVAgreements requirement by tweaking the
+   * consensus parameter and we will try again.  This time it should work. */
+  {
+    char *my_net_params;
+    /* Set a dummy consensus parameter in every vote */
+    SMARTLIST_FOREACH_BEGIN(votes, networkstatus_t *, vote) {
+      vote->net_params = smartlist_new();
+      smartlist_split_string(vote->net_params,
+                             "AuthDirNumSRVAgreements=7", NULL, 0, 0);
+    } SMARTLIST_FOREACH_END(vote);
+
+    /* Pretend you are making a consensus out of the votes */
+    mock_consensus = tor_malloc_zero(sizeof(networkstatus_t));
+    mock_consensus->net_params = smartlist_new();
+    my_net_params = dirvote_compute_params(votes, 66, smartlist_len(votes));
+    smartlist_split_string(mock_consensus->net_params, my_net_params, " ",
+                           SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 0);
+  }
+
+  /* Use our fake consensus instead of a real one for finding consensus parameters. */
+  MOCK(networkstatus_get_latest_consensus, mock_networkstatus_get_latest_consensus);
   chosen_srv = get_majority_srv_from_votes(votes, 1);
   tt_assert(chosen_srv);
   tt_int_op(chosen_srv->num_reveals, ==, 42);
   tt_mem_op(chosen_srv->value, OP_EQ, SRV_1, sizeof(chosen_srv->value));
-  UNMOCK(get_n_voters_for_srv_agreement);
 
  done:
   SMARTLIST_FOREACH(votes, networkstatus_t *, vote,
                     networkstatus_vote_free(vote));
   smartlist_free(votes);
+  networkstatus_vote_free(mock_consensus);
+  UNMOCK(networkstatus_get_latest_consensus);
 }
 
 static void
@@ -1112,6 +1132,7 @@ test_state_update(void *arg)
 
  done:
   sr_state_free();
+  UNMOCK(get_my_v3_authority_cert);
 }
 
 struct testcase_t sr_tests[] = {

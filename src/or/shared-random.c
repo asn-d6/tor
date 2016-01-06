@@ -713,8 +713,8 @@ save_commit_to_state(sr_commit_t *commit)
 
 /* Return the number of required participants of the SR protocol. This is based
  * on a consensus params. */
-MOCK_IMPL(STATIC int,
-get_n_voters_for_srv_agreement, (void))
+static int
+get_n_voters_for_srv_agreement(void)
 {
   int num_dirauths = get_n_authorities(V3_DIRINFO);
   /* If the params is not found, default value should always be the maximum
