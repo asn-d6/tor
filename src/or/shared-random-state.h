@@ -69,7 +69,7 @@ typedef struct sr_state_t {
    * SRV is fresh or not ultimately making it _NOT_ use the super majority
    * when deciding to put or not the SRV in the consensus. This is for now
    * an acceptable very rare edge case. */
-  unsigned int fresh_srv:1;
+  unsigned int is_srv_fresh:1;
 } sr_state_t;
 
 /* Persistent state of the protocol, as saved to disk. */
@@ -105,7 +105,7 @@ void sr_state_add_commit(sr_commit_t *commit);
 void sr_state_delete_commits(void);
 void sr_state_copy_reveal_info(sr_commit_t *saved_commit,
                                 const sr_commit_t *commit);
-unsigned int sr_state_fresh_srv_is_set(void);
+unsigned int sr_state_srv_is_fresh(void);
 void sr_state_set_fresh_srv(void);
 void sr_state_unset_fresh_srv(void);
 
