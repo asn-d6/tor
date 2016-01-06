@@ -171,7 +171,6 @@ static config_var_t option_vars_[] = {
   V(AuthDirMaxServersPerAddr,    UINT,     "2"),
   V(AuthDirMaxServersPerAuthAddr,UINT,     "5"),
   V(AuthDirHasIPv6Connectivity,  BOOL,     "0"),
-  V(AuthDirNumSRVAgreements,     UINT,     "0"),
   VAR("AuthoritativeDirectory",  BOOL, AuthoritativeDir,    "0"),
   V(AutomapHostsOnResolve,       BOOL,     "0"),
   V(AutomapHostsSuffixes,        CSV,      ".onion,.exit"),
