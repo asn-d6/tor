@@ -39,7 +39,7 @@ typedef struct sr_state_t {
   uint8_t version;
   /* Creation time (the valid-after of the consensus) */
   time_t creation_time;
-  /* Until when this state is valid? */
+  /* Until when is this state valid? */
   time_t valid_until;
   /* Protocol phase. */
   sr_phase_t phase;
@@ -51,19 +51,17 @@ typedef struct sr_state_t {
   /* The number of reveal rounds we've performed in this protocol run. */
   unsigned int n_reveal_rounds;
 
-  /* A map of all the receive commitments for the protocol run. This is
+  /* A map of all the received commitments for this protocol run. This is
    * indexed by authority RSA identity digest. */
   digestmap_t *commits;
 
-  /* Current and previous shared random value. See section [SRCALC] in
-   * proposal 250 for details on how this is constructed. */
+  /* Current and previous shared random value. */
   sr_srv_t *previous_srv;
   sr_srv_t *current_srv;
 
-  /* Indicate if the state contains a fresh SRV that is the current SR value
-   * has just been generated thus different from the previous phase.  This
-   * is used when voting so we know if we should use the super majority or
-   * not when deciding on keeping it for the consensus. It is _always_ set
+  /* Indicate if the state contains an SRV that was _just_ generated. This is
+   * used during voting so that we know whether to use the super majority rule
+   * or not when deciding on keeping it for the consensus. It is _always_ set
    * to 0 post consensus.
    *
    * EDGE CASE: if an authority computes a new SRV then immediately reboots

@@ -9,29 +9,61 @@
  *
  * \details
  *
- * This file implements the dirauth-only commit-and-reveal protocol
- * specified by proposal #250. The protocol has two phases (sr_phase_t): the
- * commitment phase and the reveal phase.
+ * This file implements the dirauth-only commit-and-reveal protocol specified
+ * by proposal #250. The protocol has two phases (sr_phase_t): the commitment
+ * phase and the reveal phase (see get_sr_protocol_phase()).
  *
  * The rough procedure is:
  *
  *      1) In the beginning of the commitment phase, dirauths generate a
  *         commitment/reveal value for the current protocol run (see
- *         new_protocol_run()).
+ *         new_protocol_run() and sr_generate_our_commit()).
  *
- *      2) Dirauths publish commitment/reveal values in their votes
- *         depending on the current phase (see sr_get_string_for_vote()).
+ *      2) During voting, dirauths publish their commits in their votes
+ *         depending on the current phase.  Dirauths also include the two
+ *         latest shared random values (SRV) in their votes.
+ *         (see sr_get_string_for_vote())
  *
- *      3) Upon receiving a commit from a vote, authorities parse it, verify it,
- *         and attempt to save any new commitment or reveal information in their
- *         state file (see sr_handle_received_commit()).
+ *      3) Upon receiving a commit from a vote, authorities parse it, verify
+ *         it, and attempt to save any new commitment or reveal information in
+ *         their state file (see extract_shared_random_commits()).  They also
+ *         parse SRVs from votes to decide which SRV should be included in the
+ *         final consensus (see extract_shared_random_srvs()).
  *
- *      4) In the end of the reveal phase, dirauths compute the random value
- *         of the day using the active reveal values (see sr_compute_srv()).
+ *      3) After voting is done, we count the SRVs we extracted from the votes,
+ *         to find the one voted by the majority of dirauths which should be
+ *         included in the final consensus (see get_majority_srv_from_votes()).
+ *         If an appropriate SRV is found, it is embedded in the consensus (see
+ *         sr_get_string_for_consensus()).
  *
- * To better support rebooting authorities we save the current state of the
- * shared random protocol in disk so that authorities can resume on the
- * protocol if they have to reboot.
+ *      4) At the end of the reveal phase, dirauths compute a fresh SRV for the
+ *         day using the active commits (see sr_compute_srv()).  This new SRV
+ *         is embedded in the votes as described above.
+ *
+ * Some more notes:
+ *
+ * - To support rebooting authorities and to avoid double voting, each dirauth
+ *   saves the current state of the protocol on disk so that it can resume
+ *   normally in case of reboot. The disk state (sr_disk_state_t) is managed by
+ *   shared-random-state.c:state_query() and we go to extra lengths to ensure
+ *   that the state is flushed on disk everytime we receive any useful
+ *   information like commits or SRVs.
+ *
+ * - When we receive a commit from a vote, we examine it to see if it's useful
+ *   to us and whether it's appropriate to receive it according to the current
+ *   phase of the protocol (see should_keep_commit()). If the commit is useful
+ *   to us, we save it in our disk state using save_commit_to_state().  When we
+ *   receive the reveal information corresponding to a commitment, we verify
+ *   that they indeed match using verify_commit_and_reveal().
+ *
+ * - Before every voting period, the SR protocol state is updated using
+ *   sr_state_update(). That function takes care of housekeeping and also
+ *   rotates the SRVs and commits in case a new protocol run is coming up.
+ *
+ * - We treat consensuses as the ground truth, so everytime we generate a new
+ *   consensus we update our SR state accordingly even if our local view was
+ *   different (see sr_decide_srv_post_consensus()).
+ *
  *
  * Terminology:
  *
@@ -39,8 +71,8 @@
  *
  * - "Reveal" is the reveal value of the commit-and-reveal protocol.
  *
- * - "Commit" is a struct (sr_commit_t) that contains the commitment value and
- *    optionally also the corresponding reveal value.
+ * - "Commit" is a struct (sr_commit_t) that contains a commitment value and
+ *    optionally also a corresponding reveal value.
  *
  * - "SRV" is the Shared Random Value that gets generated as the result of the
  *   commit-and-reveal protocol.
@@ -58,11 +90,11 @@
 #include "routerlist.h"
 #include "shared-random-state.h"
 
-/* Prefix of shared random values in a string. */
+/* String prefix of shared random values in votes/consensuses. */
 static const char *previous_srv_str = "shared-rand-previous-value";
 static const char *current_srv_str = "shared-rand-current-value";
 
-/* Return a heap allocated copy of <b>orig</b>. */
+/* Return a heap allocated copy of the SRV <b>orig</b>. */
 STATIC sr_srv_t *
 srv_dup(const sr_srv_t *orig)
 {
@@ -150,7 +182,7 @@ verify_commit_and_reveal(const sr_commit_t *commit)
     /* We first hash the reveal we just received. */
     char received_hashed_reveal[sizeof(commit->hashed_reveal)];
     /* Use the invariant length since the encoded reveal variable has an
-     * extra byte for the NULL terminated byte. */
+     * extra byte for the NUL terminated byte. */
     if (crypto_digest256(received_hashed_reveal, commit->encoded_reveal,
                          SR_REVEAL_BASE64_LEN, DIGEST_SHA256) < 0) {
       /* Unable to digest the reveal blob, this is unlikely. */
@@ -236,7 +268,7 @@ error:
   return -1;
 }
 
-/* Parse the b64 blob at <b>encoded</b> containin reveal information and
+/* Parse the b64 blob at <b>encoded</b> containing reveal information and
  * store the information in-place in <b>commit</b>. Return 0 on success else
  * a negative value. */
 STATIC int
@@ -346,10 +378,10 @@ sr_cleanup(void)
   sr_state_free();
 }
 
-/* Using <b>commit</b>, return a newly allocated string containing the
- * authority identity fingerprint concatenated with its encoded reveal
- * value. It's the caller responsibility to free the memory. Return NULL if
- * this is not a commit to be used for SRV calculation. */
+/* Using <b>commit</b>, return a newly allocated string containing the commit
+ * information that should be used during SRV calculation. It's the caller
+ * responsibility to free the memory. Return NULL if this is not a commit to be
+ * used for SRV calculation. */
 static char *
 get_srv_element_from_commit(const sr_commit_t *commit)
 {
@@ -417,7 +449,7 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
 }
 
 /* Compare commit identity RSA fingerprint and return the result. This
- * should exclusively be used by smartlist_sort. */
+ * should exclusively be used by smartlist_sort(). */
 static int
 compare_commit_identity_(const void **_a, const void **_b)
 {
@@ -547,10 +579,9 @@ commit_is_authoritative(const sr_commit_t *commit,
   return ed25519_pubkey_eq(&commit->auth_identity, identity);
 }
 
-/* Decide if <b>commit</b> can be added to our state that is check if the
- * commit is authoritative. Return 1 if the commit should be added to our
- * state or 0 if not. If it's authoritative, the commit is flagged
- * accordingly. */
+/* Decide if the newly received <b>commit</b> should be kept depending on the
+ * current phase and state of the protocol. Return 1 if the commit should be
+ * added to our state or 0 if not. */
 STATIC int
 should_keep_commit(sr_commit_t *commit,
                    const ed25519_public_key_t *voter_key)
@@ -585,7 +616,7 @@ should_keep_commit(sr_commit_t *commit,
       goto ignore;
     }
 
-    /* A commit with a reveal value is very wrong and constitute a bug. */
+    /* A commit with a reveal value during commitment phase is very wrong. */
     if (commit_has_reveal_value(commit)) {
       /* XXX: should be LD_BUG at some point. */
       log_warn(LD_DIR, "[SR] Ignoring commit with reveal during commit phase");
@@ -634,11 +665,12 @@ should_keep_commit(sr_commit_t *commit,
   }
 
   return 1;
+
  ignore:
   return 0;
 }
 
-/* We are during reveal phase and we found <b>commit</b> in a vote that contains
+/* We are in reveal phase and we found <b>commit</b> in a vote that contains
  * reveal values that we could use. Update the commit we have in our state. */
 STATIC void
 save_commit_during_reveal_phase(const sr_commit_t *commit)
@@ -691,7 +723,7 @@ get_n_voters_for_srv_agreement, (void))
                                  num_dirauths, 1, num_dirauths);
 }
 
-/** Return 1 if we should we keep the SRV voted by <b>n_agreements</b>
+/** Return 1 if we should we keep an SRV voted by <b>n_agreements</b>
  *  auths. Return 0 if we should ignore it. */
 static int
 should_keep_srv(int n_agreements)
@@ -707,10 +739,10 @@ should_keep_srv(int n_agreements)
     return 0;
   }
 
-  /* When we just computed a new SRV, we need to reach our super majority in
-   * order to keep it. */
+  /* When we just computed a new SRV, we need to have super majority in order
+   * to keep it. */
   if (sr_state_fresh_srv_is_set()) {
-    /* Check if we've reached super majority for this new SRV value. */
+    /* Check if we have super majority for this new SRV value. */
     int num_required_agreements = get_n_voters_for_srv_agreement();
 
     if (n_agreements < num_required_agreements) {
@@ -723,10 +755,10 @@ should_keep_srv(int n_agreements)
   return 1;
 }
 
-/* Using a list of <b>votes</b>, return the SRV object from them that does
- * have a majority consensus. If <b>current</b> is set, we look for the
- * current SRV value else the previous one. NULL is returned if no value
- * could be found that has majority. */
+/* Using a list of <b>votes</b>, return the SRV object from them that has been
+ * voted by the majority of dirauths. If <b>current</b> is set, we look for the
+ * current SRV value else the previous one. NULL is returned if no appropriate
+ * value could be found. */
 STATIC sr_srv_t *
 get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
 {
@@ -821,7 +853,7 @@ sr_commit_free(sr_commit_t *commit)
   tor_free(commit);
 }
 
-/* Initialize shared random subsystem. This MUST be call early in the boot
+/* Initialize shared random subsystem. This MUST be called early in the boot
  * process of tor. Return 0 on success else -1 on error. */
 int
 sr_init(int save_to_disk)
@@ -838,8 +870,7 @@ sr_save_and_cleanup(void)
 }
 
 /* Generate the commitment/reveal value for the protocol run starting at
- * <b>timestamp</b>. If <b>my_cert</b> is provided use it as our authority
- * certificate (used in unittests). */
+ * <b>timestamp</b>. <b>my_rsa_cert</b> is our authority RSA certificate. */
 sr_commit_t *
 sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
 {
@@ -897,7 +928,7 @@ sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
     /* Only sha256 is supported and the default. */
   default:
     /* The invariant length is used here since the encoded reveal variable
-     * as an extra byte added for the NULL terminated byte. */
+     * has an extra byte added for the NULL terminated byte. */
     if (crypto_digest256(commit->hashed_reveal, commit->encoded_reveal,
                          SR_REVEAL_BASE64_LEN, DIGEST_SHA256) < 0) {
       goto error;
@@ -921,8 +952,7 @@ error:
   return NULL;
 }
 
-/* Compute the shared random value based on the reveals we have in the given
- * <b>state</b>. */
+/* Compute the shared random value based on the active commits in our state. */
 void
 sr_compute_srv(void)
 {
@@ -1021,11 +1051,10 @@ end:
   return srv;
 }
 
-/* Parse a list of arguments from a commitment either from a vote or from
- * our disk state and return a newly allocated commit object. NULL is
- * returned on error.
+/* Parse a commit from a vote or from our disk state and return a newly
+ * allocated commit object. NULL is returned on error.
  *
- * The arguments' order matter very much:
+ * The commit's data is in <b>args</b> and the order matters very much:
  *  algname, ed25519 identity, RSA fingerprint, commit value[, reveal value]
  */
 sr_commit_t *
@@ -1078,18 +1107,16 @@ error:
   return NULL;
 }
 
-/* Called when we have a valid vote and we are about to use it to compute a
- * consensus. The <b>commitments</b> is the list of commits from a single
- * vote coming from authority <b>voter_key</b>. We'll update our state with
- * that list. Once done, the list of commitments will be empty. */
+/* Called when we are parsing a vote by <b>voter_key</b> that might contain
+ * some useful <b>commits</b>. Find if any of them should be kept and update
+ * our state accordingly. Once done, the list of commitments will be empty. */
 void
 sr_handle_received_commits(smartlist_t *commits,
                            const ed25519_public_key_t *voter_key)
 {
   tor_assert(voter_key);
 
-  /* It's possible if our vote has seen _NO_ commits because it doesn't
-   * contain any. */
+  /* It's possible that the vote has _NO_ commits. */
   if (commits == NULL) {
     return;
   }
