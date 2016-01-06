@@ -695,6 +695,14 @@ get_test_vote_with_curr_srv(const char *srv)
   return vote;
 }
 
+/* Mock function to return the value located in the options instead of the
+ * consensus so we can modify it at will. */
+static int
+mock_get_n_voters_for_srv_agreement(void)
+{
+  or_options_t *options = get_options_mutable();
+  return options->AuthDirNumSRVAgreements;
+}
 
 /* Test the function that picks the right SRV given a bunch of votes. Make sure
  * that the function returns an SRV iff the majority/agreement requirements are
@@ -711,9 +719,15 @@ test_sr_get_majority_srv_from_votes(void *arg)
 
   (void) arg;
 
+  sr_state_init(0, 0);
+  /* Make sure our SRV is fresh so we can consider the super majority with
+   * the consensus params of number of agreements needed. */
+  sr_state_set_fresh_srv();
+
   /* The test relies on the dirauth list being initialized. */
+  clear_dir_servers();
   add_default_trusted_dir_authorities(V3_DIRINFO);
-  tt_int_op(get_n_authorities(V3_DIRINFO), >=, 9);
+  tt_int_op(get_n_authorities(V3_DIRINFO), ==, 9);
 
   { /* Prepare voting environment with just a single vote. */
     networkstatus_t *vote = get_test_vote_with_curr_srv(SRV_1);
@@ -748,11 +762,13 @@ test_sr_get_majority_srv_from_votes(void *arg)
 
   /* Lower the AuthDirNumSRVAgreements requirement and let's try again.
    * This time it must work. */
+  MOCK(get_n_voters_for_srv_agreement, mock_get_n_voters_for_srv_agreement);
   options->AuthDirNumSRVAgreements = 7;
   chosen_srv = get_majority_srv_from_votes(votes, 1);
   tt_assert(chosen_srv);
   tt_int_op(chosen_srv->num_reveals, ==, 42);
   tt_mem_op(chosen_srv->value, OP_EQ, SRV_1, sizeof(chosen_srv->value));
+  UNMOCK(get_n_voters_for_srv_agreement);
 
  done:
   SMARTLIST_FOREACH(votes, networkstatus_t *, vote,
