@@ -3,7 +3,7 @@
 
 /**
  * \file shared-random.c
- * \brief Functions and data structure needed to accomplish the shared
+ * \brief Functions and data structures needed to accomplish the shared
  * random protocol as defined in proposal #250.
  **/
 
@@ -259,7 +259,7 @@ disk_state_free(sr_disk_state_t *state)
   config_free(&state_format, state);
 }
 
-/* Allocate a new disk state, initialized it and return it. */
+/* Allocate a new disk state, initialize it and return it. */
 static sr_disk_state_t *
 disk_state_new(time_t now)
 {
@@ -286,8 +286,8 @@ disk_state_set(sr_disk_state_t *state)
   sr_disk_state = state;
 }
 
-/* Return -1 if the disk state is invalid that is something in there that we
- * can't or shouldn't use. Return 0 if everything checks out. */
+/* Return -1 if the disk state is invalid (something in there that we can't or
+ * shouldn't use). Return 0 if everything checks out. */
 static int
 disk_state_validate(sr_disk_state_t *state)
 {
@@ -295,10 +295,11 @@ disk_state_validate(sr_disk_state_t *state)
 
   tor_assert(state);
 
-  /* Do we support the protocol version in the state?. */
+  /* Do we support the protocol version in the state? */
   if (state->Version > SR_PROTO_VERSION) {
     goto invalid;
   }
+
   /* If the valid until time is before now, we shouldn't use that state. */
   now = time(NULL);
   if (state->ValidUntil < now) {
@@ -307,10 +308,12 @@ disk_state_validate(sr_disk_state_t *state)
   }
 
   return 0;
+
  invalid:
   return -1;
 }
 
+/** Validate the disk state (NOP for now). */
 static int
 disk_state_validate_cb(void *old_state, void *state, void *default_state,
                        int from_setconf, char **msg)
@@ -525,7 +528,7 @@ disk_state_reset(void)
   sr_disk_state->magic_ = SR_DISK_STATE_MAGIC;
 }
 
-/* Update our disk state from our global state. */
+/* Update our disk state based on our global SR state. */
 static void
 disk_state_update(void)
 {
@@ -988,8 +991,7 @@ sr_state_get_commits(void)
 }
 
 /* Update the current SR state as needed for the upcoming voting round at
- * <b>valid_after</b>. Don't call this function twice in the same voting
- * period. */
+ * <b>valid_after</b>. */
 void
 sr_state_update(time_t valid_after)
 {
@@ -997,6 +999,7 @@ sr_state_update(time_t valid_after)
 
   tor_assert(sr_state);
 
+  /* Don't call this function twice in the same voting period. */
   if (valid_after <= sr_state->creation_time) {
     log_warn(LD_GENERAL, "[SR] Asked to update state twice. Ignoring.");
     return;
@@ -1005,12 +1008,10 @@ sr_state_update(time_t valid_after)
   /* Get phase of upcoming round. */
   next_phase = get_sr_protocol_phase(valid_after);
 
-  /* Are we in a phase transition that is the next phase is not the same as
-   * the current one? */
+  /* If we are transitioning to a new protocol phase, prepare the stage. */
   if (is_phase_transition(next_phase)) {
     if (next_phase == SR_PHASE_COMMIT) {
-      /* If we are transitioning into commit phase, then we are starting a new
-         protocol run. */
+      /* Going into commit phase means we are starting a new protocol run. */
       new_protocol_run(valid_after);
     }
     /* Set the new phase for this round */
@@ -1088,9 +1089,9 @@ sr_state_delete_commits(void)
   state_query(SR_STATE_ACTION_DEL_ALL, SR_STATE_OBJ_COMMIT, NULL, NULL);
 }
 
-/* Copy the reveal information from <b>commit</b> into <b>saved_commit</b>. This
- * commit MUST come from our current state. Once modified, the disk state is
- * updated. */
+/* Copy the reveal information from <b>commit</b> into <b>saved_commit</b>.
+ * This <b>saved_commit</b> MUST come from our current SR state. Once modified,
+ * the disk state is updated. */
 void
 sr_state_copy_reveal_info(sr_commit_t *saved_commit, const sr_commit_t *commit)
 {
@@ -1181,7 +1182,7 @@ sr_state_init(int save_to_disk, int read_from_disk)
   tor_assert(sr_disk_state == NULL);
   tor_assert(sr_state == NULL);
 
-  /* First, we have to try to load the state from disk. */
+  /* First, try to load the state from disk. */
   if (read_from_disk) {
     ret = disk_state_load_from_disk();
   }
@@ -1214,6 +1215,7 @@ sr_state_init(int save_to_disk, int read_from_disk)
     }
   }
   return 0;
+
 error:
   return -1;
 }

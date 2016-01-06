@@ -14,11 +14,11 @@
 
 /* Protocol version */
 #define SR_PROTO_VERSION  1
-/* Current digest algorithm. */
+/* Default digest algorithm. */
 #define SR_DIGEST_ALG DIGEST_SHA256
 /* Invariant token in the SRV calculation. */
 #define SR_SRV_TOKEN "shared-random"
-/* Don't count the NULL terminated byte even though the TOKEN has it. */
+/* Don't count the NUL terminated byte even though the TOKEN has it. */
 #define SR_SRV_TOKEN_LEN (sizeof(SR_SRV_TOKEN) - 1)
 
 /* Length of the random number (in bytes). */
@@ -45,13 +45,13 @@
 
 /* Protocol phase. */
 typedef enum {
-  /* We are commitment phase */
+  /* Commitment phase */
   SR_PHASE_COMMIT  = 1,
-  /* We are reveal phase */
+  /* Reveal phase */
   SR_PHASE_REVEAL  = 2,
 } sr_phase_t;
 
-/* A shared random value object that contains its status and value. */
+/* A shared random value (SRV). */
 typedef struct sr_srv_t {
   /* The number of reveal values used to derive this SRV. */
   int num_reveals;
@@ -59,15 +59,14 @@ typedef struct sr_srv_t {
   uint8_t value[DIGEST256_LEN];
 } sr_srv_t;
 
-/* A commitment value that can be ours or from other authority. */
+/* A commit (either ours or from another authority). */
 typedef struct sr_commit_t {
-  /* Hashing algorithm used for the value. Depends on the version of the
-   * protocol located in the state. */
+  /* Hashing algorithm used. */
   digest_algorithm_t alg;
 
-  /** Commitment owner info */
+  /** Commit owner info */
 
-  /* Authority ed25519 identity from which this commitment is. */
+  /* Owner's authority ed25519 identity */
   ed25519_public_key_t auth_identity;
   /* Authority ed25519 identity key fingerprint base64 format. We keep it
    * for logging purposes instead of encoding each time. */
