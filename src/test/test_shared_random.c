@@ -1049,6 +1049,71 @@ test_keep_commit(void *arg)
   sr_commit_free(dup_commit);
 }
 
+static void
+test_state_update(void *arg)
+{
+  time_t now = time(NULL);
+  time_t commit_phase_time = 1452076000;
+  time_t reveal_phase_time = 1452086800;
+  sr_state_t *state;
+
+  (void) arg;
+
+  MOCK(get_my_v3_authority_cert, get_my_v3_authority_cert_m);
+
+  {
+    or_options_t *options = get_options_mutable();
+    mock_cert = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
+    tt_assert(mock_cert);
+    options->AuthoritativeDir = 1;
+    tt_int_op(0, ==, load_ed_keys(options, now));
+    sr_state_init(0, 0);
+    state = get_sr_state();
+    set_sr_phase(SR_PHASE_COMMIT);
+    /* We'll cheat a bit here and reset the creation time of the state which
+     * will avoid us to compute a valid_after time that fits the commit
+     * phase. */
+    state->creation_time = 0;
+  }
+
+  /* We are in COMMIT phase here and we'll trigger a state update but no
+   * transition. */
+  sr_state_update(commit_phase_time);
+  tt_int_op(state->creation_time, ==, commit_phase_time);
+  tt_int_op(state->n_commit_rounds, ==, 1);
+  tt_int_op(state->phase, ==, SR_PHASE_COMMIT);
+  tt_int_op(digestmap_size(state->commits), ==, 1);
+
+  /* We are still in the COMMIT phase here but we'll trigger a state
+   * transition to the REVEAL phase. */
+  sr_state_update(reveal_phase_time);
+  tt_int_op(state->phase, ==, SR_PHASE_REVEAL);
+  tt_int_op(state->creation_time, ==, reveal_phase_time);
+  /* Only our commit should be in there. */
+  tt_int_op(digestmap_size(state->commits), ==, 1);
+  tt_int_op(state->n_reveal_rounds, ==, 1);
+
+  /* We can't update a state with a valid after _lower_ than the creation
+   * time so here it is. */
+  sr_state_update(commit_phase_time);
+  tt_int_op(state->creation_time, ==, reveal_phase_time);
+
+  /* Finally, let's go back in COMMIT phase so we can test the state update
+   * of a new protocol run. */
+  state->creation_time = 0;
+  sr_state_update(commit_phase_time);
+  tt_int_op(state->creation_time, ==, commit_phase_time);
+  tt_int_op(state->n_commit_rounds, ==, 1);
+  tt_int_op(state->n_reveal_rounds, ==, 0);
+  tt_int_op(state->n_protocol_runs, ==, 1);
+  tt_int_op(state->phase, ==, SR_PHASE_COMMIT);
+  tt_int_op(digestmap_size(state->commits), ==, 1);
+  tt_assert(state->current_srv);
+
+ done:
+  sr_state_free();
+}
+
 struct testcase_t sr_tests[] = {
   { "get_sr_protocol_phase", test_get_sr_protocol_phase, TT_FORK,
     NULL, NULL },
@@ -1069,5 +1134,7 @@ struct testcase_t sr_tests[] = {
     TT_FORK, NULL, NULL },
   { "utils", test_utils, TT_FORK, NULL, NULL },
   { "state_transition", test_state_transition, TT_FORK, NULL, NULL },
+  { "state_update", test_state_update, TT_FORK,
+    NULL, NULL },
   END_OF_TESTCASES
 };
