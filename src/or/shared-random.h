@@ -144,8 +144,6 @@ STATIC int should_keep_commit(sr_commit_t *commit,
                               const ed25519_public_key_t *voter_key);
 STATIC void save_commit_during_reveal_phase(const sr_commit_t *commit);
 
-MOCK_DECL(STATIC int, get_n_voters_for_srv_agreement, (void));
-
 #endif /* SHARED_RANDOM_PRIVATE */
 
 #endif /* TOR_SHARED_RANDOM_H */
