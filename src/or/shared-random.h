@@ -97,24 +97,23 @@ typedef struct sr_commit_t {
 
 /* API */
 
+/* Public methods: */
+
 int sr_init(int save_to_disk);
 void sr_save_and_cleanup(void);
-
 void sr_prepare_new_voting_period(time_t valid_after);
 void sr_act_post_consensus(const networkstatus_t *consensus);
-
-void sr_commit_free(sr_commit_t *commit);
-
 void sr_handle_received_commits(smartlist_t *commits,
                                 const ed25519_public_key_t *voter_key);
-
 sr_commit_t *sr_parse_commit(smartlist_t *args);
 sr_srv_t *sr_parse_srv(smartlist_t *args);
-
-void sr_compute_srv(void);
 char *sr_get_string_for_vote(void);
 char *sr_get_string_for_consensus(smartlist_t *votes);
+void sr_commit_free(sr_commit_t *commit);
 
+/* Private methods (only used by shared-random-state.c): */
+
+void sr_compute_srv(void);
 sr_commit_t *sr_generate_our_commit(time_t timestamp,
                                     authority_cert_t *my_rsa_cert);
 
