@@ -91,14 +91,18 @@ typedef struct sr_disk_state_t {
 
 /* API */
 
-sr_phase_t sr_state_get_phase(void);
+/* Public methods: */
 
+void sr_state_update(time_t valid_after);
+
+/* Private methods (only used by shared-random.c): */
+
+sr_phase_t sr_state_get_phase(void);
 sr_srv_t *sr_state_get_previous_srv(void);
 sr_srv_t *sr_state_get_current_srv(void);
 void sr_state_set_previous_srv(sr_srv_t *srv);
 void sr_state_set_current_srv(sr_srv_t *srv);
 void sr_state_clean_srvs(void);
-
 digestmap_t *sr_state_get_commits(void);
 sr_commit_t *sr_state_get_commit_by_rsa(const char *rsa_fpr);
 void sr_state_add_commit(sr_commit_t *commit);
@@ -108,8 +112,6 @@ void sr_state_copy_reveal_info(sr_commit_t *saved_commit,
 unsigned int sr_state_srv_is_fresh(void);
 void sr_state_set_fresh_srv(void);
 void sr_state_unset_fresh_srv(void);
-
-void sr_state_update(time_t valid_after);
 int sr_state_init(int save_to_disk, int read_from_disk);
 void sr_state_save(void);
 void sr_state_free(void);
