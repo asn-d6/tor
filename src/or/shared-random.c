@@ -1094,8 +1094,8 @@ sr_parse_commit(smartlist_t *args)
   }
 
   /* (Optional) Fifth argument is the revealed value. */
-  value = smartlist_get(args, 4);
-  if (value != NULL) {
+  if (smartlist_len(args) > 4) {
+    value = smartlist_get(args, 4);
     if (reveal_decode(value, commit) < 0) {
       goto error;
     }
