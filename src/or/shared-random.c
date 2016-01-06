@@ -59,8 +59,8 @@
 #include "shared-random-state.h"
 
 /* Prefix of shared random values in a string. */
-#define PREVIOUS_SRV_STR "shared-rand-previous-value"
-#define CURRENT_SRV_STR "shared-rand-current-value"
+static const char *previous_srv_str = "shared-rand-previous-value";
+static const char *current_srv_str = "shared-rand-current-value";
 
 /* Return a heap allocated copy of <b>orig</b>. */
 STATIC sr_srv_t *
@@ -500,13 +500,13 @@ get_ns_str_from_sr_values(sr_srv_t *prev_srv, sr_srv_t *cur_srv)
   chunks = smartlist_new();
 
   if (prev_srv) {
-    char *srv_line = srv_to_ns_string(prev_srv, PREVIOUS_SRV_STR);
+    char *srv_line = srv_to_ns_string(prev_srv, previous_srv_str);
     smartlist_add(chunks, srv_line);
     log_warn(LD_DIR, "[SR] \t Previous SRV: %s", srv_line);
   }
 
   if (cur_srv) {
-    char *srv_line = srv_to_ns_string(cur_srv, CURRENT_SRV_STR);
+    char *srv_line = srv_to_ns_string(cur_srv, current_srv_str);
     smartlist_add(chunks, srv_line);
     log_warn(LD_DIR, "[SR] \t Current SRV: %s", srv_line);
   }
