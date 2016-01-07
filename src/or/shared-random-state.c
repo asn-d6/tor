@@ -1063,10 +1063,10 @@ sr_state_update(time_t valid_after)
   { /* Debugging. */
     char tbuf[ISO_TIME_LEN + 1];
     format_iso_time(tbuf, valid_after);
-    log_debug(LD_DIR, "SR: State prepared for new voting period (%s). "
-              "Current phase is %s (%d/%d).",
-              tbuf, get_phase_str(sr_state->phase),
-              sr_state->n_commit_rounds, sr_state->n_reveal_rounds);
+    log_info(LD_DIR, "SR: State prepared for new voting period (%s). "
+             "Current phase is %s (%d/%d).",
+             tbuf, get_phase_str(sr_state->phase),
+             sr_state->n_commit_rounds, sr_state->n_reveal_rounds);
   }
 }
 
