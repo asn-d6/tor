@@ -1093,13 +1093,13 @@ test_state_update(void *arg)
     /* We'll cheat a bit here and reset the creation time of the state which
      * will avoid us to compute a valid_after time that fits the commit
      * phase. */
-    state->creation_time = 0;
+    state->valid_after = 0;
   }
 
   /* We are in COMMIT phase here and we'll trigger a state update but no
    * transition. */
   sr_state_update(commit_phase_time);
-  tt_int_op(state->creation_time, ==, commit_phase_time);
+  tt_int_op(state->valid_after, ==, commit_phase_time);
   tt_int_op(state->n_commit_rounds, ==, 1);
   tt_int_op(state->phase, ==, SR_PHASE_COMMIT);
   tt_int_op(digestmap_size(state->commits), ==, 1);
@@ -1108,7 +1108,7 @@ test_state_update(void *arg)
    * transition to the REVEAL phase. */
   sr_state_update(reveal_phase_time);
   tt_int_op(state->phase, ==, SR_PHASE_REVEAL);
-  tt_int_op(state->creation_time, ==, reveal_phase_time);
+  tt_int_op(state->valid_after, ==, reveal_phase_time);
   /* Only our commit should be in there. */
   tt_int_op(digestmap_size(state->commits), ==, 1);
   tt_int_op(state->n_reveal_rounds, ==, 1);
@@ -1116,13 +1116,13 @@ test_state_update(void *arg)
   /* We can't update a state with a valid after _lower_ than the creation
    * time so here it is. */
   sr_state_update(commit_phase_time);
-  tt_int_op(state->creation_time, ==, reveal_phase_time);
+  tt_int_op(state->valid_after, ==, reveal_phase_time);
 
   /* Finally, let's go back in COMMIT phase so we can test the state update
    * of a new protocol run. */
-  state->creation_time = 0;
+  state->valid_after = 0;
   sr_state_update(commit_phase_time);
-  tt_int_op(state->creation_time, ==, commit_phase_time);
+  tt_int_op(state->valid_after, ==, commit_phase_time);
   tt_int_op(state->n_commit_rounds, ==, 1);
   tt_int_op(state->n_reveal_rounds, ==, 0);
   tt_int_op(state->n_protocol_runs, ==, 1);

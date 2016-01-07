@@ -59,7 +59,7 @@ disk_state_validate_cb(void *old_state, void *state, void *default_state,
 static config_var_t state_vars[] = {
   V(Version,                    INT, "1"),
   V(ValidUntil,                 ISOTIME, NULL),
-  V(CreationTime,               ISOTIME, NULL),
+  V(ValidAfter,                 ISOTIME, NULL),
 
   VAR("Commit",                 LINELIST_S, Commits, NULL),
   V(Commits,                    LINELIST_V, NULL),
@@ -249,7 +249,7 @@ state_new(const char *fname, time_t now)
   new_state->commits = digestmap_new();
   new_state->phase = get_sr_protocol_phase(valid_after);
   new_state->valid_until = get_state_valid_until_time(valid_after);
-  new_state->creation_time = valid_after;
+  new_state->valid_after = valid_after;
   return new_state;
 }
 
@@ -283,7 +283,7 @@ disk_state_new(time_t now)
   new_state->magic_ = SR_DISK_STATE_MAGIC;
   new_state->Version = SR_PROTO_VERSION;
   new_state->ValidUntil = get_state_valid_until_time(now);
-  new_state->CreationTime = now;
+  new_state->ValidAfter = now;
 
   /* Init config format. */
   config_init(&state_format, new_state);
@@ -474,7 +474,7 @@ disk_state_parse(sr_disk_state_t *new_disk_state)
 
   new_state->version = new_disk_state->Version;
   new_state->valid_until = new_disk_state->ValidUntil;
-  new_state->creation_time = new_disk_state->CreationTime;
+  new_state->valid_after = new_disk_state->ValidAfter;
 
   /* Parse the shared random values. */
   if (disk_state_parse_sr_values(new_state, new_disk_state) < 0) {
@@ -561,7 +561,7 @@ disk_state_update(void)
    * construct something. */
   sr_disk_state->Version = sr_state->version;
   sr_disk_state->ValidUntil = sr_state->valid_until;
-  sr_disk_state->CreationTime = sr_state->creation_time;
+  sr_disk_state->ValidAfter = sr_state->valid_after;
 
   /* Shared random values. */
   next = &sr_disk_state->SharedRandValues;
@@ -743,7 +743,7 @@ reset_state_for_new_protocol_run(time_t valid_after)
 
   /* Reset valid-until */
   sr_state->valid_until = get_state_valid_until_time(valid_after);
-  sr_state->creation_time = valid_after;
+  sr_state->valid_after = valid_after;
 
   /* We are in a new protocol run so cleanup commits. */
   sr_state_delete_commits();
@@ -1018,7 +1018,7 @@ sr_state_update(time_t valid_after)
   tor_assert(sr_state);
 
   /* Don't call this function twice in the same voting period. */
-  if (valid_after <= sr_state->creation_time) {
+  if (valid_after <= sr_state->valid_after) {
     log_info(LD_DIR, "SR: Asked to update state twice. Ignoring.");
     return;
   }
@@ -1049,7 +1049,7 @@ sr_state_update(time_t valid_after)
     }
   }
 
-  sr_state->creation_time = valid_after;
+  sr_state->valid_after = valid_after;
 
   /* Count the current round */
   if (sr_state->phase == SR_PHASE_COMMIT) {
