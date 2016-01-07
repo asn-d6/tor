@@ -1223,6 +1223,10 @@ sr_act_post_consensus(const networkstatus_t *consensus)
   /* Reset the fresh flag of the SRV so we know that from now on we don't
    * have a new SRV to vote for thus no need for super majority. */
   sr_state_unset_fresh_srv();
+
+  /* Update our state with the valid after time of the consensus so once the
+   * next voting period start we are ready to receive votes. */
+  sr_state_update(consensus->valid_after);
 }
 
 /* Initialize shared random subsystem. This MUST be called early in the boot

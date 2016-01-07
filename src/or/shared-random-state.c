@@ -13,6 +13,8 @@
 #include "shared-random.h"
 #include "config.h"
 #include "confparse.h"
+#include "dirvote.h"
+#include "networkstatus.h"
 #include "router.h"
 #include "shared-random-state.h"
 
@@ -124,6 +126,23 @@ get_start_time_of_current_round(time_t now)
   return now - (now % get_voting_interval());
 }
 
+/* Using the time <b>now</b>, return the valid-after time. */
+static time_t
+get_next_valid_after_time(time_t now)
+{
+  long interval;
+
+  networkstatus_t *consensus = networkstatus_get_live_consensus(now);
+  if (consensus != NULL) {
+    interval = consensus->fresh_until - consensus->valid_after;
+  } else {
+    interval = get_voting_interval();
+  }
+
+  return dirvote_get_start_of_next_interval(now, interval,
+                            get_options()->TestingV3AuthVotingStartOffset);
+}
+
 /* Return the time we should expire the state file created at <b>now</b>.
  * We expire the state file in the beginning of the next protocol run. */
 STATIC time_t
@@ -219,6 +238,7 @@ state_free(sr_state_t *state)
 static sr_state_t *
 state_new(const char *fname, time_t now)
 {
+  time_t valid_after = get_next_valid_after_time(now);
   sr_state_t *new_state = tor_malloc_zero(sizeof(*new_state));
   /* If file name is not provided, use default. */
   if (fname == NULL) {
@@ -227,14 +247,9 @@ state_new(const char *fname, time_t now)
   new_state->fname = tor_strdup(fname);
   new_state->version = SR_PROTO_VERSION;
   new_state->commits = digestmap_new();
-  new_state->phase = get_sr_protocol_phase(now);
-  /* We can't use a valid-after time here since we don't have one if we are
-   * just botting for instance. In any case, we use now which is fine even
-   * though we are booting up at 23:45 since at the new protocol run (in 15
-   * min) this will be updated accordingly and in the meantime you won't
-   * participate in the SR protocol by a lack of reveal values. */
-  new_state->valid_until = get_state_valid_until_time(now);
-  new_state->creation_time = now;
+  new_state->phase = get_sr_protocol_phase(valid_after);
+  new_state->valid_until = get_state_valid_until_time(valid_after);
+  new_state->creation_time = valid_after;
   return new_state;
 }
 
@@ -1179,6 +1194,7 @@ int
 sr_state_init(int save_to_disk, int read_from_disk)
 {
   int ret = -ENOENT;
+  time_t now = time(NULL);
 
   /* We shouldn't have those assigned. */
   tor_assert(sr_disk_state == NULL);
@@ -1197,7 +1213,6 @@ sr_state_init(int save_to_disk, int read_from_disk)
        * obviously unusable and replace it by an new fresh state below. */
     case ENOENT:
       {
-        time_t now = time(NULL);
         /* No state on disk so allocate our states for the first time. */
         sr_state_t *new_state = state_new(default_fname, now);
         sr_disk_state_t *new_disk_state = disk_state_new(now);
@@ -1215,6 +1230,12 @@ sr_state_init(int save_to_disk, int read_from_disk)
       /* Big problem. Not possible. */
       tor_assert(0);
     }
+  }
+  /* We have a state in memory, let's make sure it's updated for the current
+   * and next voting round. */
+  {
+    time_t valid_after = get_next_valid_after_time(now);
+    sr_state_update(valid_after);
   }
   return 0;
 
