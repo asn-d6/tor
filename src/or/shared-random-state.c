@@ -148,7 +148,7 @@ get_state_valid_until_time(time_t now)
   { /* Logging */
     char tbuf[ISO_TIME_LEN + 1];
     format_iso_time(tbuf, valid_until);
-    log_warn(LD_DIR, "[SR] Valid until time for state set to %s.", tbuf);
+    log_debug(LD_DIR, "SR: Valid until time for state set to %s.", tbuf);
   }
 
   return valid_until;
@@ -303,7 +303,7 @@ disk_state_validate(sr_disk_state_t *state)
   /* If the valid until time is before now, we shouldn't use that state. */
   now = time(NULL);
   if (state->ValidUntil < now) {
-    log_warn(LD_DIR, "[SR] SR state on disk has expired.");
+    log_info(LD_DIR, "SR: Disk state has expired. Ignoring it.");
     goto invalid;
   }
 
@@ -355,8 +355,8 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
     smartlist_split_string(args, line->value, " ",
                            SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 0);
     if (smartlist_len(args) < 4) {
-      log_warn(LD_DIR, "[SR] Too few arguments to Commitment. Line: \"%s\"",
-               line->value);
+      log_warn(LD_BUG, "SR: Too few arguments in Commit Line: %s",
+               escaped(line->value));
       goto error;
     }
     commit = sr_parse_commit(args);
@@ -392,8 +392,8 @@ disk_state_parse_srv(const char *value, sr_srv_t *dst)
   smartlist_split_string(args, value, " ",
                          SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 0);
   if (smartlist_len(args) < 2) {
-    log_warn(LD_DIR, "[SR] Too few arguments to shared random value. "
-             "Line: \"%s\"", value);
+    log_warn(LD_BUG, "SR: Too few arguments in shared random value. "
+             "Line: %s", escaped(value));
     goto error;
   }
   srv = sr_parse_srv(args);
@@ -426,7 +426,8 @@ disk_state_parse_sr_values(sr_state_t *state, sr_disk_state_t *disk_state)
       }
       state->previous_srv = tor_malloc_zero(sizeof(*state->previous_srv));
       if (disk_state_parse_srv(line->value, state->previous_srv) < 0) {
-        log_warn(LD_DIR, "Broken previous SRV line in state %s", line->value);
+        log_warn(LD_BUG, "SR: Broken previous SRV line in state %s",
+                 escaped(line->value));
         return -1;
       }
 
@@ -437,7 +438,8 @@ disk_state_parse_sr_values(sr_state_t *state, sr_disk_state_t *disk_state)
       }
       state->current_srv = tor_malloc_zero(sizeof(*state->current_srv));
       if (disk_state_parse_srv(line->value, state->current_srv) < 0) {
-        log_warn(LD_DIR, "Broken cur SRV line in state %s", line->value);
+        log_warn(LD_BUG, "SR: Broken current SRV line in state %s",
+                 escaped(line->value));
         return -1;
       }
     }
@@ -611,7 +613,8 @@ disk_state_load_from_disk_impl(const char *fname)
 
     /* Read content of file so we can parse it. */
     if ((content = read_file_to_str(fname, 0, NULL)) == NULL) {
-      log_warn(LD_FS, "[SR] Unable to read SR state file \"%s\"", fname);
+      log_warn(LD_FS, "SR: Unable to read SR state file %s",
+               escaped(fname));
       goto error;
     }
     if (config_get_lines(content, &lines, 0) < 0) {
@@ -620,7 +623,7 @@ disk_state_load_from_disk_impl(const char *fname)
     config_assign(&state_format, disk_state, lines, 0, 0, &errmsg);
     config_free_lines(lines);
     if (errmsg) {
-      log_warn(LD_DIR, "[SR] %s", errmsg);
+      log_warn(LD_DIR, "SR: Reading state error: %s", errmsg);
       tor_free(errmsg);
       goto error;
     }
@@ -637,7 +640,8 @@ disk_state_load_from_disk_impl(const char *fname)
   case FN_ERROR:
   case FN_DIR:
   default:
-    log_warn(LD_FS, "[SR] State file \"%s\" not a file? Failing.", fname);
+    log_warn(LD_FS, "SR: State file %s not a file? Failing.",
+             escaped(fname));
     ret = -EINVAL;
     goto error;
   }
@@ -657,7 +661,7 @@ disk_state_load_from_disk_impl(const char *fname)
   state_set(parsed_state);
   disk_state_set(disk_state);
   tor_free(content);
-  log_notice(LD_DIR, "[SR] State loaded from \"%s\"", fname);
+  log_notice(LD_DIR, "SR: State loaded successfully from file %s", fname);
   return 0;
 
 error:
@@ -697,12 +701,12 @@ disk_state_save_to_disk(void)
   tor_free(state);
   fname = get_datadir_fname(default_fname);
   if (write_str_to_file(fname, content, 0) < 0) {
-    log_warn(LD_FS, "[SR] Unable to write SR state to file \"%s\"", fname);
+    log_warn(LD_FS, "SR: Unable to write SR state to file %s", fname);
     ret = -1;
     goto done;
   }
   ret = 0;
-  log_info(LD_DIR, "[SR] Saved state to \"%s\"", fname);
+  log_debug(LD_DIR, "SR: Saved state to file %s", fname);
 
 done:
   tor_free(fname);
@@ -764,8 +768,7 @@ new_protocol_run(time_t valid_after)
   reset_state_for_new_protocol_run(valid_after);
 
   /* Do some logging */
-  log_warn(LD_DIR, "[SR] =========================");
-  log_warn(LD_DIR, "[SR] Protocol run #%" PRIu64 " starting!",
+  log_info(LD_DIR, "SR: Protocol run #%" PRIu64 " starting!",
            sr_state->n_protocol_runs);
 
   /* Generate fresh commitments for this protocol run */
@@ -1001,7 +1004,7 @@ sr_state_update(time_t valid_after)
 
   /* Don't call this function twice in the same voting period. */
   if (valid_after <= sr_state->creation_time) {
-    log_warn(LD_GENERAL, "[SR] Asked to update state twice. Ignoring.");
+    log_info(LD_DIR, "SR: Asked to update state twice. Ignoring.");
     return;
   }
 
@@ -1042,14 +1045,13 @@ sr_state_update(time_t valid_after)
     sr_state->n_reveal_rounds++;
   }
 
-  { /* XXX: debugging. */
+  { /* Debugging. */
     char tbuf[ISO_TIME_LEN + 1];
     format_iso_time(tbuf, valid_after);
-    log_warn(LD_DIR, "[SR] ------------------------------");
-    log_warn(LD_DIR, "[SR] State prepared for new voting period (%s). "
-             "Current phase is %s (%d/%d).",
-             tbuf, get_phase_str(sr_state->phase),
-             sr_state->n_commit_rounds, sr_state->n_reveal_rounds);
+    log_debug(LD_DIR, "SR: State prepared for new voting period (%s). "
+              "Current phase is %s (%d/%d).",
+              tbuf, get_phase_str(sr_state->phase),
+              sr_state->n_commit_rounds, sr_state->n_reveal_rounds);
   }
 }
 
@@ -1078,7 +1080,7 @@ sr_state_add_commit(sr_commit_t *commit)
   state_query(SR_STATE_ACTION_PUT, SR_STATE_OBJ_COMMIT,
               (void *) commit, NULL);
 
-  log_warn(LD_DIR, "[SR] \t Commit from %s has been added to our state.",
+  log_debug(LD_DIR, "SR: Commit from %s has been added to our state.",
            commit->auth_fingerprint);
 }
 
@@ -1105,9 +1107,9 @@ sr_state_copy_reveal_info(sr_commit_t *saved_commit, const sr_commit_t *commit)
   strlcpy(saved_commit->encoded_reveal, commit->encoded_reveal,
           sizeof(saved_commit->encoded_reveal));
   state_query(SR_STATE_ACTION_SAVE, 0, NULL, NULL);
-  /* XXX: debugging. */
-  log_warn(LD_DIR, "[SR] \t \t Reveal value learned %s (for commit %s)",
-           saved_commit->encoded_reveal, saved_commit->encoded_commit);
+  log_debug(LD_DIR, "SR: Reveal value learned %s (for commit %s) from %s",
+            saved_commit->encoded_reveal, saved_commit->encoded_commit,
+            saved_commit->auth_fingerprint);
 }
 
 /* Set the fresh SRV flag from our state. This doesn't need to trigger a

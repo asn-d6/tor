@@ -139,23 +139,20 @@ commit_log(const sr_commit_t *commit)
 {
   tor_assert(commit);
 
-  log_warn(LD_DIR, "[SR] \t Commit of %s [transmitted by %s]",
-           commit->auth_fingerprint,
-           commit->rsa_identity_fpr);
+  log_debug(LD_DIR, "SR: Commit from %s [voted by %s]",
+            commit->auth_fingerprint, commit->rsa_identity_fpr);
 
   if (commit->commit_ts >= 0) {
-    log_warn(LD_DIR, "[SR] \t C: [TS: %u] [H(R): %s...]",
-             (unsigned) commit->commit_ts,
-             hex_str(commit->hashed_reveal, 5));
+    log_debug(LD_DIR, "SR: Commit: [TS: %ld] [H(R): %s...]",
+             commit->commit_ts, hex_str(commit->hashed_reveal, 5));
   }
 
   if (commit->reveal_ts >= 0) {
-    log_warn(LD_DIR, "[SR] \t R: [TS: %u] [RN: %s...] [R: %s]",
-             (unsigned) commit->reveal_ts,
-             hex_str(commit->random_number, 5),
-             commit->encoded_reveal);
+    log_debug(LD_DIR, "SR: Reveal: [TS: %ld] [H(RN): %s...] [R: %s]",
+              commit->reveal_ts, hex_str(commit->random_number, 5),
+              commit->encoded_reveal);
   } else {
-    log_warn(LD_DIR, "[SR] \t R: UNKNOWN");
+    log_debug(LD_DIR, "SR: Reveal: UNKNOWN");
   }
 }
 
@@ -167,12 +164,12 @@ verify_commit_and_reveal(const sr_commit_t *commit)
 {
   tor_assert(commit);
 
-  log_warn(LD_DIR, "[SR] Validating commit from %s",
-           commit->auth_fingerprint);
+  log_debug(LD_DIR, "SR: Validating commit from authority %s",
+            commit->rsa_identity_fpr);
 
   /* Check that the timestamps match. */
   if (commit->commit_ts != commit->reveal_ts) {
-    log_warn(LD_DIR, "[SR] Commit timestamp %ld doesn't match reveal "
+    log_warn(LD_BUG, "SR: Commit timestamp %ld doesn't match reveal "
                      "timestamp %ld", commit->commit_ts, commit->reveal_ts);
     goto invalid;
   }
@@ -192,15 +189,9 @@ verify_commit_and_reveal(const sr_commit_t *commit)
     /* Now compare that with the hashed_reveal we received in COMMIT. */
     if (fast_memneq(received_hashed_reveal, commit->hashed_reveal,
                     sizeof(received_hashed_reveal))) {
-      log_warn(LD_DIR, "[SR] \t Reveal DOES NOT match!");
-
-      log_warn(LD_DIR, "[SR] \t Orig R: %s",
-               hex_str((const char *) commit->hashed_reveal, 5));
-
-      log_warn(LD_DIR, "[SR] \t Recv R: %s",
-               hex_str((const char *) received_hashed_reveal, 5));
-
-      commit_log(commit);
+      log_warn(LD_BUG, "SR: Received reveal value from authority %s "
+                       "does't match the commit value.",
+               commit->rsa_identity_fpr);
       goto invalid;
     }
   }
@@ -247,12 +238,15 @@ commit_decode(const char *encoded, sr_commit_t *commit)
   decoded_len = base64_decode(b64_decoded, sizeof(b64_decoded),
                               encoded, strlen(encoded));
   if (decoded_len < 0) {
-    log_warn(LD_DIR, "[SR] Commitment can't be decoded %s.", encoded);
+    log_warn(LD_BUG, "SR: Commit from authority %s can't be decoded.",
+             commit->rsa_identity_fpr);
     goto error;
   }
 
   if (decoded_len < SR_COMMIT_LEN) {
-    log_warn(LD_DIR, "[SR] Commitment too small.");
+    log_warn(LD_BUG, "SR: Commit from authority %s decoded length is "
+                     "too small.",
+             commit->rsa_identity_fpr);
     goto error;
   }
 
@@ -295,12 +289,15 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
   decoded_len = base64_decode(b64_decoded, sizeof(b64_decoded),
                               encoded, strlen(encoded));
   if (decoded_len < 0) {
-    log_warn(LD_DIR, "[SR] Reveal value can't be decoded.");
+    log_warn(LD_BUG, "SR: Reveal from authority %s can't be decoded.",
+             commit->rsa_identity_fpr);
     goto error;
   }
 
   if (decoded_len < SR_REVEAL_LEN) {
-    log_warn(LD_DIR, "[SR] Reveal value too small.");
+    log_warn(LD_BUG, "SR: Reveal from authority %s decoded length is "
+             "too small.",
+             commit->rsa_identity_fpr);
     goto error;
   }
 
@@ -426,9 +423,6 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   if (previous_srv != NULL) {
     memcpy(msg + offset, previous_srv->value,
            sizeof(previous_srv->value));
-    /* XXX: debugging. */
-    log_warn(LD_DIR, "[SR] \t Previous SRV added: %s",
-             hex_str((const char *) previous_srv->value, 5));
   }
 
   /* Ok we have our message and key for the HMAC computation, allocate our
@@ -439,13 +433,8 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
                      msg, sizeof(msg));
   srv->num_reveals = reveal_num;
 
-  /* XXX: debugging. */
-  log_warn(LD_DIR, "[SR] Computed shared random details:");
-  log_warn(LD_DIR, "[SR] \t Key: %s, NUM: %u",
-           hex_str(hashed_reveals, HEX_DIGEST256_LEN), reveal_num);
-  log_warn(LD_DIR, "[SR] \t Msg: %s", hex_str(msg, 10));
-  log_warn(LD_DIR, "[SR] \t Final SRV: %s",
-           hex_str((const char *) srv->value, HEX_DIGEST256_LEN));
+  log_debug(LD_DIR, "SR: Generated SRV: %s",
+            hex_str((const char *) srv->value, HEX_DIGEST256_LEN));
   return srv;
 }
 
@@ -465,9 +454,6 @@ get_vote_line_from_commit(const sr_commit_t *commit)
 {
   char *vote_line = NULL;
   sr_phase_t current_phase = sr_state_get_phase();
-
-  log_warn(LD_DIR, "[SR] Encoding commit for vote:");
-  commit_log(commit);
 
   switch (current_phase) {
   case SR_PHASE_COMMIT:
@@ -496,6 +482,7 @@ get_vote_line_from_commit(const sr_commit_t *commit)
     tor_assert(0);
   }
 
+  log_debug(LD_DIR, "SR: Commit vote line: %s", vote_line);
   return vote_line;
 }
 
@@ -513,6 +500,7 @@ srv_to_ns_string(const sr_srv_t *srv, const char *key)
                 (const char *) srv->value, sizeof(srv->value));
   tor_asprintf(&srv_str, "%s %d %s\n", key,
                srv->num_reveals, srv_hash_encoded);
+  log_debug(LD_DIR, "SR: Consensus SRV line: %s", srv_str);
   return srv_str;
 }
 
@@ -534,13 +522,11 @@ get_ns_str_from_sr_values(sr_srv_t *prev_srv, sr_srv_t *cur_srv)
   if (prev_srv) {
     char *srv_line = srv_to_ns_string(prev_srv, previous_srv_str);
     smartlist_add(chunks, srv_line);
-    log_warn(LD_DIR, "[SR] \t Previous SRV: %s", srv_line);
   }
 
   if (cur_srv) {
     char *srv_line = srv_to_ns_string(cur_srv, current_srv_str);
     smartlist_add(chunks, srv_line);
-    log_warn(LD_DIR, "[SR] \t Current SRV: %s", srv_line);
   }
 
   /* Join the line(s) here in one string to return. */
@@ -591,15 +577,13 @@ should_keep_commit(sr_commit_t *commit,
   tor_assert(commit);
   tor_assert(voter_key);
 
-  log_warn(LD_DIR, "[SR] [+] Should we keep commit %s from %s (voter: %s)",
-           hex_str((const char *) commit->encoded_commit, 5),
-           commit->auth_fingerprint,
-           commit->rsa_identity_fpr);
+  log_debug(LD_DIR, "SR: Inspecting commit from %s (voter: %s)?",
+            commit->auth_fingerprint, commit->rsa_identity_fpr);
 
   /* For a commit to be considered, it needs to be authoritative (it should
    * be the voter's own commit). */
   if (!commit_is_authoritative(commit, voter_key)) {
-    log_warn(LD_DIR, "[SR] \t Ignoring non-authoritative commit.");
+    log_debug(LD_DIR, "SR: Ignoring non-authoritative commit.");
     goto ignore;
   }
 
@@ -612,14 +596,15 @@ should_keep_commit(sr_commit_t *commit,
   case SR_PHASE_COMMIT:
     /* Already having a commit for an authority so ignore this one. */
     if (saved_commit) {
-      log_warn(LD_DIR, "[SR] \t Ignoring known commit during commit phase.");
+      log_debug(LD_DIR, "SR: Ignoring known commit during COMMIT phase.");
       goto ignore;
     }
 
     /* A commit with a reveal value during commitment phase is very wrong. */
     if (commit_has_reveal_value(commit)) {
-      /* XXX: should be LD_BUG at some point. */
-      log_warn(LD_DIR, "[SR] Ignoring commit with reveal during commit phase");
+      log_warn(LD_BUG, "SR: Commit from authority %s has a reveal value "
+                       "during COMMIT phase. (voter: %s)",
+               commit->auth_fingerprint, commit->rsa_identity_fpr);
       goto ignore;
     }
     break;
@@ -636,27 +621,34 @@ should_keep_commit(sr_commit_t *commit,
        its reveal information. */
 
     if (!saved_commit) {
-      log_warn(LD_DIR, "[SR] \t Ignoring commit first seen in reveal phase.");
+      log_debug(LD_DIR, "SR: Ignoring commit first seen in reveal phase.");
       goto ignore;
     }
 
     if (!commitments_are_the_same(commit, saved_commit)) {
-      log_warn(LD_DIR, "[SR] \t Ignoring commit with wrong commitment info.");
+      /* XXX: Is warning level good here? This is in theory not suppose to
+       * happen since authority SHOULD NOT commit a new value at this stage.
+       * Is BUG more appropriate? */
+      log_warn(LD_DIR, "SR: Commit from authority %s is different from "
+                       "previous commit in our state (voter: %s)",
+               commit->auth_fingerprint, commit->rsa_identity_fpr);
       goto ignore;
     }
 
     if (commit_has_reveal_value(saved_commit)) {
-      log_warn(LD_DIR, "[SR] \t Ignoring commit with known reveal info.");
+      log_debug(LD_DIR, "SR: Ignoring commit with known reveal info.");
       goto ignore;
     }
 
     if (!commit_has_reveal_value(commit)) {
-      log_warn(LD_DIR, "[SR] \t Ignoring commit without reveal value.");
+      log_debug(LD_DIR, "SR: Ignoring commit without reveal value.");
       goto ignore;
     }
 
     if (verify_commit_and_reveal(commit) < 0) {
-      log_warn(LD_DIR, "[SR] \t Ignoring corrupted reveal info.");
+      log_warn(LD_BUG, "SR: Commit from authority %s has an invalid "
+                       "reveal value. (voter: %s)",
+               commit->auth_fingerprint, commit->rsa_identity_fpr);
       goto ignore;
     }
     break;
@@ -734,8 +726,8 @@ should_keep_srv(int n_agreements)
 
   /* We need at the very least majority to keep a value. */
   if (n_agreements < votes_required_for_majority) {
-    log_warn(LD_DIR, "[SR] Didn't reach majority for SRV [%d/%d]!",
-             n_agreements, votes_required_for_majority);
+    log_notice(LD_DIR, "SR: SRV didn't reach majority [%d/%d]!",
+               n_agreements, votes_required_for_majority);
     return 0;
   }
 
@@ -746,8 +738,8 @@ should_keep_srv(int n_agreements)
     int num_required_agreements = get_n_voters_for_srv_agreement();
 
     if (n_agreements < num_required_agreements) {
-      log_warn(LD_DIR, "[SR] Didn't reach superagreement for SRV [%d/%d]!",
-               n_agreements, num_required_agreements);
+      log_notice(LD_DIR, "SR: New SRV didn't reach agreement [%d/%d]!",
+                 n_agreements, num_required_agreements);
       return 0;
     }
   }
@@ -827,10 +819,11 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
   the_srv = obj->srv;
 
   {
-    /** XXX debugging */
+    /* Debugging */
     char decoded[HEX_DIGEST256_LEN + 1];
     base16_encode(decoded, sizeof(decoded), (char *) value, DIGEST256_LEN);
-    log_warn(LD_DIR, "[SR] \t Chosen SRV: %s (%d votes)", decoded, obj->count);
+    log_debug(LD_DIR, "SR: Chosen SRV by majority: %s (%d votes)", decoded,
+              obj->count);
   }
 
  end:
@@ -896,7 +889,7 @@ sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
   /* Now get the base64 blob that corresponds to our reveal */
   if (reveal_encode(commit, commit->encoded_reveal,
                     sizeof(commit->encoded_reveal)) < 0) {
-    log_err(LD_REND, "[SR] Unable to encode the reveal value!");
+    log_err(LD_DIR, "SR: Unable to encode our reveal value!");
     goto error;
   }
 
@@ -923,11 +916,11 @@ sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
   /* Now get the base64 blob that corresponds to our commit. */
   if (commit_encode(commit, commit->encoded_commit,
                     sizeof(commit->encoded_commit)) < 0) {
-    log_err(LD_REND, "[SR] Unable to encode the commit value!");
+    log_err(LD_DIR, "SR: Unable to encode our commit value!");
     goto error;
   }
 
-  log_warn(LD_DIR, "[SR] Generated our commitment:");
+  log_debug(LD_DIR, "SR: Generated our commitment:");
   commit_log(commit);
   return commit;
 
@@ -983,7 +976,6 @@ sr_compute_srv(void)
     smartlist_free(chunks);
     if (crypto_digest256(hashed_reveals, reveals, strlen(reveals),
                          DIGEST_SHA256) < 0) {
-      log_warn(LD_DIR, "[SR] Unable to hash the reveals. Stopping.");
       goto end;
     }
     tor_assert(reveal_num < UINT8_MAX);
@@ -1058,14 +1050,15 @@ sr_parse_commit(smartlist_t *args)
   value = smartlist_get(args, 0);
   alg = crypto_digest_algorithm_parse_name(value);
   if (alg != SR_DIGEST_ALG) {
-    log_warn(LD_DIR, "[SR] Commitment algorithm %s is not recognized.",
-             value);
+    log_warn(LD_BUG, "SR: Commit algorithm %s is not recognized.",
+             escaped(value));
     goto error;
   }
   /* Second arg is the authority ed25519 identity. */
   value = smartlist_get(args, 1);
   if (ed25519_public_from_base64(&pubkey, value) < 0) {
-    log_warn(LD_DIR, "[SR] Commitment identity is not recognized.");
+    log_warn(LD_BUG, "SR: Commit identity %s is not recognized.",
+             escaped(value));
     goto error;
   }
 
@@ -1140,7 +1133,7 @@ sr_get_string_for_vote(void)
     goto end;
   }
 
-  log_warn(LD_DIR, "[SR] Sending out vote string:");
+  log_debug(LD_DIR, "SR: Preparing our vote info:");
 
   /* First line, put in the vote the participation flag. */
   {
@@ -1155,7 +1148,6 @@ sr_get_string_for_vote(void)
   DIGESTMAP_FOREACH(state_commits, key, const sr_commit_t *, commit) {
     char *line = get_vote_line_from_commit(commit);
     smartlist_add(chunks, line);
-    log_warn(LD_DIR, "[SR] \t Commit: %s", line);
   } DIGESTMAP_FOREACH_END;
 
   /* Add the SRV value(s) if any. */
@@ -1191,7 +1183,7 @@ sr_get_string_for_consensus(smartlist_t *votes)
 
   /* Not participating, avoid returning anything. */
   if (!options->AuthDirSharedRandomness) {
-    log_warn(LD_DIR, "[SR] Support disabled (AuthDirSharedRandomness %d)",
+    log_info(LD_DIR, "SR: Support disabled (AuthDirSharedRandomness %d)",
              options->AuthDirSharedRandomness);
     goto end;
   }
@@ -1205,11 +1197,7 @@ sr_get_string_for_consensus(smartlist_t *votes)
     goto end;
   }
 
-  /* XXX: debugging. */
-  log_warn(LD_DIR, "[SR] Shared random line(s) put in the consensus:");
-  log_warn(LD_DIR, "[SR] \t %s", srv_str);
   return srv_str;
-
  end:
   return NULL;
 }

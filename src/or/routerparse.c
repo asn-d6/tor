@@ -2865,13 +2865,13 @@ extract_ed25519_keys_from_vote(networkstatus_t *ns, smartlist_t *tokens)
     find_opt_by_keyword(tokens, K_SIGNING_CERT_ED);
 
   if (!sign_cert_tok) {
-    log_warn(LD_DIR, "Vote contained SR info but no ed25519 keys!");
+    log_warn(LD_BUG, "Vote contained SR info but no ed25519 keys!");
     goto err;
   }
 
   /* Do some basic validation */
   if (strcmp(sign_cert_tok->object_type, "ED25519 CERT")) {
-    log_warn(LD_DIR, "Wrong object type on signing-ed25519");
+    log_warn(LD_BUG, "Wrong object type on signing-ed25519");
     goto err;
   }
 
@@ -2879,27 +2879,26 @@ extract_ed25519_keys_from_vote(networkstatus_t *ns, smartlist_t *tokens)
   sign_cert = tor_cert_parse((const uint8_t*)sign_cert_tok->object_body,
                              sign_cert_tok->object_size);
   if (!sign_cert) {
-    log_warn(LD_DIR, "Couldn't parse ed25519 signing cert");
+    log_warn(LD_BUG, "Couldn't parse ed25519 signing cert");
     goto err;
   }
   /* The signing cert needs to include the key that signed the cert since
      that's the master ed25519 key of the auth! */
   if (!sign_cert->signing_key_included) {
-    log_warn(LD_DIR, "Signing cert did not include master key!");
+    log_warn(LD_BUG, "Signing cert did not include master key!");
     goto err;
   }
 
   /* Verify signing key certificate using the master key included in the cert */
   if (tor_cert_checksig(sign_cert, &sign_cert->signing_key, now) < 0) {
-    log_warn(LD_DIR, "Couldn't verify sig of signing cert");
+    log_warn(LD_BUG, "Couldn't verify sig of signing cert");
     goto err;
   }
 
   /* Everything looks valid! Save useful information in the networkstatus. */
   ns->ed25519_signing_key_cert = sign_cert;
 
-  log_warn(LD_GENERAL, "Successfuly extracted ed25519 keys from vote.");
-
+  log_debug(LD_DIR, "Successfuly extracted ed25519 keys from vote.");
   return 0;
 
  err:
@@ -3386,12 +3385,11 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
       ns->sr_info.participate = 1;
       /* Get the ed25519 identity key of voter (required for SR protocol). */
       if (extract_ed25519_keys_from_vote(ns, tokens) < 0) {
-        log_warn(LD_GENERAL, "Corrupted ed25519 information in vote!");
         goto err;
       }
       /* Get the SR commitments and reveals from the vote. */
       if (extract_shared_random_commits(ns, tokens) < 0) {
-        log_warn(LD_DIR, "Unable to parse commits");
+        log_warn(LD_DIR, "SR: Unable to parse commits in vote.");
         goto err;
       }
     }
@@ -3399,7 +3397,7 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
   /* For both a vote and consensus, extract the shared random values. */
   if (ns->type != NS_TYPE_OPINION) {
     if (extract_shared_random_srvs(ns, tokens) < 0) {
-      log_warn(LD_DIR, "Unable to parse SRV(s)");
+      log_warn(LD_DIR, "SR: Unable to parse SRV(s)");
       goto err;
     }
   }
