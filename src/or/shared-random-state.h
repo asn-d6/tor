@@ -28,6 +28,8 @@ typedef enum {
   SR_STATE_OBJ_PREVSRV,
   /* Return the phase. */
   SR_STATE_OBJ_PHASE,
+  /* Get or Put the valid after time. */
+  SR_STATE_OBJ_VALID_AFTER,
 } sr_state_object_t;
 
 /* State of the protocol. It's also saved on disk in fname. This data
@@ -98,6 +100,7 @@ void sr_state_update(time_t valid_after);
 /* Private methods (only used by shared-random.c): */
 
 time_t get_next_valid_after_time(time_t now);
+void sr_state_set_valid_after(time_t valid_after);
 sr_phase_t sr_state_get_phase(void);
 sr_srv_t *sr_state_get_previous_srv(void);
 sr_srv_t *sr_state_get_current_srv(void);

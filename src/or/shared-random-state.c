@@ -837,6 +837,7 @@ state_query_get_(sr_state_object_t obj_type, void *data)
     obj = &sr_state->phase;
     break;
   case SR_STATE_OBJ_COMMIT:
+  case SR_STATE_OBJ_VALID_AFTER:
   default:
     tor_assert(0);
   }
@@ -861,6 +862,9 @@ state_query_put_(sr_state_object_t obj_type, void *data)
     break;
   case SR_STATE_OBJ_PREVSRV:
     sr_state->previous_srv = (sr_srv_t *) data;
+    break;
+  case SR_STATE_OBJ_VALID_AFTER:
+    sr_state->valid_after = *((time_t *) data);
     break;
   /* It's not allowed to change the phase nor the full commitments map from
    * the state. The phase is decided during a strict process post voting and
@@ -894,6 +898,7 @@ state_query_del_all_(sr_state_object_t obj_type)
   case SR_STATE_OBJ_PHASE:
   case SR_STATE_OBJ_COMMITS:
   case SR_STATE_OBJ_COMMIT_RSA:
+  case SR_STATE_OBJ_VALID_AFTER:
   default:
     tor_assert(0);
   }
@@ -936,6 +941,14 @@ state_query(sr_state_action_t action, sr_state_object_t obj_type,
   if (action != SR_STATE_ACTION_GET) {
     disk_state_save_to_disk();
   }
+}
+
+/* Set valid after time in the our state. */
+void
+sr_state_set_valid_after(time_t valid_after)
+{
+  state_query(SR_STATE_ACTION_PUT, SR_STATE_OBJ_VALID_AFTER,
+              (void *) &valid_after, NULL);
 }
 
 /* Return the phase we are currently in according to our state. */
@@ -1049,7 +1062,7 @@ sr_state_update(time_t valid_after)
     }
   }
 
-  sr_state->valid_after = valid_after;
+  sr_state_set_valid_after(valid_after);
 
   /* Count the current round */
   if (sr_state->phase == SR_PHASE_COMMIT) {
