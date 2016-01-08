@@ -78,6 +78,7 @@
  *   commit-and-reveal protocol.
  **/
 
+
 #define SHARED_RANDOM_PRIVATE
 
 #include "or.h"
@@ -358,8 +359,7 @@ commit_encode(sr_commit_t *commit, char *dst, size_t len)
   memset(buf, 0, sizeof(buf));
 
   /* First is the hashed reveal. */
-  memcpy(buf, commit->hashed_reveal,
-         sizeof(commit->hashed_reveal));
+  memcpy(buf, commit->hashed_reveal, sizeof(commit->hashed_reveal));
   offset += sizeof(commit->hashed_reveal);
   /* and then the timestamp */
   set_uint64(buf + offset, tor_htonll((uint64_t) commit->commit_ts));
@@ -421,8 +421,7 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   set_uint8(msg + offset, SR_PROTO_VERSION);
   offset += 1;
   if (previous_srv != NULL) {
-    memcpy(msg + offset, previous_srv->value,
-           sizeof(previous_srv->value));
+    memcpy(msg + offset, previous_srv->value, sizeof(previous_srv->value));
   }
 
   /* Ok we have our message and key for the HMAC computation, allocate our
@@ -504,9 +503,9 @@ srv_to_ns_string(const sr_srv_t *srv, const char *key)
   return srv_str;
 }
 
-/** Given the previous SRV and the current SRV, return a heap allocated string
- *  with their data that could be put in a vote or a consensus. Caller must free
- *  the returned string.  Return NULL if no SRVs were provided. */
+/* Given the previous SRV and the current SRV, return a heap allocated
+ * string with their data that could be put in a vote or a consensus. Caller
+ * must free the returned string.  Return NULL if no SRVs were provided. */
 static char *
 get_ns_str_from_sr_values(sr_srv_t *prev_srv, sr_srv_t *cur_srv)
 {
@@ -587,9 +586,10 @@ should_keep_commit(sr_commit_t *commit,
     goto ignore;
   }
 
-  /* Check if the authority that voted for <b>commit</b> has already posted a
-     commit before. We use the RSA identity key to check from previous commits
-     because an authority is allowed to rotate its ed25519 identity keys. */
+  /* Check if the authority that voted for <b>commit</b> has already posted
+   * a commit before. We use the RSA identity key to check from previous
+   * commits because an authority is allowed to rotate its ed25519 identity
+   * keys. */
   saved_commit = sr_state_get_commit_by_rsa(commit->rsa_identity_fpr);
 
   switch (sr_state_get_phase()) {
@@ -610,15 +610,15 @@ should_keep_commit(sr_commit_t *commit,
     break;
   case SR_PHASE_REVEAL:
     /* We are now in reveal phase. We keep a commit if and only if:
-
-       - We have already seen a commit by this auth, AND
-       - the saved commit has the same commitment value as this one, AND
-       - the saved commit has no reveal information, AND
-       - this commit does have reveal information, AND
-       - the reveal & commit information are matching.
-
-       If all the above are true, then we are interested in this new commit for
-       its reveal information. */
+     *
+     * - We have already seen a commit by this auth, AND
+     * - the saved commit has the same commitment value as this one, AND
+     * - the saved commit has no reveal information, AND
+     * - this commit does have reveal information, AND
+     * - the reveal & commit information are matching.
+     *
+     * If all the above are true, then we are interested in this new commit
+     * for its reveal information. */
 
     if (!saved_commit) {
       log_debug(LD_DIR, "SR: Ignoring commit first seen in reveal phase.");
@@ -715,8 +715,8 @@ get_n_voters_for_srv_agreement(void)
                                  num_dirauths, 1, num_dirauths);
 }
 
-/** Return 1 if we should we keep an SRV voted by <b>n_agreements</b>
- *  auths. Return 0 if we should ignore it. */
+/* Return 1 if we should we keep an SRV voted by <b>n_agreements</b> auths.
+ * Return 0 if we should ignore it. */
 static int
 should_keep_srv(int n_agreements)
 {
@@ -805,8 +805,8 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
     goto end;
   }
 
-  /* Now that we have the most frequent SRV, get its object and check if it has
-     been voted by enough people to be accepted. */
+  /* Now that we have the most frequent SRV, get its object and check if it
+   * has been voted by enough people to be accepted. */
   obj = digest256map_get(sr_values, value);
   tor_assert(obj);
 

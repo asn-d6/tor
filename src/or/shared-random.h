@@ -64,7 +64,7 @@ typedef struct sr_commit_t {
   /* Hashing algorithm used. */
   digest_algorithm_t alg;
 
-  /** Commit owner info */
+  /* Commit owner info */
 
   /* Owner's authority ed25519 identity */
   ed25519_public_key_t auth_identity;
@@ -74,7 +74,7 @@ typedef struct sr_commit_t {
   /* The RSA identity fingerprint of the auth. */
   char rsa_identity_fpr[FINGERPRINT_LEN + 1];
 
-  /** Commitment information */
+  /* Commitment information */
 
   /* Timestamp of reveal. Correspond to TIMESTAMP. */
   time_t reveal_ts;
@@ -83,7 +83,7 @@ typedef struct sr_commit_t {
   /* Base64 encoded COMMIT. We use this to put it in our vote. */
   char encoded_commit[SR_COMMIT_BASE64_LEN + 1];
 
-  /** Reveal information */
+  /* Reveal information */
 
   /* H(RN) which is what we used as the random value for this commit. We
    * don't use the raw bytes since those are sent on the network thus

@@ -43,7 +43,7 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 #define VAR(name, conftype, member, initvalue)                              \
   { name, CONFIG_TYPE_ ## conftype, STRUCT_OFFSET(sr_disk_state_t, member), \
     initvalue }
-/** As VAR, but the option name and member name are the same. */
+/* As VAR, but the option name and member name are the same. */
 #define V(member, conftype, initvalue) \
   VAR(#member, conftype, member, initvalue)
 /* Our persistent state magic number. Yes we got the 42s! */
@@ -160,8 +160,9 @@ get_state_valid_until_time(time_t now)
   current_round = (now / voting_interval) % total_rounds;
   rounds_left = total_rounds - current_round;
 
-  /* To find the valid-until time now, take the start time of the current round
-     and add to it the time it takes for the leftover rounds to complete. */
+  /* To find the valid-until time now, take the start time of the current
+   * round and add to it the time it takes for the leftover rounds to
+   * complete. */
   valid_until = beginning_of_current_round + (rounds_left * voting_interval);
 
   { /* Logging */
@@ -184,7 +185,7 @@ get_sr_protocol_phase(time_t valid_after)
   int current_slot;
 
   /* Split time into slots of size 'voting_interval'. See which slot we are
-     currently into, and find which phase it corresponds to. */
+   * currently into, and find which phase it corresponds to. */
   current_slot = (valid_after / get_voting_interval()) % total_periods;
 
   if (current_slot < SHARED_RANDOM_N_ROUNDS) {
@@ -328,7 +329,7 @@ disk_state_validate(sr_disk_state_t *state)
   return -1;
 }
 
-/** Validate the disk state (NOP for now). */
+/* Validate the disk state (NOP for now). */
 static int
 disk_state_validate_cb(void *old_state, void *state, void *default_state,
                        int from_setconf, char **msg)
@@ -763,8 +764,8 @@ state_rotate_srv(void)
   tor_free(previous_srv);
 }
 
-/** This is the first round of the new protocol run starting at
- *  <b>valid_after</b>. Do the necessary housekeeping. */
+/* This is the first round of the new protocol run starting at
+ * <b>valid_after</b>. Do the necessary housekeeping. */
 STATIC void
 new_protocol_run(time_t valid_after)
 {
@@ -983,7 +984,7 @@ sr_state_set_current_srv(sr_srv_t *srv)
               NULL);
 }
 
-/** Clean all the SRVs in our state. */
+/* Clean all the SRVs in our state. */
 void
 sr_state_clean_srvs(void)
 {
@@ -1169,25 +1170,6 @@ sr_state_save(void)
   state_query(SR_STATE_ACTION_SAVE, 0, NULL, NULL);
 }
 
-#ifdef TOR_UNIT_TESTS
-/** Set the current phase of the protocol to reveal.
- *  Used only by unit tests. */
-void
-set_sr_phase(sr_phase_t phase)
-{
-  tor_assert(sr_state);
-
-  sr_state->phase = phase;
-}
-
-/** Get the SR state. Used only by unit tests */
-sr_state_t *
-get_sr_state(void)
-{
-  return sr_state;
-}
-#endif
-
 /* Initialize the disk and memory state. Return 0 on success else a negative
  * value on error. */
 int
@@ -1242,3 +1224,22 @@ sr_state_init(int save_to_disk, int read_from_disk)
 error:
   return -1;
 }
+
+#ifdef TOR_UNIT_TESTS
+
+/* Set the current phase of the protocol. Used only by unit tests. */
+void
+set_sr_phase(sr_phase_t phase)
+{
+  tor_assert(sr_state);
+  sr_state->phase = phase;
+}
+
+/* Get the SR state. Used only by unit tests */
+sr_state_t *
+get_sr_state(void)
+{
+  return sr_state;
+}
+
+#endif /* TOR_UNIT_TESTS */
