@@ -325,12 +325,10 @@ STATIC int
 reveal_encode(sr_commit_t *commit, char *dst, size_t len)
 {
   size_t offset = 0;
-  char buf[SR_REVEAL_LEN];
+  char buf[SR_REVEAL_LEN] = {0};
 
   tor_assert(commit);
   tor_assert(dst);
-
-  memset(buf, 0, sizeof(buf));
 
   set_uint64(buf, tor_htonll((uint64_t) commit->commit_ts));
   offset += 8;
@@ -351,12 +349,10 @@ STATIC int
 commit_encode(sr_commit_t *commit, char *dst, size_t len)
 {
   size_t offset = 0;
-  char buf[SR_COMMIT_LEN];
+  char buf[SR_COMMIT_LEN] = {0};
 
   tor_assert(commit);
   tor_assert(dst);
-
-  memset(buf, 0, sizeof(buf));
 
   /* First is the hashed reveal. */
   memcpy(buf, commit->hashed_reveal, sizeof(commit->hashed_reveal));
@@ -403,15 +399,11 @@ static sr_srv_t *
 generate_srv(const char *hashed_reveals, uint8_t reveal_num,
              const sr_srv_t *previous_srv)
 {
-  char msg[SR_SRV_HMAC_MSG_LEN];
+  char msg[SR_SRV_HMAC_MSG_LEN] = {0};
   size_t offset = 0;
   sr_srv_t *srv;
 
   tor_assert(hashed_reveals);
-
-  /* Very important here since we might not have a previous shared random
-   * value so make sure we all have the content at first. */
-  memset(msg, 0, sizeof(msg));
 
   /* Add the invariant token. */
   memcpy(msg, SR_SRV_TOKEN, SR_SRV_TOKEN_LEN);
