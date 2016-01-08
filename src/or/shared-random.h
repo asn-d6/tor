@@ -101,7 +101,6 @@ typedef struct sr_commit_t {
 
 int sr_init(int save_to_disk);
 void sr_save_and_cleanup(void);
-void sr_prepare_new_voting_period(time_t valid_after);
 void sr_act_post_consensus(const networkstatus_t *consensus);
 void sr_handle_received_commits(smartlist_t *commits,
                                 const ed25519_public_key_t *voter_key);

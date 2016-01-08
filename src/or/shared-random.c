@@ -13,7 +13,12 @@
  * by proposal #250. The protocol has two phases (sr_phase_t): the commitment
  * phase and the reveal phase (see get_sr_protocol_phase()).
  *
- * The rough procedure is:
+ * During the protocol, directory authorities keep state in memory (using
+ * sr_state_t) and in disk (using sr_disk_state_t). The synchronization between
+ * these two data structures happens in disk_state_update() and
+ * disk_state_parse().
+ *
+ * Here is a rough protocol outline:
  *
  *      1) In the beginning of the commitment phase, dirauths generate a
  *         commitment/reveal value for the current protocol run (see
@@ -26,9 +31,10 @@
  *
  *      3) Upon receiving a commit from a vote, authorities parse it, verify
  *         it, and attempt to save any new commitment or reveal information in
- *         their state file (see extract_shared_random_commits()).  They also
- *         parse SRVs from votes to decide which SRV should be included in the
- *         final consensus (see extract_shared_random_srvs()).
+ *         their state file (see extract_shared_random_commits() and
+ *         sr_handle_received_commits()).  They also parse SRVs from votes to
+ *         decide which SRV should be included in the final consensus (see
+ *         extract_shared_random_srvs()).
  *
  *      3) After voting is done, we count the SRVs we extracted from the votes,
  *         to find the one voted by the majority of dirauths which should be
@@ -769,7 +775,7 @@ get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
     sr_srv_t *srv_tmp = NULL;
 
     if (!v->sr_info.participate) {
-      /* Ignore vote that do no participate. */
+      /* Ignore vote that do not participate. */
       continue;
     }
 
@@ -1081,9 +1087,10 @@ error:
   return NULL;
 }
 
-/* Called when we are parsing a vote by <b>voter_key</b> that might contain
- * some useful <b>commits</b>. Find if any of them should be kept and update
- * our state accordingly. Once done, the list of commitments will be empty. */
+/* Called when we are done parsing a vote by <b>voter_key</b> that might
+ * contain some useful <b>commits</b>. Find if any of them should be kept and
+ * update our state accordingly. Once done, the list of commitments will be
+ * empty. */
 void
 sr_handle_received_commits(smartlist_t *commits,
                            const ed25519_public_key_t *voter_key)
@@ -1121,8 +1128,6 @@ sr_get_string_for_vote(void)
 
   /* Are we participating in the protocol? */
   if (!options->AuthDirSharedRandomness) {
-    /* chunks is an empty list at this point which will result in an empty
-     * string at the end. */
     goto end;
   }
 
