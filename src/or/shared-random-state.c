@@ -174,7 +174,6 @@ get_state_valid_until_time(time_t now)
   return valid_until;
 }
 
-
 /* Given the consensus 'valid-after' time, return the protocol phase we should
  * be in. */
 STATIC sr_phase_t
@@ -386,7 +385,8 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
   }
 
   return 0;
-error:
+
+ error:
   smartlist_free(args);
   return -1;
 }
@@ -486,7 +486,8 @@ disk_state_parse(sr_disk_state_t *new_disk_state)
   }
   /* Great! This new state contains everything we had on disk. */
   return new_state;
-error:
+
+ error:
   state_free(new_state);
   return NULL;
 }
@@ -679,7 +680,7 @@ disk_state_load_from_disk_impl(const char *fname)
   log_notice(LD_DIR, "SR: State loaded successfully from file %s", fname);
   return 0;
 
-error:
+ error:
   disk_state_free(disk_state);
   tor_free(content);
   return ret;
@@ -723,7 +724,7 @@ disk_state_save_to_disk(void)
   ret = 0;
   log_debug(LD_DIR, "SR: Saved state to file %s", fname);
 
-done:
+ done:
   tor_free(fname);
   tor_free(content);
   return ret;
@@ -1233,7 +1234,7 @@ sr_state_init(int save_to_disk, int read_from_disk)
   }
   return 0;
 
-error:
+ error:
   return -1;
 }
 
@@ -1255,3 +1256,4 @@ get_sr_state(void)
 }
 
 #endif /* TOR_UNIT_TESTS */
+

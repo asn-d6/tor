@@ -2889,7 +2889,8 @@ extract_ed25519_keys_from_vote(networkstatus_t *ns, smartlist_t *tokens)
     goto err;
   }
 
-  /* Verify signing key certificate using the master key included in the cert */
+  /* Verify signing key certificate using the master key included in the
+     cert */
   if (tor_cert_checksig(sign_cert, &sign_cert->signing_key, now) < 0) {
     log_warn(LD_BUG, "Couldn't verify sig of signing cert");
     goto err;
@@ -2923,8 +2924,8 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
 
   smartlist_t *commits = find_all_by_keyword(tokens, K_COMMIT);
 
-  /* It's normal that a vote might contain no commits even if it participates in
-     the SR protocol. Don't treat it as an error. */
+  /* It's normal that a vote might contain no commits even if it participates
+     in the SR protocol. Don't treat it as an error. */
   if (commits == NULL) {
     goto end;
   }
@@ -2975,11 +2976,12 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
 }
 
 /** Check if a shared random value of type <b>srv_type</b> is in
- *  <b>tokens</b>. If there is, parse it and set it to <b>srv_out</b>. Return -1
- *  on failure, 0 on success. The resulting srv is allocated on the heap and
+ *  <b>tokens</b>. If there is, parse it and set it to <b>srv_out</b>. Return
+ *  -1 on failure, 0 on success. The resulting srv is allocated on the heap and
  *  it's the responsibility of the caller to free it. */
 static int
-extract_one_srv(smartlist_t *tokens, directory_keyword srv_type, sr_srv_t **srv_out)
+extract_one_srv(smartlist_t *tokens, directory_keyword srv_type,
+                sr_srv_t **srv_out)
 {
   int ret = -1;
   directory_token_t *tok;

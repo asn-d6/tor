@@ -145,3 +145,4 @@ STATIC void save_commit_during_reveal_phase(const sr_commit_t *commit);
 #endif /* SHARED_RANDOM_PRIVATE */
 
 #endif /* TOR_SHARED_RANDOM_H */
+

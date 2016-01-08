@@ -85,7 +85,6 @@
  *   commit-and-reveal protocol.
  **/
 
-
 #define SHARED_RANDOM_PRIVATE
 
 #include "or.h"
@@ -267,7 +266,8 @@ commit_decode(const char *encoded, sr_commit_t *commit)
   strncpy(commit->encoded_commit, encoded, sizeof(commit->encoded_commit));
 
   return 0;
-error:
+
+ error:
   return -1;
 }
 
@@ -923,7 +923,7 @@ sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
   commit_log(commit);
   return commit;
 
-error:
+ error:
   sr_commit_free(commit);
   return NULL;
 }
@@ -985,7 +985,7 @@ sr_compute_srv(void)
     sr_state_set_fresh_srv();
   }
 
-end:
+ end:
   tor_free(reveals);
 }
 
@@ -1022,7 +1022,7 @@ sr_parse_srv(smartlist_t *args)
   value = smartlist_get(args, 1);
   base16_decode((char *) srv->value, sizeof(srv->value), value,
                 HEX_DIGEST256_LEN);
-end:
+ end:
   return srv;
 }
 
@@ -1082,7 +1082,8 @@ sr_parse_commit(smartlist_t *args)
   }
 
   return commit;
-error:
+
+ error:
   sr_commit_free(commit);
   return NULL;
 }
@@ -1157,7 +1158,7 @@ sr_get_string_for_vote(void)
     }
   }
 
-end:
+ end:
   vote_str = smartlist_join_strings(chunks, "", 0, NULL);
   SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
   smartlist_free(chunks);
@@ -1224,7 +1225,8 @@ sr_act_post_consensus(const networkstatus_t *consensus)
 
   /* Update our state with the valid_after time of the next consensus so once
    * the next voting period start we are ready to receive votes. */
-  time_t next_consensus_valid_after = get_next_valid_after_time(consensus->valid_after);
+  time_t next_consensus_valid_after =
+    get_next_valid_after_time(consensus->valid_after);
   sr_state_update(next_consensus_valid_after);
 }
 
@@ -1243,3 +1245,4 @@ sr_save_and_cleanup(void)
   sr_state_save();
   sr_cleanup();
 }
+

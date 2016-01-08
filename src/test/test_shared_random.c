@@ -100,7 +100,8 @@ test_get_state_valid_until_time(void *arg)
 
   {
     /* Get the valid until time if called at 00:00:01 */
-    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:01 UTC", &current_time);
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:01 UTC",
+                                &current_time);
     tt_int_op(retval, ==, 0);
     valid_until_time = get_state_valid_until_time(current_time);
 
@@ -110,7 +111,8 @@ test_get_state_valid_until_time(void *arg)
   }
 
   {
-    retval = parse_rfc1123_time("Mon, 20 Apr 2015 19:22:00 UTC", &current_time);
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 19:22:00 UTC",
+                                &current_time);
     tt_int_op(retval, ==, 0);
     valid_until_time = get_state_valid_until_time(current_time);
 
@@ -119,7 +121,8 @@ test_get_state_valid_until_time(void *arg)
   }
 
   {
-    retval = parse_rfc1123_time("Mon, 20 Apr 2015 23:59:00 UTC", &current_time);
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 23:59:00 UTC",
+                                &current_time);
     tt_int_op(retval, ==, 0);
     valid_until_time = get_state_valid_until_time(current_time);
 
@@ -128,7 +131,8 @@ test_get_state_valid_until_time(void *arg)
   }
 
   {
-    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:00 UTC", &current_time);
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:00 UTC",
+                                &current_time);
     tt_int_op(retval, ==, 0);
     valid_until_time = get_state_valid_until_time(current_time);
 
@@ -153,7 +157,8 @@ test_get_next_valid_after_time(void *arg)
 
   {
     /* Get the valid after time if called at 00:00:00 */
-    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:00 UTC", &current_time);
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:00 UTC",
+                                &current_time);
     tt_int_op(retval, ==, 0);
     valid_after_time = get_next_valid_after_time(current_time);
 
@@ -164,7 +169,8 @@ test_get_next_valid_after_time(void *arg)
 
   {
     /* Get the valid until time if called at 00:00:01 */
-    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:01 UTC", &current_time);
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:01 UTC",
+                                &current_time);
     tt_int_op(retval, ==, 0);
     valid_after_time = get_next_valid_after_time(current_time);
 
@@ -174,7 +180,8 @@ test_get_next_valid_after_time(void *arg)
  }
 
   {
-    retval = parse_rfc1123_time("Mon, 20 Apr 2015 23:30:01 UTC", &current_time);
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 23:30:01 UTC",
+                                &current_time);
     tt_int_op(retval, ==, 0);
     valid_after_time = get_next_valid_after_time(current_time);
 
@@ -268,7 +275,7 @@ test_sr_commit(void *arg)
   {
     sr_commit_t *parsed_commit;
     smartlist_add(args,
-                  tor_strdup(crypto_digest_algorithm_get_name(our_commit->alg)));
+               tor_strdup(crypto_digest_algorithm_get_name(our_commit->alg)));
     smartlist_add(args, our_commit->auth_fingerprint);
     smartlist_add(args, our_commit->rsa_identity_fpr);
     smartlist_add(args, our_commit->encoded_commit);
@@ -447,7 +454,7 @@ test_vote(void *arg)
     tt_str_op(smartlist_get(chunks, 0), OP_EQ, "shared-rand-participate");
     /* Get our commitment line and will validate it agains our commit. The
      * format is as follow:
-     *    "shared-rand-commitment" SP identity SP algname SP COMMIT [SP REVEAL] NL
+     * "shared-rand-commitment" SP identity SP algname SP COMMIT [SP REVEAL] NL
      */
     char *commit_line = smartlist_get(chunks, 1);
     tt_assert(commit_line);
@@ -516,11 +523,19 @@ test_vote(void *arg)
 
 const char *sr_state_str = "Version 1\n"
   "ValidUntil 2666-04-20 07:16:00\n"
-  "Commit sha256 RkoaSeZBiyJs23P6aOLEyUsumWwjWYnA+DQm1IaKXu8 FA3CEC2C99DC68D3166B9B6E4FA21A4026C2AB1C 7M8GdubCAAdh7WUG0DiwRyxTYRKji7HATa7LLJEZ/UAAAAAAVmfUSg== AAAAAFZn1EojfIheIw42bjK3VqkpYyjsQFSbv/dxNna3Q8hUEPKpOw==\n"
-  "Commit sha256 2qZjhYjXODdx122TNUlegLLWWDe5R1B449vx2KU9hsI 41E89EDFBFBA44983E21F18F2230A4ECB5BFB543 17aUsYuMeRjd2N1r8yNyg7aHqRa6gf4z7QPoxxAZbp0AAAAAVmfUSg==\n"
-  "Commit sha256 hujjN0PEfkQlOnBKTH0WlGPOs6PdYoe8tuEMeS6C4cw 36637026573A04110CF3E6B1D201FB9A98B88734 DDDYtripvdOU+XPEUm5xpU64d9IURSds1xSwQsgeB8oAAAAAVmfUSg==\n"
-  "SharedRandCurrentValue 3 F1D59E5B5D8A1334C61222C680ED54549ED9F7509E92845CC6DE90F4A8673852\n"
-  "SharedRandPreviousValue 4 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n";
+  "Commit sha256 RkoaSeZBiyJs23P6aOLEyUsumWwjWYnA+DQm1IaKXu8 FA3CEC2C99DC68D31"
+      "66B9B6E4FA21A4026C2AB1C 7M8GdubCAAdh7WUG0DiwRyxTYRKji7HATa7LLJEZ/UAAAAA"
+      "AVmfUSg== AAAAAFZn1EojfIheIw42bjK3VqkpYyjsQFSbv/dxNna3Q8hUEPKpOw==\n"
+  "Commit sha256 2qZjhYjXODdx122TNUlegLLWWDe5R1B449vx2KU9hsI 41E89EDFBFBA44983"
+     "E21F18F2230A4ECB5BFB543 "
+     "17aUsYuMeRjd2N1r8yNyg7aHqRa6gf4z7QPoxxAZbp0AAAAAVmfUSg==\n"
+  "Commit sha256 hujjN0PEfkQlOnBKTH0WlGPOs6PdYoe8tuEMeS6C4cw 36637026573A04110"
+     "CF3E6B1D201FB9A98B88734 DDDYtripvdOU+XPEUm5xpU64d9IURSds1xSwQsgeB8oAAAAA"
+     "VmfUSg==\n"
+  "SharedRandCurrentValue 3 F1D59E5B5D8A1334C61222C680ED54549ED9F7"
+     "509E92845CC6DE90F4A8673852\n"
+  "SharedRandPreviousValue 4 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     "AAAAAAAAAAAAAAAAAAAAAAAAAAA\n";
 
 /** Create an SR disk state, parse it and validate that the parsing went
  *  well. Yes! */
@@ -570,7 +585,8 @@ test_state_load_from_disk(void *arg)
   tt_assert(the_sr_state->current_srv->num_reveals == 3);
   tt_assert(the_sr_state->previous_srv);
 
-  /* XXX Now also try loading corrupted state files and make sure parsing fails */
+  /* XXX Now also try loading corrupted state files and make sure parsing
+     fails */
 
  done:
   tor_free(dir);
@@ -587,7 +603,6 @@ test_sr_setup_commits(void)
   sr_commit_t *place_holder = tor_malloc_zero(sizeof(*place_holder));
   authority_cert_t *auth_cert = NULL;
 
-
   {  /* Setup a minimal dirauth environment for this test  */
     or_options_t *options = get_options_mutable();
 
@@ -600,7 +615,8 @@ test_sr_setup_commits(void)
 
   /* Generate three dummy commits according to sr_srv_calc_ref.py .  Then
      register them to the SR state. Also register a fourth commit 'd' with no
-     reveal info, to make sure that it will get ignored during SRV calculation. */
+     reveal info, to make sure that it will get ignored during SRV
+     calculation. */
 
   { /* Commit from auth 'a' */
     commit_a = sr_generate_our_commit(now, auth_cert);
@@ -700,7 +716,8 @@ test_sr_compute_srv(void *arg)
   (void) arg;
   sr_srv_t *current_srv = NULL;
 
-#define SRV_TEST_VECTOR "BD2D7C0D3F9680585828389C787E3D478C3DDFCD1EB39E42A9D7B49D1ABCB7FC"
+#define SRV_TEST_VECTOR \
+  "BD2D7C0D3F9680585828389C787E3D478C3DDFCD1EB39E42A9D7B49D1ABCB7FC"
 
   sr_state_init(0, 0);
 
@@ -828,8 +845,9 @@ test_sr_get_majority_srv_from_votes(void *arg)
                            SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 0);
   }
 
-  /* Use our fake consensus instead of a real one for finding consensus parameters. */
-  MOCK(networkstatus_get_latest_consensus, mock_networkstatus_get_latest_consensus);
+  /* Use our fake consensus for finding consensus parameters. */
+  MOCK(networkstatus_get_latest_consensus,
+       mock_networkstatus_get_latest_consensus);
   chosen_srv = get_majority_srv_from_votes(votes, 1);
   tt_assert(chosen_srv);
   tt_int_op(chosen_srv->num_reveals, ==, 42);
@@ -1209,3 +1227,4 @@ struct testcase_t sr_tests[] = {
     NULL, NULL },
   END_OF_TESTCASES
 };
+
