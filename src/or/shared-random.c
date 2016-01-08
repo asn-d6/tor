@@ -56,14 +56,15 @@
  *   receive the reveal information corresponding to a commitment, we verify
  *   that they indeed match using verify_commit_and_reveal().
  *
- * - Before every voting period, the SR protocol state is updated using
- *   sr_state_update(). That function takes care of housekeeping and also
- *   rotates the SRVs and commits in case a new protocol run is coming up.
- *
  * - We treat consensuses as the ground truth, so everytime we generate a new
  *   consensus we update our SR state accordingly even if our local view was
  *   different (see sr_act_post_consensus()).
  *
+ * - After a consensus has been composed, the SR protocol state gets prepared
+ *   for the next voting session using sr_state_update(). That function takes
+ *   care of housekeeping and also rotates the SRVs and commits in case a new
+ *   protocol run is coming up. We also call sr_state_update() on bootup (in
+ *   sr_state_init()), to prepare the state for the very first voting session.
  *
  * Terminology:
  *

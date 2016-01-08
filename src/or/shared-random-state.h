@@ -39,7 +39,7 @@ typedef struct sr_state_t {
   char *fname;
   /* Version of the protocol. */
   uint8_t version;
-  /* The valid-after of the consensus. */
+  /* The valid-after of the voting period we have prepared the state for. */
   time_t valid_after;
   /* Until when is this state valid? */
   time_t valid_until;
