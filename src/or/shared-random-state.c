@@ -127,7 +127,7 @@ get_start_time_of_current_round(time_t now)
 }
 
 /* Using the time <b>now</b>, return the valid-after time. */
-static time_t
+time_t
 get_next_valid_after_time(time_t now)
 {
   long interval;
@@ -250,7 +250,6 @@ state_new(const char *fname, time_t now)
   new_state->commits = digestmap_new();
   new_state->phase = get_sr_protocol_phase(valid_after);
   new_state->valid_until = get_state_valid_until_time(valid_after);
-  new_state->valid_after = valid_after;
   return new_state;
 }
 

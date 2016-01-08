@@ -140,6 +140,53 @@ test_get_state_valid_until_time(void *arg)
   ;
 }
 
+/** Test the get_next_valid_after_time() function. */
+static void
+test_get_next_valid_after_time(void *arg)
+{
+  time_t current_time;
+  time_t valid_after_time;
+  char tbuf[ISO_TIME_LEN + 1];
+  int retval;
+
+  (void) arg;
+
+  {
+    /* Get the valid after time if called at 00:00:00 */
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:00 UTC", &current_time);
+    tt_int_op(retval, ==, 0);
+    valid_after_time = get_next_valid_after_time(current_time);
+
+    /* Compare it with the correct result */
+    format_iso_time(tbuf, valid_after_time);
+    tt_str_op("2015-04-20 01:00:00", OP_EQ, tbuf);
+  }
+
+  {
+    /* Get the valid until time if called at 00:00:01 */
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 00:00:01 UTC", &current_time);
+    tt_int_op(retval, ==, 0);
+    valid_after_time = get_next_valid_after_time(current_time);
+
+    /* Compare it with the correct result */
+    format_iso_time(tbuf, valid_after_time);
+    tt_str_op("2015-04-20 01:00:00", OP_EQ, tbuf);
+ }
+
+  {
+    retval = parse_rfc1123_time("Mon, 20 Apr 2015 23:30:01 UTC", &current_time);
+    tt_int_op(retval, ==, 0);
+    valid_after_time = get_next_valid_after_time(current_time);
+
+    /* Compare it with the correct result */
+    format_iso_time(tbuf, valid_after_time);
+    tt_str_op("2015-04-21 00:00:00", OP_EQ, tbuf);
+ }
+
+ done:
+  ;
+}
+
 extern const char AUTHORITY_CERT_1[];
 
 /* In this test we are going to generate a sr_commit_t object and validate
@@ -1094,6 +1141,7 @@ test_state_update(void *arg)
      * will avoid us to compute a valid_after time that fits the commit
      * phase. */
     state->valid_after = 0;
+    state->n_reveal_rounds = 0;
   }
 
   /* We are in COMMIT phase here and we'll trigger a state update but no
@@ -1143,6 +1191,8 @@ struct testcase_t sr_tests[] = {
   { "keep_commit", test_keep_commit, TT_FORK,
     NULL, NULL },
   { "encoding", test_encoding, TT_FORK,
+    NULL, NULL },
+  { "get_next_valid_after_time", test_get_next_valid_after_time, TT_FORK,
     NULL, NULL },
   { "get_state_valid_until_time", test_get_state_valid_until_time, TT_FORK,
     NULL, NULL },

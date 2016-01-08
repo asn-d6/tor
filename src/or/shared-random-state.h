@@ -97,6 +97,7 @@ void sr_state_update(time_t valid_after);
 
 /* Private methods (only used by shared-random.c): */
 
+time_t get_next_valid_after_time(time_t now);
 sr_phase_t sr_state_get_phase(void);
 sr_srv_t *sr_state_get_previous_srv(void);
 sr_srv_t *sr_state_get_current_srv(void);
