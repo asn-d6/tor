@@ -1,4 +1,4 @@
-/* Copyright (c) 2016, The Tor Project, Inc. */
+/* Copyright (c) 2015, The Tor Project, Inc. */
 /* See LICENSE for licensing information */
 
 #ifndef TOR_SHARED_RANDOM_H
@@ -107,28 +107,20 @@ void sr_commit_free(sr_commit_t *commit);
 
 /* Private methods (only used by shared-random-state.c): */
 
+void sr_compute_srv(void);
+sr_commit_t *sr_generate_our_commit(time_t timestamp,
+                                    const authority_cert_t *my_rsa_cert);
+
 #ifdef SHARED_RANDOM_PRIVATE
 
+/* Encode */
+STATIC int reveal_encode(const sr_commit_t *commit, char *dst, size_t len);
+STATIC int commit_encode(const sr_commit_t *commit, char *dst, size_t len);
 /* Decode. */
 STATIC int commit_decode(const char *encoded, sr_commit_t *commit);
 STATIC int reveal_decode(const char *encoded, sr_commit_t *commit);
 
 STATIC int commit_has_reveal_value(const sr_commit_t *commit);
-
-STATIC int verify_commit_and_reveal(const sr_commit_t *commit);
-
-STATIC sr_srv_t *get_majority_srv_from_votes(const smartlist_t *votes,
-                                             int current);
-
-STATIC void save_commit_to_state(sr_commit_t *commit);
-STATIC sr_srv_t *srv_dup(const sr_srv_t *orig);
-STATIC int commitments_are_the_same(const sr_commit_t *commit_one,
-                                    const sr_commit_t *commit_two);
-STATIC int commit_is_authoritative(const sr_commit_t *commit,
-                                   const char *voter_key);
-STATIC int should_keep_commit(const sr_commit_t *commit,
-                              const char *voter_key);
-STATIC void save_commit_during_reveal_phase(const sr_commit_t *commit);
 
 #endif /* SHARED_RANDOM_PRIVATE */
 

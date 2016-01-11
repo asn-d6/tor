@@ -145,14 +145,13 @@ commit_log(const sr_commit_t *commit)
   log_debug(LD_DIR, "SR: Commit from %s", commit->rsa_identity_fpr);
 
   if (commit->commit_ts >= 0) {
-    log_debug(LD_DIR, "SR: Commit: [TS: %ld] [H(R): %s...]",
-             commit->commit_ts, hex_str(commit->hashed_reveal, 5));
+    log_debug(LD_DIR, "SR: Commit: [TS: %ld] [Encoded: %s]",
+              commit->commit_ts, commit->encoded_commit);
   }
 
   if (commit->reveal_ts >= 0) {
-    log_debug(LD_DIR, "SR: Reveal: [TS: %ld] [H(RN): %s...] [R: %s]",
-              commit->reveal_ts, hex_str(commit->random_number, 5),
-              commit->encoded_reveal);
+    log_debug(LD_DIR, "SR: Reveal: [TS: %ld] [Encoded: %s]",
+              commit->reveal_ts, safe_str(commit->encoded_reveal));
   } else {
     log_debug(LD_DIR, "SR: Reveal: UNKNOWN");
   }
@@ -439,8 +438,12 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   crypto_digest256((char *) srv->value, msg, sizeof(msg), SR_DIGEST_ALG);
   srv->num_reveals = reveal_num;
 
-  log_debug(LD_DIR, "SR: Generated SRV: %s",
-            hex_str((const char *) srv->value, HEX_DIGEST256_LEN));
+  {
+    /* Debugging. */
+    char srv_hash_encoded[SR_SRV_VALUE_BASE64_LEN + 1];
+    sr_srv_encode(srv_hash_encoded, srv);
+    log_debug(LD_DIR, "SR: Generated SRV: %s", srv_hash_encoded);
+  }
   return srv;
 }
 
@@ -867,20 +870,9 @@ sr_generate_our_commit(time_t timestamp, const authority_cert_t *my_rsa_cert)
   /* New commit with our identity key. */
   commit = commit_new(fingerprint);
 
-  {
-    int ret;
-    char raw_rand[SR_RANDOM_NUMBER_LEN] = {0};
-    /* Generate the reveal random value */
-    crypto_rand(raw_rand, sizeof(commit->random_number));
-    /* Hash our random value in order to avoid sending the raw bytes of our
-     * PRNG to the network. */
-    ret = crypto_digest256(commit->random_number, raw_rand,
-                           sizeof(raw_rand), SR_DIGEST_ALG);
-    memwipe(raw_rand, 0, sizeof(raw_rand));
-    if (ret < 0) {
-      goto error;
-    }
-  }
+  /* Generate the reveal random value */
+  crypto_strongest_rand(commit->random_number,
+                        sizeof(commit->random_number));
   commit->commit_ts = commit->reveal_ts = timestamp;
 
   /* Now get the base64 blob that corresponds to our reveal */
@@ -895,7 +887,7 @@ sr_generate_our_commit(time_t timestamp, const authority_cert_t *my_rsa_cert)
   /* The invariant length is used here since the encoded reveal variable
    * has an extra byte added for the NULL terminated byte. */
   if (crypto_digest256(commit->hashed_reveal, commit->encoded_reveal,
-                       SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
+                       SR_REVEAL_BASE64_LEN, commit->alg)) {
     goto error;
   }
 
@@ -961,7 +953,7 @@ sr_compute_srv(void)
     SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
     smartlist_free(chunks);
     if (crypto_digest256(hashed_reveals, reveals, strlen(reveals),
-                         SR_DIGEST_ALG) < 0) {
+                         SR_DIGEST_ALG)) {
       goto end;
     }
     tor_assert(reveal_num < UINT8_MAX);
