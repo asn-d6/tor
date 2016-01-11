@@ -28,6 +28,7 @@
 #include "routerparse.h"
 #include "entrynodes.h"
 #include "torcert.h"
+#include "shared-random.h"
 
 #undef log
 #include <math.h>
@@ -145,6 +146,11 @@ typedef enum {
   K_CONSENSUS_METHOD,
   K_LEGACY_DIR_KEY,
   K_DIRECTORY_FOOTER,
+  K_SIGNING_CERT_ED,
+  K_SR_FLAG,
+  K_COMMIT,
+  K_PREVIOUS_SRV,
+  K_CURRENT_SRV,
   K_PACKAGE,
 
   A_PURPOSE,
@@ -446,6 +452,11 @@ static token_rule_t networkstatus_token_table[] = {
   T1("known-flags",            K_KNOWN_FLAGS,      ARGS,        NO_OBJ ),
   T01("params",                K_PARAMS,           ARGS,        NO_OBJ ),
   T( "fingerprint",            K_FINGERPRINT,      CONCAT_ARGS, NO_OBJ ),
+  T01("signing-ed25519",       K_SIGNING_CERT_ED,  NO_ARGS ,    NEED_OBJ ),
+  T01("shared-rand-participate",K_SR_FLAG,         NO_ARGS,     NO_OBJ ),
+  T0N("shared-rand-commit",    K_COMMIT,           GE(3),       NO_OBJ ),
+  T01("shared-rand-previous-value", K_PREVIOUS_SRV, EQ(2),       NO_OBJ ),
+  T01("shared-rand-current-value",  K_CURRENT_SRV,  EQ(2),       NO_OBJ ),
   T0N("package",               K_PACKAGE,          CONCAT_ARGS, NO_OBJ ),
 
   CERTIFICATE_MEMBERS
@@ -484,6 +495,9 @@ static token_rule_t networkstatus_consensus_token_table[] = {
   T01("server-versions",     K_SERVER_VERSIONS, CONCAT_ARGS, NO_OBJ ),
   T01("consensus-method",    K_CONSENSUS_METHOD,    EQ(1),   NO_OBJ),
   T01("params",                K_PARAMS,           ARGS,        NO_OBJ ),
+
+  T0N("shared-rand-previous-value", K_PREVIOUS_SRV, EQ(2),   NO_OBJ ),
+  T0N("shared-rand-current-value",  K_CURRENT_SRV,  EQ(2),   NO_OBJ ),
 
   END_OF_TABLE
 };
@@ -2837,6 +2851,135 @@ networkstatus_verify_bw_weights(networkstatus_t *ns, int consensus_method)
   return valid;
 }
 
+/** Parse and extract all SR commits from <b>tokens</b> and place them in
+ *  <b>ns</b>. Return -1 on failure, and 0 on success. */
+static int
+extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
+{
+  int retval = -1;
+  char rsa_identity_fpr[FINGERPRINT_LEN + 1];
+  smartlist_t *chunks = NULL;
+
+  tor_assert(ns);
+  tor_assert(tokens);
+
+  ns->sr_info.commits = smartlist_new();
+
+  smartlist_t *commits = find_all_by_keyword(tokens, K_COMMIT);
+
+  /* It's normal that a vote might contain no commits even if it participates
+     in the SR protocol. Don't treat it as an error. */
+  if (commits == NULL) {
+    goto end;
+  }
+
+  /* Get the RSA identity fingerprint of this voter */
+  crypto_pk_t *rsa_identity_key = ns->cert->identity_key;
+  if (crypto_pk_get_fingerprint(rsa_identity_key, rsa_identity_fpr, 0) < 0) {
+    goto err;
+  }
+
+  /* To parse a commit, it needs to be ordered like so:
+   *    algname SP rsa_fpr SP commit [SP reveal]
+   *
+   * The commit order in a vote is specified by proposal 250:
+   *    rsa_fpr SP algname SP commit [SP reveal]
+   */
+  chunks = smartlist_new();
+  SMARTLIST_FOREACH_BEGIN(commits, directory_token_t *, tok) {
+    tor_assert(tok->n_args >= 3);
+
+    /* Hash algorithm. */
+    smartlist_add(chunks, tok->args[0]);
+    /* Commit's authority RSA fingerprint. */
+    smartlist_add(chunks, tok->args[1]);
+    /* Commit value. */
+    smartlist_add(chunks, tok->args[2]);
+    if (tok->n_args > 3) {
+      /* A reveal value might also be included */;
+      smartlist_add(chunks, tok->args[3]);
+    }
+    sr_commit_t *commit = sr_parse_commit(chunks);
+    smartlist_clear(chunks);
+    if (commit == NULL) {
+      /* Commitment couldn't be parsed. Stop right now since this vote is
+       * clearly malformed. */
+      goto err;
+    }
+    /* Add newly created commit object to the vote. */
+    smartlist_add(ns->sr_info.commits, commit);
+  } SMARTLIST_FOREACH_END(tok);
+
+ end:
+  retval = 0;
+
+ err:
+  smartlist_free(chunks);
+  smartlist_free(commits);
+  return retval;
+}
+
+/** Check if a shared random value of type <b>srv_type</b> is in
+ *  <b>tokens</b>. If there is, parse it and set it to <b>srv_out</b>. Return
+ *  -1 on failure, 0 on success. The resulting srv is allocated on the heap and
+ *  it's the responsibility of the caller to free it. */
+static int
+extract_one_srv(smartlist_t *tokens, directory_keyword srv_type,
+                sr_srv_t **srv_out)
+{
+  int ret = -1;
+  directory_token_t *tok;
+  sr_srv_t *srv = NULL;
+  smartlist_t *chunks;
+
+  tor_assert(tokens);
+
+  chunks = smartlist_new();
+  tok = find_opt_by_keyword(tokens, srv_type);
+  if (!tok) {
+    /* That's fine, no SRV is allowed. */
+    ret = 0;
+    goto end;
+  }
+  /* First element is the number of reveals */
+  smartlist_add(chunks, tok->args[0]);
+  /* Second element is the value itself. */
+  smartlist_add(chunks, tok->args[1]);
+  srv = sr_parse_srv(chunks);
+  if (srv == NULL) {
+    goto end;
+  }
+  /* All is good. */
+  *srv_out = srv;
+  ret = 0;
+ end:
+  smartlist_free(chunks);
+  return ret;
+}
+
+/** Extract any shared random values found in <b>tokens</b> and place them in
+ *  the networkstatus <b>ns</b>. Return -1 on failure, 0 on success. */
+static int
+extract_shared_random_srvs(networkstatus_t *ns, smartlist_t *tokens)
+{
+  tor_assert(ns);
+  tor_assert(tokens);
+
+  /* We extract both and on error, everything is stopped because it means
+   * the votes is malformed for the shared random value(s). */
+  if (extract_one_srv(tokens, K_PREVIOUS_SRV, &ns->sr_info.previous_srv) < 0) {
+    goto err;
+  }
+  if (extract_one_srv(tokens, K_CURRENT_SRV, &ns->sr_info.current_srv) < 0) {
+    goto err;
+  }
+
+  return 0;
+
+ err:
+  return -1;
+}
+
 /** Parse a v3 networkstatus vote, opinion, or consensus (depending on
  * ns_type), from <b>s</b>, and return the result.  Return NULL on failure. */
 networkstatus_t *
@@ -3176,6 +3319,28 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
     if (bad) {
       log_warn(LD_DIR, "Invalid legacy key digest %s on vote.",
                escaped(tok->args[0]));
+    }
+  }
+
+  /* If this is a vote document, check if information about the shared
+     randomness protocol is included, and extract it. */
+  if (ns->type == NS_TYPE_VOTE) {
+    /* Does this authority participates in the SR protocol? */
+    tok = find_opt_by_keyword(tokens, K_SR_FLAG);
+    if (tok) {
+      ns->sr_info.participate = 1;
+      /* Get the SR commitments and reveals from the vote. */
+      if (extract_shared_random_commits(ns, tokens) < 0) {
+        log_warn(LD_DIR, "SR: Unable to parse commits in vote.");
+        goto err;
+      }
+    }
+  }
+  /* For both a vote and consensus, extract the shared random values. */
+  if (ns->type != NS_TYPE_OPINION) {
+    if (extract_shared_random_srvs(ns, tokens) < 0) {
+      log_warn(LD_DIR, "SR: Unable to parse SRV(s)");
+      goto err;
     }
   }
 

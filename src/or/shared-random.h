@@ -127,6 +127,16 @@ STATIC int verify_commit_and_reveal(const sr_commit_t *commit);
 STATIC sr_srv_t *get_majority_srv_from_votes(const smartlist_t *votes,
                                              unsigned int current);
 
+STATIC void save_commit_to_state(sr_commit_t *commit);
+STATIC sr_srv_t *srv_dup(const sr_srv_t *orig);
+STATIC int commitments_are_the_same(const sr_commit_t *commit_one,
+                                    const sr_commit_t *commit_two);
+STATIC int commit_is_authoritative(const sr_commit_t *commit,
+                                   const char *voter_key);
+STATIC int should_keep_commit(const sr_commit_t *commit,
+                              const char *voter_key);
+STATIC void save_commit_during_reveal_phase(const sr_commit_t *commit);
+
 #endif /* SHARED_RANDOM_PRIVATE */
 
 #endif /* TOR_SHARED_RANDOM_H */
