@@ -752,6 +752,22 @@ should_keep_srv(int n_agreements)
   return 1;
 }
 
+/** Helper: compare two DIGEST256_LEN digests. */
+static int
+compare_srvs_(const void **_a, const void **_b)
+{
+  const sr_srv_t *a = *_a, *b = *_b;
+  return tor_memcmp(a->value, b->value, sizeof(a->value));
+}
+
+/** Return the most frequent member of the sorted list of DIGEST256_LEN
+ * digests in <b>sl</b> with the count of that most frequent element. */
+static sr_srv_t *
+smartlist_get_most_frequent_srv(const smartlist_t *sl, int *count_out)
+{
+  return smartlist_get_most_frequent_(sl, compare_srvs_, count_out);
+}
+
 /* Using a list of <b>votes</b>, return the SRV object from them that has been
  * voted by the majority of dirauths. If <b>current</b> is set, we look for the
  * current SRV value else the previous one. NULL is returned if no appropriate
@@ -759,22 +775,14 @@ should_keep_srv(int n_agreements)
 STATIC sr_srv_t *
 get_majority_srv_from_votes(const smartlist_t *votes, int current)
 {
-  const uint8_t *value;
+  int count = 0;
+  sr_srv_t *most_frequent_srv = NULL;
   sr_srv_t *the_srv = NULL;
-  smartlist_t *sr_digests;
-  digest256map_t *sr_values;
-  struct srv_obj_t {
-    sr_srv_t *srv;
-    int count;
-  };
-  struct srv_obj_t *obj;
+  smartlist_t *srv_list;
 
   tor_assert(votes);
 
-  /* We use this map to reference count each SRV */
-  sr_values = digest256map_new();
-  /* We use this list to find the most frequent SRV. */
-  sr_digests = smartlist_new();
+  srv_list = smartlist_new();
 
   /* Walk over votes and register any SRVs found. */
   SMARTLIST_FOREACH_BEGIN(votes, networkstatus_t *, v) {
@@ -784,58 +792,39 @@ get_majority_srv_from_votes(const smartlist_t *votes, int current)
       /* Ignore vote that do not participate. */
       continue;
     }
-
     /* Do we want previous or current SRV? */
     srv_tmp = current ? v->sr_info.current_srv : v->sr_info.previous_srv;
     if (!srv_tmp) {
       continue;
     }
 
-    /* If an SRV was found, add it to our list and also count how many votes
-     * have mentioned this exact SRV. */
-    smartlist_add(sr_digests, srv_tmp->value);
-    obj = digest256map_get(sr_values, srv_tmp->value);
-    if (obj == NULL) {
-      obj = tor_malloc_zero(sizeof(struct srv_obj_t));
-      obj->srv = srv_tmp;
-      digest256map_set(sr_values, srv_tmp->value, obj);
-    }
-    obj->count++;
+    smartlist_add(srv_list, srv_tmp);
   } SMARTLIST_FOREACH_END(v);
 
-  /* Sort the SRV list; it's required for finding its most frequent element. */
-  smartlist_sort_digests256(sr_digests);
-  value = smartlist_get_most_frequent_digest256(sr_digests);
-  if (value == NULL) {
+  most_frequent_srv = smartlist_get_most_frequent_srv(srv_list, &count);
+  if (!most_frequent_srv) {
     goto end;
   }
 
-  /* Now that we have the most frequent SRV, get its object and check if it
-   * has been voted by enough people to be accepted. */
-  obj = digest256map_get(sr_values, value);
-  tor_assert(obj);
-
   /* Was this SRV voted by enough auths for us to keep it? */
-  if (!should_keep_srv(obj->count)) {
+  if (!should_keep_srv(count)) {
     goto end;
   }
 
   /* We found an SRV that we can use! Habemus SRV! */
-  the_srv = obj->srv;
+  the_srv = most_frequent_srv;
 
   {
     /* Debugging */
-    char decoded[HEX_DIGEST256_LEN + 1];
-    base16_encode(decoded, sizeof(decoded), (char *) value, DIGEST256_LEN);
-    log_debug(LD_DIR, "SR: Chosen SRV by majority: %s (%d votes)", decoded,
-              obj->count);
+    char encoded[SR_SRV_VALUE_BASE64_LEN + 1];
+    sr_srv_encode(encoded, the_srv);
+    log_debug(LD_DIR, "SR: Chosen SRV by majority: %s (%d votes)", encoded,
+              count);
   }
 
  end:
-  /* We do not free any sr_srv_t values since we don't have the ownership.
-   * Only the map frees the allocated object. */
-  smartlist_free(sr_digests);
-  digest256map_free(sr_values, tor_free_);
+  /* We do not free any sr_srv_t values, we don't have the ownership. */
+  smartlist_free(srv_list);
   return the_srv;
 }
 
