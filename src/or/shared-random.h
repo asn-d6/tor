@@ -102,7 +102,7 @@ void sr_handle_received_commits(smartlist_t *commits,
 sr_commit_t *sr_parse_commit(const smartlist_t *args);
 sr_srv_t *sr_parse_srv(const smartlist_t *args);
 char *sr_get_string_for_vote(void);
-char *sr_get_string_for_consensus(smartlist_t *votes);
+char *sr_get_string_for_consensus(const smartlist_t *votes);
 void sr_commit_free(sr_commit_t *commit);
 
 /* Private methods (only used by shared-random-state.c): */
@@ -121,6 +121,11 @@ STATIC int commit_decode(const char *encoded, sr_commit_t *commit);
 STATIC int reveal_decode(const char *encoded, sr_commit_t *commit);
 
 STATIC int commit_has_reveal_value(const sr_commit_t *commit);
+
+STATIC int verify_commit_and_reveal(const sr_commit_t *commit);
+
+STATIC sr_srv_t *get_majority_srv_from_votes(const smartlist_t *votes,
+                                             unsigned int current);
 
 #endif /* SHARED_RANDOM_PRIVATE */
 
