@@ -2958,6 +2958,10 @@ dirvote_add_vote(const char *vote_body, const char **msg_out, int *status_out)
       }
   } SMARTLIST_FOREACH_END(v);
 
+  /* This a valid vote, update our shared random state. */
+  sr_handle_received_commits(vote->sr_info.commits,
+                             vote->cert->identity_key);
+
   pending_vote = tor_malloc_zero(sizeof(pending_vote_t));
   pending_vote->vote_body = new_cached_dir(tor_strndup(vote_body,
                                                        end_of_vote-vote_body),
@@ -3129,6 +3133,10 @@ dirvote_compute_consensuses(void)
     log_warn(LD_DIR, "Couldn't extract signatures.");
     goto err;
   }
+
+  /* A new consensus has been created: pass it to the shared random subsystem
+     to update the SR state. */
+  sr_act_post_consensus(pending[FLAV_MICRODESC].consensus);
 
   dirvote_clear_pending_consensuses();
   memcpy(pending_consensuses, pending, sizeof(pending));
