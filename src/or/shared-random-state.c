@@ -805,6 +805,13 @@ is_phase_transition(sr_phase_t next_phase)
   return sr_state->phase != next_phase;
 }
 
+/** Return True if our SR state has been initialized. */
+int
+sr_state_is_initialized(void)
+{
+  return !!sr_state;
+}
+
 /* Helper function: return a commit using the RSA fingerprint of the
  * authority. */
 static sr_commit_t *

@@ -117,6 +117,7 @@ void sr_state_unset_fresh_srv(void);
 int sr_state_init(int save_to_disk, int read_from_disk);
 void sr_state_save(void);
 void sr_state_free(void);
+int sr_state_is_initialized(void);
 
 #ifdef SHARED_RANDOM_STATE_PRIVATE
 
