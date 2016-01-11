@@ -1230,8 +1230,8 @@ consensus_is_waiting_for_certs(void)
 
 /** Return the most recent consensus that we have downloaded, or NULL if we
  * don't have one. */
-networkstatus_t *
-networkstatus_get_latest_consensus(void)
+MOCK_IMPL(networkstatus_t *,
+networkstatus_get_latest_consensus,(void))
 {
   return current_consensus;
 }
