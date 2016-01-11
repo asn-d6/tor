@@ -102,6 +102,22 @@ static const char *previous_srv_str = "shared-rand-previous-value";
 static const char *current_srv_str = "shared-rand-current-value";
 static const char *commit_ns_str = "shared-rand-commit";
 
+/* Return a heap allocated copy of the SRV <b>orig</b>. */
+STATIC sr_srv_t *
+srv_dup(const sr_srv_t *orig)
+{
+  sr_srv_t *dup = NULL;
+
+  if (!orig) {
+    return NULL;
+  }
+
+  dup = tor_malloc_zero(sizeof(sr_srv_t));
+  dup->num_reveals = orig->num_reveals;
+  memcpy(dup->value, orig->value, sizeof(dup->value));
+  return dup;
+}
+
 /* Allocate a new commit object and initializing it with <b>identity</b>
  * that MUST be provided. The digest algorithm is set to the default one
  * that is supported. The rest is uninitialized. This never returns NULL. */
@@ -139,6 +155,58 @@ commit_log(const sr_commit_t *commit)
   } else {
     log_debug(LD_DIR, "SR: Reveal: UNKNOWN");
   }
+}
+
+/* Make sure that the commitment and reveal information in <b>commit</b>
+ * match. If they match return 0, return -1 otherwise. This function MUST be
+ * used everytime we receive a new reveal value. */
+STATIC int
+verify_commit_and_reveal(const sr_commit_t *commit)
+{
+  tor_assert(commit);
+
+  log_debug(LD_DIR, "SR: Validating commit from authority %s",
+            commit->rsa_identity_fpr);
+
+  /* Check that the timestamps match. */
+  if (commit->commit_ts != commit->reveal_ts) {
+    log_warn(LD_BUG, "SR: Commit timestamp %ld doesn't match reveal "
+                     "timestamp %ld", commit->commit_ts, commit->reveal_ts);
+    goto invalid;
+  }
+
+  /* Verify that the hashed_reveal received in the COMMIT message, matches
+   * the reveal we just received. */
+  {
+    /* We first hash the reveal we just received. */
+    char received_hashed_reveal[sizeof(commit->hashed_reveal)];
+
+    /* Only sha3-256 is supported. */
+    if (commit->alg != SR_DIGEST_ALG) {
+      goto invalid;
+    }
+
+    /* Use the invariant length since the encoded reveal variable has an
+     * extra byte for the NUL terminated byte. */
+    if (crypto_digest256(received_hashed_reveal, commit->encoded_reveal,
+                         SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
+      /* Unable to digest the reveal blob, this is unlikely. */
+      goto invalid;
+    }
+
+    /* Now compare that with the hashed_reveal we received in COMMIT. */
+    if (fast_memneq(received_hashed_reveal, commit->hashed_reveal,
+                    sizeof(received_hashed_reveal))) {
+      log_warn(LD_BUG, "SR: Received reveal value from authority %s "
+                       "does't match the commit value.",
+               commit->rsa_identity_fpr);
+      goto invalid;
+    }
+  }
+
+  return 0;
+ invalid:
+  return -1;
 }
 
 /* Return true iff the commit contains an encoded reveal value. */
@@ -469,6 +537,167 @@ get_ns_str_from_sr_values(sr_srv_t *prev_srv, sr_srv_t *cur_srv)
   smartlist_free(chunks);
 
   return srv_str;
+}
+
+/* Return 1 iff the two commits have the same commitment values. This
+ * function does not care about reveal values. */
+STATIC int
+commitments_are_the_same(const sr_commit_t *commit_one,
+                         const sr_commit_t *commit_two)
+{
+  tor_assert(commit_one);
+  tor_assert(commit_two);
+
+  if (strcmp(commit_one->encoded_commit, commit_two->encoded_commit)) {
+    return 0;
+  }
+  return 1;
+}
+
+/* We just received a commit from the vote of authority with
+ * <b>identity_digest</b>. Return 1 if this commit is authorititative that
+ * is, it belongs to the authority that voted it. Else return 0 if not. */
+STATIC int
+commit_is_authoritative(const sr_commit_t *commit,
+                        const char *voter_key)
+{
+  tor_assert(commit);
+  tor_assert(voter_key);
+
+  return !strcmp(commit->rsa_identity_fpr, voter_key);
+}
+
+/* Decide if the newly received <b>commit</b> should be kept depending on the
+ * current phase and state of the protocol. Return 1 if the commit should be
+ * added to our state or 0 if not. */
+STATIC int
+should_keep_commit(sr_commit_t *commit, const char *voter_key)
+{
+  sr_commit_t *saved_commit;
+
+  tor_assert(commit);
+  tor_assert(voter_key);
+
+  log_debug(LD_DIR, "SR: Inspecting commit from %s (voter: %s)?",
+            commit->rsa_identity_fpr, voter_key);
+
+  /* For a commit to be considered, it needs to be authoritative (it should
+   * be the voter's own commit). */
+  if (!commit_is_authoritative(commit, voter_key)) {
+    log_debug(LD_DIR, "SR: Ignoring non-authoritative commit.");
+    goto ignore;
+  }
+
+  /* Check if the authority that voted for <b>commit</b> has already posted
+   * a commit before. */
+  saved_commit = sr_state_get_commit(commit->rsa_identity_fpr);
+
+  switch (sr_state_get_phase()) {
+  case SR_PHASE_COMMIT:
+    /* Already having a commit for an authority so ignore this one. */
+    if (saved_commit) {
+      log_debug(LD_DIR, "SR: Ignoring known commit during COMMIT phase.");
+      goto ignore;
+    }
+
+    /* A commit with a reveal value during commitment phase is very wrong. */
+    if (commit_has_reveal_value(commit)) {
+      log_warn(LD_BUG, "SR: Commit from authority %s has a reveal value "
+                       "during COMMIT phase. (voter: %s)",
+               commit->rsa_identity_fpr, voter_key);
+      goto ignore;
+    }
+    break;
+  case SR_PHASE_REVEAL:
+    /* We are now in reveal phase. We keep a commit if and only if:
+     *
+     * - We have already seen a commit by this auth, AND
+     * - the saved commit has the same commitment value as this one, AND
+     * - the saved commit has no reveal information, AND
+     * - this commit does have reveal information, AND
+     * - the reveal & commit information are matching.
+     *
+     * If all the above are true, then we are interested in this new commit
+     * for its reveal information. */
+
+    if (!saved_commit) {
+      log_debug(LD_DIR, "SR: Ignoring commit first seen in reveal phase.");
+      goto ignore;
+    }
+
+    if (!commitments_are_the_same(commit, saved_commit)) {
+      log_warn(LD_DIR, "SR: Commit from authority %s is different from "
+                       "previous commit in our state (voter: %s)",
+               commit->rsa_identity_fpr, voter_key);
+      goto ignore;
+    }
+
+    if (commit_has_reveal_value(saved_commit)) {
+      log_debug(LD_DIR, "SR: Ignoring commit with known reveal info.");
+      goto ignore;
+    }
+
+    if (!commit_has_reveal_value(commit)) {
+      log_debug(LD_DIR, "SR: Ignoring commit without reveal value.");
+      goto ignore;
+    }
+
+    if (verify_commit_and_reveal(commit) < 0) {
+      log_warn(LD_BUG, "SR: Commit from authority %s has an invalid "
+                       "reveal value. (voter: %s)",
+               commit->rsa_identity_fpr, voter_key);
+      goto ignore;
+    }
+    break;
+  default:
+    tor_assert(0);
+  }
+
+  return 1;
+
+ ignore:
+  return 0;
+}
+
+/* We are in reveal phase and we found <b>commit</b> in a vote that contains
+ * reveal values that we could use. Update the commit we have in our state. */
+STATIC void
+save_commit_during_reveal_phase(const sr_commit_t *commit)
+{
+  sr_commit_t *saved_commit;
+
+  tor_assert(commit);
+
+  /* Get the commit from our state. */
+  saved_commit = sr_state_get_commit(commit->rsa_identity_fpr);
+  tor_assert(saved_commit);
+  /* Safety net. They can not be different commitments at this point. */
+  int same_commits = commitments_are_the_same(commit, saved_commit);
+  tor_assert(same_commits);
+
+  /* Copy reveal information to our saved commit. */
+  sr_state_copy_reveal_info(saved_commit, commit);
+}
+
+/* Save <b>commit</b> to our persistent state. Depending on the current phase,
+ * different actions are taken. Steals reference of <b>commit</b>. */
+STATIC void
+save_commit_to_state(sr_commit_t *commit)
+{
+  sr_phase_t phase = sr_state_get_phase();
+
+  switch (phase) {
+  case SR_PHASE_COMMIT:
+    /* During commit phase, just save any new authoritative commit */
+    sr_state_add_commit(commit);
+    break;
+  case SR_PHASE_REVEAL:
+    save_commit_during_reveal_phase(commit);
+    sr_commit_free(commit);
+    break;
+  default:
+    tor_assert(0);
+  }
 }
 
 /* Return the number of required participants of the SR protocol. This is based
@@ -833,6 +1062,41 @@ sr_parse_commit(smartlist_t *args)
   return NULL;
 }
 
+/* Called when we are done parsing a vote by <b>voter_key</b> that might
+ * contain some useful <b>commits</b>. Find if any of them should be kept and
+ * update our state accordingly. Once done, the list of commitments will be
+ * empty. */
+void
+sr_handle_received_commits(smartlist_t *commits,
+                           crypto_pk_t *voter_key)
+{
+  char rsa_identity_fpr[FINGERPRINT_LEN + 1];
+
+  tor_assert(voter_key);
+
+  /* It's possible that the vote has _NO_ commits. */
+  if (commits == NULL) {
+    return;
+  }
+
+  /* Get the RSA identity fingerprint of this voter */
+  if (crypto_pk_get_fingerprint(voter_key, rsa_identity_fpr, 0) < 0) {
+    return;
+  }
+
+  SMARTLIST_FOREACH_BEGIN(commits, sr_commit_t *, commit) {
+    /* We won't need the commit in this list anymore, kept or not. */
+    SMARTLIST_DEL_CURRENT(commits, commit);
+    /* Check if this commit is valid and should be stored in our state. */
+    if (!should_keep_commit(commit, rsa_identity_fpr)) {
+      sr_commit_free(commit);
+      continue;
+    }
+    /* Everything lines up: save this commit to state then! */
+    save_commit_to_state(commit);
+  } SMARTLIST_FOREACH_END(commit);
+}
+
 /* Return a heap-allocated string containing commits that should be put in
  * the votes. It's the responsibility of the caller to free the string.
  * This always return a valid string, either empty or with line(s). */
@@ -842,6 +1106,12 @@ sr_get_string_for_vote(void)
   char *vote_str = NULL;
   digestmap_t *state_commits;
   smartlist_t *chunks = smartlist_new();
+  const or_options_t *options = get_options();
+
+  /* Are we participating in the protocol? */
+  if (!options->AuthDirSharedRandomness) {
+    goto end;
+  }
 
   log_debug(LD_DIR, "SR: Preparing our vote info:");
 
@@ -869,6 +1139,7 @@ sr_get_string_for_vote(void)
     }
   }
 
+ end:
   vote_str = smartlist_join_strings(chunks, "", 0, NULL);
   SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
   smartlist_free(chunks);
@@ -886,8 +1157,16 @@ char *
 sr_get_string_for_consensus(smartlist_t *votes)
 {
   char *srv_str;
+  const or_options_t *options = get_options();
 
   tor_assert(votes);
+
+  /* Not participating, avoid returning anything. */
+  if (!options->AuthDirSharedRandomness) {
+    log_info(LD_DIR, "SR: Support disabled (AuthDirSharedRandomness %d)",
+             options->AuthDirSharedRandomness);
+    goto end;
+  }
 
   /* Check the votes and figure out if SRVs should be included in the final
      consensus. */
@@ -901,6 +1180,35 @@ sr_get_string_for_consensus(smartlist_t *votes)
   return srv_str;
  end:
   return NULL;
+}
+
+/* We just computed a new <b>consensus</b>. Update our state with the SRVs from
+ * the consensus (might be NULL as well). Register the SRVs in our SR state and
+ * prepare for the upcoming protocol round. */
+void
+sr_act_post_consensus(const networkstatus_t *consensus)
+{
+  /* Start by freeing the current SRVs since the SRVs we believed during voting
+   * do not really matter. Now that all the votes are in, we use the majority's
+   * opinion on which are the active SRVs. */
+  sr_state_clean_srvs();
+
+  /* Set the majority voted SRVs in our state even if both are NULL. It doesn't
+   * matter this is what the majority has decided. */
+  if (consensus) {
+    sr_state_set_previous_srv(srv_dup(consensus->sr_info.previous_srv));
+    sr_state_set_current_srv(srv_dup(consensus->sr_info.current_srv));
+  }
+
+  /* Reset the fresh flag of the SRV so we know that from now on we don't
+   * have a new SRV to vote for thus no need for super majority. */
+  sr_state_unset_fresh_srv();
+
+  /* Update our state with the valid_after time of the next consensus so once
+   * the next voting period start we are ready to receive votes. */
+  time_t next_consensus_valid_after =
+    get_next_valid_after_time(consensus->valid_after);
+  sr_state_update(next_consensus_valid_after);
 }
 
 /* Initialize shared random subsystem. This MUST be called early in the boot
