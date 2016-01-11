@@ -1,4 +1,4 @@
-/* Copyright (c) 2016, The Tor Project, Inc. */
+/* Copyright (c) 2015, The Tor Project, Inc. */
 /* See LICENSE for licensing information */
 
 #ifndef TOR_SHARED_RANDOM_H
@@ -101,18 +101,26 @@ typedef struct sr_commit_t {
 
 int sr_init(int save_to_disk);
 void sr_save_and_cleanup(void);
+sr_commit_t *sr_parse_commit(smartlist_t *args);
+sr_srv_t *sr_parse_srv(smartlist_t *args);
 void sr_commit_free(sr_commit_t *commit);
 
 /* Private methods (only used by shared-random-state.c): */
 
-sr_commit_t *sr_parse_commit(smartlist_t *args);
-sr_srv_t *sr_parse_srv(smartlist_t *args);
+void sr_compute_srv(void);
+sr_commit_t *sr_generate_our_commit(time_t timestamp,
+                                    authority_cert_t *my_rsa_cert);
 
 #ifdef SHARED_RANDOM_PRIVATE
 
+/* Encode */
+STATIC int reveal_encode(sr_commit_t *commit, char *dst, size_t len);
+STATIC int commit_encode(sr_commit_t *commit, char *dst, size_t len);
 /* Decode. */
 STATIC int commit_decode(const char *encoded, sr_commit_t *commit);
 STATIC int reveal_decode(const char *encoded, sr_commit_t *commit);
+
+STATIC int commit_has_reveal_value(const sr_commit_t *commit);
 
 #endif /* SHARED_RANDOM_PRIVATE */
 
