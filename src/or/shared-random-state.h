@@ -1,4 +1,4 @@
-/* Copyright (c) 2016, The Tor Project, Inc. */
+/* Copyright (c) 2015, The Tor Project, Inc. */
 /* See LICENSE for licensing information */
 
 #ifndef TOR_SHARED_RANDOM_STATE_H
@@ -93,6 +93,8 @@ typedef struct sr_disk_state_t {
 
 /* Public methods: */
 
+void sr_state_update(time_t valid_after);
+
 /* Private methods (only used by shared-random.c): */
 
 time_t get_next_valid_after_time(time_t now);
@@ -102,10 +104,13 @@ sr_srv_t *sr_state_get_previous_srv(void);
 sr_srv_t *sr_state_get_current_srv(void);
 void sr_state_set_previous_srv(sr_srv_t *srv);
 void sr_state_set_current_srv(sr_srv_t *srv);
+void sr_state_clean_srvs(void);
 digestmap_t *sr_state_get_commits(void);
 sr_commit_t *sr_state_get_commit(const char *rsa_fpr);
 void sr_state_add_commit(sr_commit_t *commit);
 void sr_state_delete_commits(void);
+void sr_state_copy_reveal_info(sr_commit_t *saved_commit,
+                                const sr_commit_t *commit);
 unsigned int sr_state_srv_is_fresh(void);
 void sr_state_set_fresh_srv(void);
 void sr_state_unset_fresh_srv(void);
@@ -116,8 +121,15 @@ void sr_state_free(void);
 #ifdef SHARED_RANDOM_STATE_PRIVATE
 
 STATIC int disk_state_load_from_disk_impl(const char *fname);
+
 STATIC sr_phase_t get_sr_protocol_phase(time_t valid_after);
+
 STATIC time_t get_state_valid_until_time(time_t now);
+STATIC const char *get_phase_str(sr_phase_t phase);
+STATIC void reset_state_for_new_protocol_run(time_t valid_after);
+STATIC void new_protocol_run(time_t valid_after);
+STATIC void state_rotate_srv(void);
+STATIC int is_phase_transition(sr_phase_t next_phase);
 
 #endif /* SHARED_RANDOM_STATE_PRIVATE */
 
