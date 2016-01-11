@@ -20,6 +20,7 @@
 #include "policies.h"
 #include "routerlist.h"
 #include "routerparse.h"
+#include "shared-random.h"
 #include "test.h"
 #include "test_dir_common.h"
 
@@ -207,6 +208,9 @@ test_router_pick_directory_server_impl(void *arg)
   int tmp_dirport1, tmp_dirport3;
 
   (void)arg;
+
+  /* Init SR subsystem. */
+  sr_init(0);
 
   /* No consensus available, fail early */
   rs = router_pick_directory_server_impl(V3_DIRINFO, (const int) 0, NULL);

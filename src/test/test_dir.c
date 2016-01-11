@@ -30,6 +30,7 @@
 #include "routerlist.h"
 #include "routerparse.h"
 #include "routerset.h"
+#include "shared-random-state.h"
 #include "test.h"
 #include "test_dir_common.h"
 #include "torcert.h"
@@ -1499,6 +1500,13 @@ test_dir_param_voting(void *arg)
   return;
 }
 
+extern const char AUTHORITY_CERT_1[];
+extern const char AUTHORITY_SIGNKEY_1[];
+extern const char AUTHORITY_CERT_2[];
+extern const char AUTHORITY_SIGNKEY_2[];
+extern const char AUTHORITY_CERT_3[];
+extern const char AUTHORITY_SIGNKEY_3[];
+
 /** Helper: Test that two networkstatus_voter_info_t do in fact represent the
  * same voting authority, and that they do in fact have all the same
  * information. */
@@ -1786,10 +1794,29 @@ test_a_networkstatus(
   tt_assert(rs_test);
   tt_assert(vrs_test);
 
-  tt_assert(!dir_common_authority_pk_init(&cert1, &cert2, &cert3,
-                                          &sign_skey_1, &sign_skey_2,
-                                          &sign_skey_3));
+  sr_state_init(0, 0);
+
+  /* Parse certificates and keys. */
+  cert1 = authority_cert_parse_from_string(AUTHORITY_CERT_1, NULL);
+  tt_assert(cert1);
+  cert2 = authority_cert_parse_from_string(AUTHORITY_CERT_2, NULL);
+  tt_assert(cert2);
+  cert3 = authority_cert_parse_from_string(AUTHORITY_CERT_3, NULL);
+  tt_assert(cert3);
+  sign_skey_1 = crypto_pk_new();
+  sign_skey_2 = crypto_pk_new();
+  sign_skey_3 = crypto_pk_new();
   sign_skey_leg1 = pk_generate(4);
+
+  tt_assert(!crypto_pk_read_private_key_from_string(sign_skey_1,
+                                                   AUTHORITY_SIGNKEY_1, -1));
+  tt_assert(!crypto_pk_read_private_key_from_string(sign_skey_2,
+                                                   AUTHORITY_SIGNKEY_2, -1));
+  tt_assert(!crypto_pk_read_private_key_from_string(sign_skey_3,
+                                                   AUTHORITY_SIGNKEY_3, -1));
+
+  tt_assert(!crypto_pk_cmp_keys(sign_skey_1, cert1->signing_key));
+  tt_assert(!crypto_pk_cmp_keys(sign_skey_2, cert2->signing_key));
 
   tt_assert(!dir_common_construct_vote_1(&vote, cert1, sign_skey_1, vrs_gen,
                                          &v1, &n_vrs, now, 1));

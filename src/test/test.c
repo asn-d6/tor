@@ -1169,6 +1169,7 @@ extern struct testcase_t routerkeys_tests[];
 extern struct testcase_t routerlist_tests[];
 extern struct testcase_t routerset_tests[];
 extern struct testcase_t scheduler_tests[];
+extern struct testcase_t sr_tests[];
 extern struct testcase_t socks_tests[];
 extern struct testcase_t status_tests[];
 extern struct testcase_t thread_tests[];
@@ -1224,6 +1225,7 @@ struct testgroup_t testgroups[] = {
   { "routerset/" , routerset_tests },
   { "scheduler/", scheduler_tests },
   { "socks/", socks_tests },
+  { "shared-random/", sr_tests },
   { "status/" , status_tests },
   { "tortls/", tortls_tests },
   { "util/", util_tests },
