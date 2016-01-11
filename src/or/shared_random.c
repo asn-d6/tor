@@ -189,7 +189,7 @@ verify_commit_and_reveal(const sr_commit_t *commit)
     /* Use the invariant length since the encoded reveal variable has an
      * extra byte for the NUL terminated byte. */
     if (crypto_digest256(received_hashed_reveal, commit->encoded_reveal,
-                         SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
+                         SR_REVEAL_BASE64_LEN, commit->alg)) {
       /* Unable to digest the reveal blob, this is unlikely. */
       goto invalid;
     }
@@ -610,7 +610,7 @@ should_keep_commit(const sr_commit_t *commit, const char *voter_key)
 
     /* A commit with a reveal value during commitment phase is very wrong. */
     if (commit_has_reveal_value(commit)) {
-      log_warn(LD_BUG, "SR: Commit from authority %s has a reveal value "
+      log_warn(LD_DIR, "SR: Commit from authority %s has a reveal value "
                        "during COMMIT phase. (voter: %s)",
                commit->rsa_identity_fpr, voter_key);
       goto ignore;
