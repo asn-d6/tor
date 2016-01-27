@@ -228,7 +228,7 @@ test_sr_commit(void *arg)
     our_commit = sr_generate_our_commit(now, auth_cert);
     tt_assert(our_commit);
     /* Default and only supported algorithm for now. */
-    tt_assert(our_commit->alg == DIGEST_SHA256);
+    tt_assert(our_commit->alg == DIGEST_SHA3_256);
     /* We should have a reveal value. */
     tt_assert(commit_has_reveal_value(our_commit));
     /* We should have a random value. */
@@ -310,22 +310,22 @@ test_encoding(void *arg)
    * that we do no expose the raw bytes of our PRNG to the network thus
    * explaining the double H(). */
   static const char *encoded_commit =
-    "VnpHIJFkjNo+AEQGwCA5mnTu0/XXN5WRRQte3+GtK/oAAAAAVmBqkA==";
+    "iCJnPe0Vxcw2zY5TkFNVrPhuSBfPB4XLdaUGwKAhSqIAAAAAVmBqkA==";
   /* Encoded reveal is: base64-encode( H(42) || 1449159312). */
   static const char *encoded_reveal =
-    "AAAAAFZgapAS87tMUHatqR+rOln543nqMA+98YfuQEkicHgAbDlXQQ==";
+    "AAAAAFZgapAk9x9kTjiQWUqjHwSAEOdPAfCaurXgjPy173SzYjeC2g==";
 
   /* Set up our raw random bytes array. */
   memset(raw_rand, 0, sizeof(raw_rand));
   memcpy(raw_rand, &duper_rand, sizeof(duper_rand));
   /* Hash random number. */
   ret = crypto_digest256(hashed_rand, raw_rand, sizeof(raw_rand),
-                         DIGEST_SHA256);
+                         DIGEST_SHA3_256);
   tt_int_op(0, ==, ret);
   /* Hash reveal value. */
   tt_int_op(SR_REVEAL_BASE64_LEN, ==, strlen(encoded_reveal));
   ret = crypto_digest256(hashed_reveal, encoded_reveal,
-                         strlen(encoded_reveal), DIGEST_SHA256);
+                         strlen(encoded_reveal), DIGEST_SHA3_256);
   tt_int_op(0, ==, ret);
   tt_int_op(SR_COMMIT_BASE64_LEN, ==, strlen(encoded_commit));
 
@@ -463,7 +463,7 @@ test_vote(void *arg)
     tt_str_op(smartlist_get(tokens, 1), OP_EQ,
               our_commit->rsa_identity_fpr);
     tt_str_op(smartlist_get(tokens, 2), OP_EQ,
-              crypto_digest_algorithm_get_name(DIGEST_SHA256));
+              crypto_digest_algorithm_get_name(DIGEST_SHA3_256));
     tt_str_op(smartlist_get(tokens, 3), OP_EQ, our_commit->encoded_commit);
     tt_str_op(smartlist_get(tokens, 4), OP_EQ, our_commit->encoded_reveal);
 
@@ -521,12 +521,12 @@ test_vote(void *arg)
 
 const char *sr_state_str = "Version 1\n"
   "ValidUntil 2666-04-20 07:16:00\n"
-  "Commit sha256 FA3CEC2C99DC68D3166B9B6E4FA21A4026C2AB1C "
+  "Commit sha3-256 FA3CEC2C99DC68D3166B9B6E4FA21A4026C2AB1C "
       "7M8GdubCAAdh7WUG0DiwRyxTYRKji7HATa7LLJEZ/UAAAAAAVmfUSg== "
       "AAAAAFZn1EojfIheIw42bjK3VqkpYyjsQFSbv/dxNna3Q8hUEPKpOw==\n"
-  "Commit sha256 41E89EDFBFBA44983E21F18F2230A4ECB5BFB543 "
+  "Commit sha3-256 41E89EDFBFBA44983E21F18F2230A4ECB5BFB543 "
      "17aUsYuMeRjd2N1r8yNyg7aHqRa6gf4z7QPoxxAZbp0AAAAAVmfUSg==\n"
-  "Commit sha256 36637026573A04110CF3E6B1D201FB9A98B88734 "
+  "Commit sha3-256 36637026573A04110CF3E6B1D201FB9A98B88734 "
      "DDDYtripvdOU+XPEUm5xpU64d9IURSds1xSwQsgeB8oAAAAAVmfUSg==\n"
   "SharedRandCurrentValue 3 F1D59E5B5D8A1334C61222C680ED54549ED9F7"
      "509E92845CC6DE90F4A8673852\n"
@@ -701,7 +701,7 @@ test_sr_compute_srv(void *arg)
   sr_srv_t *current_srv = NULL;
 
 #define SRV_TEST_VECTOR \
-  "1BDB7C3E973936E4D13A49F37C859B3DC69C429334CF9412E3FEF6399C52D47A"
+  "FE62C30C210AAE50B37652A337F86AB084F40BF5B9BE46C0222E41792D93F3BB"
 
   sr_state_init(0, 0);
 

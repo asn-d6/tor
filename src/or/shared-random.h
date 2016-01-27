@@ -15,7 +15,7 @@
 /* Protocol version */
 #define SR_PROTO_VERSION  1
 /* Default digest algorithm. */
-#define SR_DIGEST_ALG DIGEST_SHA256
+#define SR_DIGEST_ALG DIGEST_SHA3_256
 /* Invariant token in the SRV calculation. */
 #define SR_SRV_TOKEN "shared-random"
 /* Don't count the NUL terminated byte even though the TOKEN has it. */
@@ -24,14 +24,14 @@
 /* Length of the random number (in bytes). */
 #define SR_RANDOM_NUMBER_LEN 32
 /* Size of a decoded commit value in a vote or state. It's a hash and a
-   timestmap. */
+ * timestamp. */
 #define SR_COMMIT_LEN (DIGEST256_LEN + 8)
 /* Size of a decoded reveal value from a vote or state. It's a 64 bit
  * timestamp and the hashed random number. This adds up to 40 bytes. */
 #define SR_REVEAL_LEN (8 + DIGEST256_LEN)
-/* Size of SRV HMAC message length. The construction is has follow:
+/* Size of SRV message length. The construction is has follow:
  *  "shared-random" | INT_8(reveal_num) | INT_8(version) | PREV_SRV */
-#define SR_SRV_HMAC_MSG_LEN \
+#define SR_SRV_MSG_LEN \
   (SR_SRV_TOKEN_LEN + 1 + 1 + DIGEST256_LEN)
 
 /* Length of base64 encoded commit NOT including the NULL terminated byte.
@@ -55,7 +55,7 @@ typedef enum {
 typedef struct sr_srv_t {
   /* The number of reveal values used to derive this SRV. */
   int num_reveals;
-  /* The actual value. This is the stored result of HMAC-SHA256. */
+  /* The actual value. This is the stored result of SHA3-256. */
   uint8_t value[DIGEST256_LEN];
 } sr_srv_t;
 

@@ -182,10 +182,20 @@ verify_commit_and_reveal(const sr_commit_t *commit)
     char received_hashed_reveal[sizeof(commit->hashed_reveal)];
     /* Use the invariant length since the encoded reveal variable has an
      * extra byte for the NUL terminated byte. */
-    if (crypto_digest256(received_hashed_reveal, commit->encoded_reveal,
-                         SR_REVEAL_BASE64_LEN, DIGEST_SHA256) < 0) {
-      /* Unable to digest the reveal blob, this is unlikely. */
+    switch (commit->alg) {
+    case DIGEST_SHA1:
+    case DIGEST_SHA256:
+    case DIGEST_SHA512:
+    case DIGEST_SHA3_512:
       goto invalid;
+    case DIGEST_SHA3_256:
+      /* Only sha3-256 is supported and the default. */
+    default:
+      if (crypto_digest256(received_hashed_reveal, commit->encoded_reveal,
+                           SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
+        /* Unable to digest the reveal blob, this is unlikely. */
+        goto invalid;
+      }
     }
     /* Now compare that with the hashed_reveal we received in COMMIT. */
     if (fast_memneq(received_hashed_reveal, commit->hashed_reveal,
@@ -246,8 +256,8 @@ commit_decode(const char *encoded, sr_commit_t *commit)
 
   if (decoded_len < SR_COMMIT_LEN) {
     log_warn(LD_BUG, "SR: Commit from authority %s decoded length is "
-                     "too small.",
-             commit->rsa_identity_fpr);
+                     "too small (%d vs %d).",
+             commit->rsa_identity_fpr, decoded_len, SR_COMMIT_LEN);
     goto error;
   }
 
@@ -393,14 +403,14 @@ get_srv_element_from_commit(const sr_commit_t *commit)
 }
 
 /* Return a srv object that is built with the construction:
- *    SRV = HMAC(HASHED_REVEALS, "shared-random" | INT_8(reveal_num) |
- *                               INT_8(version) | previous_SRV)
+ *    SRV = SHA3-256("shared-random" | INT_8(reveal_num) |
+ *                   INT_8(version) | HASHED_REVEALS | previous_SRV)
  * This function cannot fail. */
 static sr_srv_t *
 generate_srv(const char *hashed_reveals, uint8_t reveal_num,
              const sr_srv_t *previous_srv)
 {
-  char msg[SR_SRV_HMAC_MSG_LEN] = {0};
+  char msg[DIGEST256_LEN + SR_SRV_MSG_LEN] = {0};
   size_t offset = 0;
   sr_srv_t *srv;
 
@@ -413,6 +423,8 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   offset += 1;
   set_uint8(msg + offset, SR_PROTO_VERSION);
   offset += 1;
+  memcpy(msg + offset, hashed_reveals, DIGEST256_LEN);
+  offset += DIGEST256_LEN;
   if (previous_srv != NULL) {
     memcpy(msg + offset, previous_srv->value, sizeof(previous_srv->value));
   }
@@ -420,9 +432,7 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   /* Ok we have our message and key for the HMAC computation, allocate our
    * srv object and do the last step. */
   srv = tor_malloc_zero(sizeof(*srv));
-  crypto_hmac_sha256((char *) srv->value,
-                     hashed_reveals, DIGEST256_LEN,
-                     msg, sizeof(msg));
+  crypto_digest256((char *) srv->value, msg, sizeof(msg), SR_DIGEST_ALG);
   srv->num_reveals = reveal_num;
 
   log_debug(LD_DIR, "SR: Generated SRV: %s",
@@ -554,8 +564,7 @@ commit_is_authoritative(const sr_commit_t *commit,
   tor_assert(commit);
   tor_assert(voter_key);
 
-  return !memcmp(&commit->rsa_identity_fpr, voter_key,
-                 sizeof(commit->rsa_identity_fpr));
+  return !strcmp(commit->rsa_identity_fpr, voter_key);
 }
 
 /* Decide if the newly received <b>commit</b> should be kept depending on the
@@ -861,7 +870,7 @@ sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
     /* Hash our random value in order to avoid sending the raw bytes of our
      * PRNG to the network. */
     ret = crypto_digest256(commit->random_number, raw_rand,
-                           sizeof(raw_rand), DIGEST_SHA256);
+                           sizeof(raw_rand), SR_DIGEST_ALG);
     memwipe(raw_rand, 0, sizeof(raw_rand));
     if (ret < 0) {
       goto error;
@@ -880,17 +889,17 @@ sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
 
   switch (commit->alg) {
   case DIGEST_SHA1:
+  case DIGEST_SHA256:
   case DIGEST_SHA512:
-  case DIGEST_SHA3_256:
   case DIGEST_SHA3_512:
     tor_assert(0);
-  case DIGEST_SHA256:
-    /* Only sha256 is supported and the default. */
+  case DIGEST_SHA3_256:
+    /* Only sha3-256 is supported and the default. */
   default:
     /* The invariant length is used here since the encoded reveal variable
      * has an extra byte added for the NULL terminated byte. */
     if (crypto_digest256(commit->hashed_reveal, commit->encoded_reveal,
-                         SR_REVEAL_BASE64_LEN, DIGEST_SHA256) < 0) {
+                         SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
       goto error;
     }
     break;
@@ -958,7 +967,7 @@ sr_compute_srv(void)
     SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
     smartlist_free(chunks);
     if (crypto_digest256(hashed_reveals, reveals, strlen(reveals),
-                         DIGEST_SHA256) < 0) {
+                         SR_DIGEST_ALG) < 0) {
       goto end;
     }
     tor_assert(reveal_num < UINT8_MAX);
