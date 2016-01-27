@@ -66,12 +66,7 @@ typedef struct sr_commit_t {
 
   /* Commit owner info */
 
-  /* Owner's authority ed25519 identity */
-  ed25519_public_key_t auth_identity;
-  /* Authority ed25519 identity key fingerprint base64 format. We keep it
-   * for logging purposes instead of encoding each time. */
-  char auth_fingerprint[ED25519_BASE64_LEN + 1];
-  /* The RSA identity fingerprint of the auth. */
+  /* The RSA identity fingerprint of the authority. */
   char rsa_identity_fpr[FINGERPRINT_LEN + 1];
 
   /* Commitment information */
@@ -103,7 +98,7 @@ int sr_init(int save_to_disk);
 void sr_save_and_cleanup(void);
 void sr_act_post_consensus(const networkstatus_t *consensus);
 void sr_handle_received_commits(smartlist_t *commits,
-                                const ed25519_public_key_t *voter_key);
+                                crypto_pk_t *voter_key);
 sr_commit_t *sr_parse_commit(smartlist_t *args);
 sr_srv_t *sr_parse_srv(smartlist_t *args);
 char *sr_get_string_for_vote(void);
@@ -137,9 +132,8 @@ STATIC sr_srv_t *srv_dup(const sr_srv_t *orig);
 STATIC int commitments_are_the_same(const sr_commit_t *commit_one,
                                     const sr_commit_t *commit_two);
 STATIC int commit_is_authoritative(const sr_commit_t *commit,
-                                   const ed25519_public_key_t *identity);
-STATIC int should_keep_commit(sr_commit_t *commit,
-                              const ed25519_public_key_t *voter_key);
+                                   const char *voter_key);
+STATIC int should_keep_commit(sr_commit_t *commit, const char *voter_key);
 STATIC void save_commit_during_reveal_phase(const sr_commit_t *commit);
 
 #endif /* SHARED_RANDOM_PRIVATE */

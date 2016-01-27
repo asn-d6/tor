@@ -368,7 +368,7 @@ disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
     args = smartlist_new();
     smartlist_split_string(args, line->value, " ",
                            SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, 0);
-    if (smartlist_len(args) < 4) {
+    if (smartlist_len(args) < 3) {
       log_warn(LD_BUG, "SR: Too few arguments in Commit Line: %s",
                escaped(line->value));
       goto error;
@@ -507,9 +507,8 @@ disk_state_put_commit_line(sr_commit_t *commit, config_line_t *line)
     /* Add extra whitespace so we can format the line correctly. */
     tor_asprintf(&reveal_str, " %s", commit->encoded_reveal);
   }
-  tor_asprintf(&line->value, "%s %s %s %s%s",
+  tor_asprintf(&line->value, "%s %s %s%s",
                crypto_digest_algorithm_get_name(commit->alg),
-               commit->auth_fingerprint,
                commit->rsa_identity_fpr,
                commit->encoded_commit,
                reveal_str != NULL ? reveal_str : "");
@@ -809,7 +808,7 @@ is_phase_transition(sr_phase_t next_phase)
 /* Helper function: return a commit using the RSA fingerprint of the
  * authority. */
 static sr_commit_t *
-state_query_get_commit_by_rsa(const char *rsa_fpr)
+state_query_get_commit(const char *rsa_fpr)
 {
   tor_assert(rsa_fpr);
   return digestmap_get(sr_state->commits, rsa_fpr);
@@ -822,9 +821,9 @@ state_query_get_(sr_state_object_t obj_type, void *data)
   void *obj = NULL;
 
   switch (obj_type) {
-  case SR_STATE_OBJ_COMMIT_RSA:
+  case SR_STATE_OBJ_COMMIT:
   {
-    obj = state_query_get_commit_by_rsa(data);
+    obj = state_query_get_commit(data);
     break;
   }
   case SR_STATE_OBJ_COMMITS:
@@ -839,7 +838,6 @@ state_query_get_(sr_state_object_t obj_type, void *data)
   case SR_STATE_OBJ_PHASE:
     obj = &sr_state->phase;
     break;
-  case SR_STATE_OBJ_COMMIT:
   case SR_STATE_OBJ_VALID_AFTER:
   default:
     tor_assert(0);
@@ -874,7 +872,6 @@ state_query_put_(sr_state_object_t obj_type, void *data)
    * the commits should be put individually. */
   case SR_STATE_OBJ_PHASE:
   case SR_STATE_OBJ_COMMITS:
-  case SR_STATE_OBJ_COMMIT_RSA:
   default:
     tor_assert(0);
   }
@@ -900,7 +897,6 @@ state_query_del_all_(sr_state_object_t obj_type)
   case SR_STATE_OBJ_PREVSRV:
   case SR_STATE_OBJ_PHASE:
   case SR_STATE_OBJ_COMMITS:
-  case SR_STATE_OBJ_COMMIT_RSA:
   case SR_STATE_OBJ_VALID_AFTER:
   default:
     tor_assert(0);
@@ -1089,13 +1085,13 @@ sr_state_update(time_t valid_after)
 /* Return commit object from the given authority digest <b>identity</b>.
  * Return NULL if not found. */
 sr_commit_t *
-sr_state_get_commit_by_rsa(const char* rsa_fpr)
+sr_state_get_commit(const char *rsa_fpr)
 {
   sr_commit_t *commit;
 
   tor_assert(rsa_fpr);
 
-  state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_COMMIT_RSA,
+  state_query(SR_STATE_ACTION_GET, SR_STATE_OBJ_COMMIT,
               (void *) rsa_fpr, (void *) &commit);
   return commit;
 }
@@ -1112,7 +1108,7 @@ sr_state_add_commit(sr_commit_t *commit)
               (void *) commit, NULL);
 
   log_debug(LD_DIR, "SR: Commit from %s has been added to our state.",
-           commit->auth_fingerprint);
+           commit->rsa_identity_fpr);
 }
 
 /* Remove all commits from our state. */
@@ -1140,7 +1136,7 @@ sr_state_copy_reveal_info(sr_commit_t *saved_commit, const sr_commit_t *commit)
   state_query(SR_STATE_ACTION_SAVE, 0, NULL, NULL);
   log_debug(LD_DIR, "SR: Reveal value learned %s (for commit %s) from %s",
             saved_commit->encoded_reveal, saved_commit->encoded_commit,
-            saved_commit->auth_fingerprint);
+            saved_commit->rsa_identity_fpr);
 }
 
 /* Set the fresh SRV flag from our state. This doesn't need to trigger a

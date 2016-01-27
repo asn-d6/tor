@@ -122,19 +122,14 @@ srv_dup(const sr_srv_t *orig)
  * that MUST be provided. The digest algorithm is set to the default one
  * that is supported. The rest is uninitialized. This never returns NULL. */
 static sr_commit_t *
-commit_new(const ed25519_public_key_t *identity,
-           const char *rsa_identity_fpr)
+commit_new(const char *rsa_identity_fpr)
 {
   sr_commit_t *commit;
 
-  tor_assert(identity);
   tor_assert(rsa_identity_fpr);
 
   commit = tor_malloc_zero(sizeof(*commit));
   commit->alg = SR_DIGEST_ALG;
-  memcpy(&commit->auth_identity, identity, sizeof(commit->auth_identity));
-  /* This call can't fail. */
-  ed25519_public_to_base64(commit->auth_fingerprint, identity);
   strlcpy(commit->rsa_identity_fpr, rsa_identity_fpr,
           sizeof(commit->rsa_identity_fpr));
   return commit;
@@ -146,8 +141,7 @@ commit_log(const sr_commit_t *commit)
 {
   tor_assert(commit);
 
-  log_debug(LD_DIR, "SR: Commit from %s [voted by %s]",
-            commit->auth_fingerprint, commit->rsa_identity_fpr);
+  log_debug(LD_DIR, "SR: Commit from %s", commit->rsa_identity_fpr);
 
   if (commit->commit_ts >= 0) {
     log_debug(LD_DIR, "SR: Commit: [TS: %ld] [H(R): %s...]",
@@ -393,7 +387,7 @@ get_srv_element_from_commit(const sr_commit_t *commit)
     return NULL;
   }
 
-  tor_asprintf(&element, "%s%s", commit->auth_fingerprint,
+  tor_asprintf(&element, "%s%s", commit->rsa_identity_fpr,
                commit->encoded_reveal);
   return element;
 }
@@ -457,7 +451,7 @@ get_vote_line_from_commit(const sr_commit_t *commit)
   case SR_PHASE_COMMIT:
     tor_asprintf(&vote_line, "%s %s %s %s\n",
                  commit_ns_str,
-                 commit->auth_fingerprint,
+                 commit->rsa_identity_fpr,
                  crypto_digest_algorithm_get_name(commit->alg),
                  commit->encoded_commit);
     break;
@@ -471,7 +465,7 @@ get_vote_line_from_commit(const sr_commit_t *commit)
     }
     tor_asprintf(&vote_line, "%s %s %s %s %s\n",
                  commit_ns_str,
-                 commit->auth_fingerprint,
+                 commit->rsa_identity_fpr,
                  crypto_digest_algorithm_get_name(commit->alg),
                  commit->encoded_commit, reveal_str);
     break;
@@ -555,20 +549,20 @@ commitments_are_the_same(const sr_commit_t *commit_one,
  * is, it belongs to the authority that voted it. Else return 0 if not. */
 STATIC int
 commit_is_authoritative(const sr_commit_t *commit,
-                        const ed25519_public_key_t *identity)
+                        const char *voter_key)
 {
   tor_assert(commit);
-  tor_assert(identity);
+  tor_assert(voter_key);
 
-  return ed25519_pubkey_eq(&commit->auth_identity, identity);
+  return !memcmp(&commit->rsa_identity_fpr, voter_key,
+                 sizeof(commit->rsa_identity_fpr));
 }
 
 /* Decide if the newly received <b>commit</b> should be kept depending on the
  * current phase and state of the protocol. Return 1 if the commit should be
  * added to our state or 0 if not. */
 STATIC int
-should_keep_commit(sr_commit_t *commit,
-                   const ed25519_public_key_t *voter_key)
+should_keep_commit(sr_commit_t *commit, const char *voter_key)
 {
   sr_commit_t *saved_commit;
 
@@ -576,7 +570,7 @@ should_keep_commit(sr_commit_t *commit,
   tor_assert(voter_key);
 
   log_debug(LD_DIR, "SR: Inspecting commit from %s (voter: %s)?",
-            commit->auth_fingerprint, commit->rsa_identity_fpr);
+            commit->rsa_identity_fpr, voter_key);
 
   /* For a commit to be considered, it needs to be authoritative (it should
    * be the voter's own commit). */
@@ -586,10 +580,8 @@ should_keep_commit(sr_commit_t *commit,
   }
 
   /* Check if the authority that voted for <b>commit</b> has already posted
-   * a commit before. We use the RSA identity key to check from previous
-   * commits because an authority is allowed to rotate its ed25519 identity
-   * keys. */
-  saved_commit = sr_state_get_commit_by_rsa(commit->rsa_identity_fpr);
+   * a commit before. */
+  saved_commit = sr_state_get_commit(commit->rsa_identity_fpr);
 
   switch (sr_state_get_phase()) {
   case SR_PHASE_COMMIT:
@@ -603,7 +595,7 @@ should_keep_commit(sr_commit_t *commit,
     if (commit_has_reveal_value(commit)) {
       log_warn(LD_BUG, "SR: Commit from authority %s has a reveal value "
                        "during COMMIT phase. (voter: %s)",
-               commit->auth_fingerprint, commit->rsa_identity_fpr);
+               commit->rsa_identity_fpr, voter_key);
       goto ignore;
     }
     break;
@@ -627,7 +619,7 @@ should_keep_commit(sr_commit_t *commit,
     if (!commitments_are_the_same(commit, saved_commit)) {
       log_warn(LD_DIR, "SR: Commit from authority %s is different from "
                        "previous commit in our state (voter: %s)",
-               commit->auth_fingerprint, commit->rsa_identity_fpr);
+               commit->rsa_identity_fpr, voter_key);
       goto ignore;
     }
 
@@ -644,7 +636,7 @@ should_keep_commit(sr_commit_t *commit,
     if (verify_commit_and_reveal(commit) < 0) {
       log_warn(LD_BUG, "SR: Commit from authority %s has an invalid "
                        "reveal value. (voter: %s)",
-               commit->auth_fingerprint, commit->rsa_identity_fpr);
+               commit->rsa_identity_fpr, voter_key);
       goto ignore;
     }
     break;
@@ -668,7 +660,7 @@ save_commit_during_reveal_phase(const sr_commit_t *commit)
   tor_assert(commit);
 
   /* Get the commit from our state. */
-  saved_commit = sr_state_get_commit_by_rsa(commit->rsa_identity_fpr);
+  saved_commit = sr_state_get_commit(commit->rsa_identity_fpr);
   tor_assert(saved_commit);
   /* Safety net. They can not be different commitments at this point. */
   int same_commits = commitments_are_the_same(commit, saved_commit);
@@ -849,13 +841,8 @@ sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
 {
   sr_commit_t *commit = NULL;
   char fingerprint[FINGERPRINT_LEN+1];
-  const ed25519_public_key_t *identity_key;
 
   tor_assert(my_rsa_cert);
-
-  /* Get our ed25519 master key */
-  identity_key = get_master_identity_key();
-  tor_assert(identity_key);
 
   /* Get our RSA identity fingerprint */
   if (crypto_pk_get_fingerprint(my_rsa_cert->identity_key,
@@ -864,7 +851,7 @@ sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
   }
 
   /* New commit with our identity key. */
-  commit = commit_new(identity_key, fingerprint);
+  commit = commit_new(fingerprint);
 
   {
     int ret;
@@ -1027,18 +1014,17 @@ sr_parse_srv(smartlist_t *args)
  * allocated commit object. NULL is returned on error.
  *
  * The commit's data is in <b>args</b> and the order matters very much:
- *  algname, ed25519 identity, RSA fingerprint, commit value[, reveal value]
+ *  algname, RSA fingerprint, commit value[, reveal value]
  */
 sr_commit_t *
 sr_parse_commit(smartlist_t *args)
 {
   char *value;
-  ed25519_public_key_t pubkey;
   digest_algorithm_t alg;
   const char *rsa_identity_fpr;
   sr_commit_t *commit = NULL;
 
-  if (smartlist_len(args) < 4) {
+  if (smartlist_len(args) < 3) {
     goto error;
   }
 
@@ -1050,29 +1036,22 @@ sr_parse_commit(smartlist_t *args)
              escaped(value));
     goto error;
   }
-  /* Second arg is the authority ed25519 identity. */
-  value = smartlist_get(args, 1);
-  if (ed25519_public_from_base64(&pubkey, value) < 0) {
-    log_warn(LD_BUG, "SR: Commit identity %s is not recognized.",
-             escaped(value));
-    goto error;
-  }
 
-  /* Third argument is the RSA fingerprint of the auth */
-  rsa_identity_fpr = smartlist_get(args, 2);
+  /* Second argument is the RSA fingerprint of the auth */
+  rsa_identity_fpr = smartlist_get(args, 1);
 
   /* Allocate commit since we have a valid identity now. */
-  commit = commit_new(&pubkey, rsa_identity_fpr);
+  commit = commit_new(rsa_identity_fpr);
 
-  /* Fourth argument is the commitment value base64-encoded. */
-  value = smartlist_get(args, 3);
+  /* Third argument is the commitment value base64-encoded. */
+  value = smartlist_get(args, 2);
   if (commit_decode(value, commit) < 0) {
     goto error;
   }
 
-  /* (Optional) Fifth argument is the revealed value. */
-  if (smartlist_len(args) > 4) {
-    value = smartlist_get(args, 4);
+  /* (Optional) Fourth argument is the revealed value. */
+  if (smartlist_len(args) > 3) {
+    value = smartlist_get(args, 3);
     if (reveal_decode(value, commit) < 0) {
       goto error;
     }
@@ -1091,8 +1070,10 @@ sr_parse_commit(smartlist_t *args)
  * empty. */
 void
 sr_handle_received_commits(smartlist_t *commits,
-                           const ed25519_public_key_t *voter_key)
+                           crypto_pk_t *voter_key)
 {
+  char rsa_identity_fpr[FINGERPRINT_LEN + 1];
+
   tor_assert(voter_key);
 
   /* It's possible that the vote has _NO_ commits. */
@@ -1100,11 +1081,16 @@ sr_handle_received_commits(smartlist_t *commits,
     return;
   }
 
+  /* Get the RSA identity fingerprint of this voter */
+  if (crypto_pk_get_fingerprint(voter_key, rsa_identity_fpr, 0) < 0) {
+    return;
+  }
+
   SMARTLIST_FOREACH_BEGIN(commits, sr_commit_t *, commit) {
     /* We won't need the commit in this list anymore, kept or not. */
     SMARTLIST_DEL_CURRENT(commits, commit);
     /* Check if this commit is valid and should be stored in our state. */
-    if (!should_keep_commit(commit, voter_key)) {
+    if (!should_keep_commit(commit, rsa_identity_fpr)) {
       sr_commit_free(commit);
       continue;
     }

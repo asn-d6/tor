@@ -16,10 +16,8 @@ typedef enum {
 
 /* Object in the state that can be queried through the state API. */
 typedef enum {
-  /* Will return a single commit using an authority master ed25519 key. */
+  /* Will return a single commit using an authority identity key. */
   SR_STATE_OBJ_COMMIT,
-  /* Will return a single commit using an authority RSA key. */
-  SR_STATE_OBJ_COMMIT_RSA,
   /* Returns the entire list of commits from the state. */
   SR_STATE_OBJ_COMMITS,
   /* Return the current SRV object pointer. */
@@ -108,7 +106,7 @@ void sr_state_set_previous_srv(sr_srv_t *srv);
 void sr_state_set_current_srv(sr_srv_t *srv);
 void sr_state_clean_srvs(void);
 digestmap_t *sr_state_get_commits(void);
-sr_commit_t *sr_state_get_commit_by_rsa(const char *rsa_fpr);
+sr_commit_t *sr_state_get_commit(const char *rsa_fpr);
 void sr_state_add_commit(sr_commit_t *commit);
 void sr_state_delete_commits(void);
 void sr_state_copy_reveal_info(sr_commit_t *saved_commit,

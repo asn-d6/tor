@@ -2851,63 +2851,6 @@ networkstatus_verify_bw_weights(networkstatus_t *ns, int consensus_method)
   return valid;
 }
 
-/** We are parsing the vote document in <b>ns</b>. Extract the ed25519 signing
- *  certificate and verify its validity. For the SR protocol, we are interested
- *  in the ed25519 master key, so save it directly in <b>ns</b> for future
- *  use. */
-static int
-extract_ed25519_keys_from_vote(networkstatus_t *ns, smartlist_t *tokens)
-{
-  tor_cert_t *sign_cert = NULL;
-  time_t now = time(NULL);
-
-  directory_token_t *sign_cert_tok =
-    find_opt_by_keyword(tokens, K_SIGNING_CERT_ED);
-
-  if (!sign_cert_tok) {
-    log_warn(LD_BUG, "Vote contained SR info but no ed25519 keys!");
-    goto err;
-  }
-
-  /* Do some basic validation */
-  if (strcmp(sign_cert_tok->object_type, "ED25519 CERT")) {
-    log_warn(LD_BUG, "Wrong object type on signing-ed25519");
-    goto err;
-  }
-
-  /* Parse the signing key certificate */
-  sign_cert = tor_cert_parse((const uint8_t*)sign_cert_tok->object_body,
-                             sign_cert_tok->object_size);
-  if (!sign_cert) {
-    log_warn(LD_BUG, "Couldn't parse ed25519 signing cert");
-    goto err;
-  }
-  /* The signing cert needs to include the key that signed the cert since
-     that's the master ed25519 key of the auth! */
-  if (!sign_cert->signing_key_included) {
-    log_warn(LD_BUG, "Signing cert did not include master key!");
-    goto err;
-  }
-
-  /* Verify signing key certificate using the master key included in the
-     cert */
-  if (tor_cert_checksig(sign_cert, &sign_cert->signing_key, now) < 0) {
-    log_warn(LD_BUG, "Couldn't verify sig of signing cert");
-    goto err;
-  }
-
-  /* Everything looks valid! Save useful information in the networkstatus. */
-  ns->ed25519_signing_key_cert = sign_cert;
-
-  log_debug(LD_DIR, "Successfuly extracted ed25519 keys from vote.");
-  return 0;
-
- err:
-  tor_cert_free(sign_cert);
-
-  return -1;
-}
-
 /** Parse and extract all SR commits from <b>tokens</b> and place them in
  *  <b>ns</b>. Return -1 on failure, and 0 on success. */
 static int
@@ -2937,7 +2880,10 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
   }
 
   /* To parse a commit, it needs to be ordered like so:
-   *    algname SP identity SP rsa_fpr SP commitment [SP reveal]
+   *    algname SP rsa_fpr SP commit [SP reveal]
+   *
+   * The commit order in a vote is specified by proposal 250:
+   *    rsa_fpr SP algname SP commit [SP reveal]
    */
   chunks = smartlist_new();
   SMARTLIST_FOREACH_BEGIN(commits, directory_token_t *, tok) {
@@ -2945,10 +2891,8 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
 
     /* Hash algorithm. */
     smartlist_add(chunks, tok->args[1]);
-    /* Commit's authority ed25519 identity key. */
-    smartlist_add(chunks, tok->args[0]);
     /* Commit's authority RSA fingerprint. */
-    smartlist_add(chunks, rsa_identity_fpr);
+    smartlist_add(chunks, tok->args[0]);
     /* Commit value. */
     smartlist_add(chunks, tok->args[2]);
     if (tok->n_args > 3) {
@@ -3385,10 +3329,6 @@ networkstatus_parse_vote_from_string(const char *s, const char **eos_out,
     tok = find_opt_by_keyword(tokens, K_SR_FLAG);
     if (tok) {
       ns->sr_info.participate = 1;
-      /* Get the ed25519 identity key of voter (required for SR protocol). */
-      if (extract_ed25519_keys_from_vote(ns, tokens) < 0) {
-        goto err;
-      }
       /* Get the SR commitments and reveals from the vote. */
       if (extract_shared_random_commits(ns, tokens) < 0) {
         log_warn(LD_DIR, "SR: Unable to parse commits in vote.");

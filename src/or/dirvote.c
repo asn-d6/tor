@@ -3007,7 +3007,7 @@ dirvote_add_vote(const char *vote_body, const char **msg_out, int *status_out)
 
   /* This a valid vote, update our shared random state. */
   sr_handle_received_commits(vote->sr_info.commits,
-                             &vote->ed25519_signing_key_cert->signing_key);
+                             vote->cert->identity_key);
 
   pending_vote = tor_malloc_zero(sizeof(pending_vote_t));
   pending_vote->vote_body = new_cached_dir(tor_strndup(vote_body,

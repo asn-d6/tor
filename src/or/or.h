@@ -2595,10 +2595,6 @@ typedef struct networkstatus_t {
    * routerstatus_list. */
   digestmap_t *desc_digest_map;
 
-  /** Ed25519 signing key certificate, if included. This cert must
-   *  also include the ed25519 master key as the signing_key. */
-  struct tor_cert_st *ed25519_signing_key_cert;
-
   /** Contains the shared random protocol data from a vote or consensus. */
   networkstatus_sr_info_t sr_info;
 } networkstatus_t;

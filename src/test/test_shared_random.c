@@ -276,7 +276,6 @@ test_sr_commit(void *arg)
     sr_commit_t *parsed_commit;
     smartlist_add(args,
                tor_strdup(crypto_digest_algorithm_get_name(our_commit->alg)));
-    smartlist_add(args, our_commit->auth_fingerprint);
     smartlist_add(args, our_commit->rsa_identity_fpr);
     smartlist_add(args, our_commit->encoded_commit);
     smartlist_add(args, our_commit->encoded_reveal);
@@ -435,7 +434,7 @@ test_vote(void *arg)
     tt_assert(our_commit);
     sr_state_add_commit(our_commit);
     /* Make sure it's there. */
-    saved_commit = sr_state_get_commit_by_rsa(our_commit->rsa_identity_fpr);
+    saved_commit = sr_state_get_commit(our_commit->rsa_identity_fpr);
     tt_assert(saved_commit);
   }
 
@@ -462,7 +461,7 @@ test_vote(void *arg)
     tt_int_op(ret, ==, 5);
     tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-commit");
     tt_str_op(smartlist_get(tokens, 1), OP_EQ,
-              our_commit->auth_fingerprint);
+              our_commit->rsa_identity_fpr);
     tt_str_op(smartlist_get(tokens, 2), OP_EQ,
               crypto_digest_algorithm_get_name(DIGEST_SHA256));
     tt_str_op(smartlist_get(tokens, 3), OP_EQ, our_commit->encoded_commit);
@@ -472,7 +471,6 @@ test_vote(void *arg)
     smartlist_t *args = smartlist_new();
     smartlist_add(args, smartlist_get(tokens, 2));
     smartlist_add(args, smartlist_get(tokens, 1));
-    smartlist_add(args, our_commit->rsa_identity_fpr);
     smartlist_add(args, smartlist_get(tokens, 3));
     smartlist_add(args, smartlist_get(tokens, 4));
     sr_commit_t *parsed_commit = sr_parse_commit(args);
@@ -523,15 +521,13 @@ test_vote(void *arg)
 
 const char *sr_state_str = "Version 1\n"
   "ValidUntil 2666-04-20 07:16:00\n"
-  "Commit sha256 RkoaSeZBiyJs23P6aOLEyUsumWwjWYnA+DQm1IaKXu8 FA3CEC2C99DC68D31"
-      "66B9B6E4FA21A4026C2AB1C 7M8GdubCAAdh7WUG0DiwRyxTYRKji7HATa7LLJEZ/UAAAAA"
-      "AVmfUSg== AAAAAFZn1EojfIheIw42bjK3VqkpYyjsQFSbv/dxNna3Q8hUEPKpOw==\n"
-  "Commit sha256 2qZjhYjXODdx122TNUlegLLWWDe5R1B449vx2KU9hsI 41E89EDFBFBA44983"
-     "E21F18F2230A4ECB5BFB543 "
+  "Commit sha256 FA3CEC2C99DC68D3166B9B6E4FA21A4026C2AB1C "
+      "7M8GdubCAAdh7WUG0DiwRyxTYRKji7HATa7LLJEZ/UAAAAAAVmfUSg== "
+      "AAAAAFZn1EojfIheIw42bjK3VqkpYyjsQFSbv/dxNna3Q8hUEPKpOw==\n"
+  "Commit sha256 41E89EDFBFBA44983E21F18F2230A4ECB5BFB543 "
      "17aUsYuMeRjd2N1r8yNyg7aHqRa6gf4z7QPoxxAZbp0AAAAAVmfUSg==\n"
-  "Commit sha256 hujjN0PEfkQlOnBKTH0WlGPOs6PdYoe8tuEMeS6C4cw 36637026573A04110"
-     "CF3E6B1D201FB9A98B88734 DDDYtripvdOU+XPEUm5xpU64d9IURSds1xSwQsgeB8oAAAAA"
-     "VmfUSg==\n"
+  "Commit sha256 36637026573A04110CF3E6B1D201FB9A98B88734 "
+     "DDDYtripvdOU+XPEUm5xpU64d9IURSds1xSwQsgeB8oAAAAAVmfUSg==\n"
   "SharedRandCurrentValue 3 F1D59E5B5D8A1334C61222C680ED54549ED9F7"
      "509E92845CC6DE90F4A8673852\n"
   "SharedRandPreviousValue 4 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -626,9 +622,6 @@ test_sr_setup_commits(void)
     strlcpy(commit_a->rsa_identity_fpr,
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             sizeof(commit_a->rsa_identity_fpr));
-    strlcpy(commit_a->auth_fingerprint,
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            sizeof(commit_a->auth_fingerprint));
     strlcpy(commit_a->encoded_reveal,
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             sizeof(commit_a->encoded_reveal));
@@ -642,9 +635,6 @@ test_sr_setup_commits(void)
     strlcpy(commit_b->rsa_identity_fpr,
             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             sizeof(commit_b->rsa_identity_fpr));
-    strlcpy(commit_b->auth_fingerprint,
-            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            sizeof(commit_b->auth_fingerprint));
     strlcpy(commit_b->encoded_reveal,
             "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
           sizeof(commit_b->encoded_reveal));
@@ -658,9 +648,6 @@ test_sr_setup_commits(void)
     strlcpy(commit_c->rsa_identity_fpr,
             "ccccccccccccccccccccccccccccccccccccccccccccccccc",
             sizeof(commit_c->rsa_identity_fpr));
-    strlcpy(commit_c->auth_fingerprint,
-            "ccccccccccccccccccccccccccccccccccccccccccc",
-            sizeof(commit_c->auth_fingerprint));
     strlcpy(commit_c->encoded_reveal,
             "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
             sizeof(commit_c->encoded_reveal));
@@ -674,9 +661,6 @@ test_sr_setup_commits(void)
     strlcpy(commit_d->rsa_identity_fpr,
             "ddddddddddddddddddddddddddddddddddddddddddddddddd",
             sizeof(commit_d->rsa_identity_fpr));
-    strlcpy(commit_d->auth_fingerprint,
-            "ddddddddddddddddddddddddddddddddddddddddddd",
-            sizeof(commit_d->auth_fingerprint));
     strlcpy(commit_d->encoded_reveal,
             "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
             sizeof(commit_d->encoded_reveal));
@@ -717,7 +701,7 @@ test_sr_compute_srv(void *arg)
   sr_srv_t *current_srv = NULL;
 
 #define SRV_TEST_VECTOR \
-  "BD2D7C0D3F9680585828389C787E3D478C3DDFCD1EB39E42A9D7B49D1ABCB7FC"
+  "1BDB7C3E973936E4D13A49F37C859B3DC69C429334CF9412E3FEF6399C52D47A"
 
   sr_state_init(0, 0);
 
@@ -870,7 +854,7 @@ test_utils(void *arg)
   {
     sr_srv_t *srv = NULL, *dup_srv = NULL;
     const char *srv_value =
-      "BD2D7C0D3F9680585828389C787E3D478C3DDFCD1EB39E42A9D7B49D1ABCB7FC";
+      "1BDB7C3E973936E4D13A49F37C859B3DC69C429334CF9412E3FEF6399C52D47A";
     srv = tor_malloc_zero(sizeof(*srv));
     srv->num_reveals = 42;
     memcpy(srv->value, srv_value, sizeof(srv->value));
@@ -903,17 +887,18 @@ test_utils(void *arg)
 
   /* Testing commit_is_authoritative(). */
   {
-    const char *seed = "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY";
-    ed25519_keypair_t kp;
+    crypto_pk_t *k = crypto_pk_new();
+    char fp[FINGERPRINT_LEN + 1];
     sr_commit_t commit;
 
-    ed25519_secret_key_from_seed(&kp.seckey, (const uint8_t *) seed);
-    ed25519_public_key_generate(&kp.pubkey, &kp.seckey);
-    memcpy(&commit.auth_identity, &kp.pubkey, sizeof(commit.auth_identity));
-    tt_int_op(commit_is_authoritative(&commit, &kp.pubkey), ==, 1);
+    tt_assert(!crypto_pk_generate_key(k));
+
+    tt_int_op(0, ==, crypto_pk_get_fingerprint(k, fp, 0));
+    memcpy(fp, commit.rsa_identity_fpr, sizeof(fp));
+    tt_int_op(commit_is_authoritative(&commit, fp), ==, 1);
     /* Change the pubkey. */
-    memset(&commit.auth_identity, 0, sizeof(commit.auth_identity));
-    tt_int_op(commit_is_authoritative(&commit, &kp.pubkey), ==, 0);
+    memset(commit.rsa_identity_fpr, 0, sizeof(commit.rsa_identity_fpr));
+    tt_int_op(commit_is_authoritative(&commit, fp), ==, 0);
   }
 
   /* Testing get_phase_str(). */
@@ -1050,11 +1035,11 @@ static void
 test_keep_commit(void *arg)
 {
   authority_cert_t *auth_cert;
-  ed25519_keypair_t kp;
+  crypto_pk_t *k = crypto_pk_new();
+  char fp[FINGERPRINT_LEN + 1];
   sr_commit_t *commit = NULL, *dup_commit = NULL;
   sr_state_t *state;
   time_t now = time(NULL);
-  const char *seed = "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY";
 
   (void) arg;
 
@@ -1064,9 +1049,9 @@ test_keep_commit(void *arg)
     tt_assert(auth_cert);
     options->AuthoritativeDir = 1;
     tt_int_op(0, ==, load_ed_keys(options, now));
-    /* Have an ed key that is not the one from our commit. */
-    ed25519_secret_key_from_seed(&kp.seckey, (const uint8_t *) seed);
-    ed25519_public_key_generate(&kp.pubkey, &kp.seckey);
+    /* Have a key that is not the one from our commit. */
+    tt_int_op(0, ==, crypto_pk_generate_key(k));
+    tt_int_op(0, ==, crypto_pk_get_fingerprint(k, fp, 0));
     sr_state_init(0, 0);
     state = get_sr_state();
   }
@@ -1079,18 +1064,18 @@ test_keep_commit(void *arg)
   /* Set us in COMMIT phase for starter. */
   set_sr_phase(SR_PHASE_COMMIT);
   /* We should never keep a commit from a non authoritative authority. */
-  tt_int_op(should_keep_commit(commit, &kp.pubkey), ==, 0);
+  tt_int_op(should_keep_commit(commit, fp), ==, 0);
   /* This should NOT be kept because it has a reveal value in it. */
   tt_assert(commit_has_reveal_value(commit));
-  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 0);
+  tt_int_op(should_keep_commit(commit, commit->rsa_identity_fpr), ==, 0);
   /* Add it to the state which should return to not keep it. */
   sr_state_add_commit(commit);
-  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 0);
+  tt_int_op(should_keep_commit(commit, commit->rsa_identity_fpr), ==, 0);
   /* Remove it from state so we can continue our testing. */
   digestmap_remove(state->commits, commit->rsa_identity_fpr);
   /* Let's remove our reveal value which should make it OK to keep it. */
   memset(commit->encoded_reveal, 0, sizeof(commit->encoded_reveal));
-  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 1);
+  tt_int_op(should_keep_commit(commit, commit->rsa_identity_fpr), ==, 1);
 
   /* Let's reset our commit and go into REVEAL phase. */
   sr_commit_free(commit);
@@ -1102,15 +1087,15 @@ test_keep_commit(void *arg)
   memset(dup_commit->encoded_reveal, 0, sizeof(dup_commit->encoded_reveal));
   set_sr_phase(SR_PHASE_REVEAL);
   /* We should never keep a commit from a non authoritative authority. */
-  tt_int_op(should_keep_commit(commit, &kp.pubkey), ==, 0);
+  tt_int_op(should_keep_commit(commit, fp), ==, 0);
   /* We shouldn't accept a commit that is not in our state. */
-  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 0);
+  tt_int_op(should_keep_commit(commit, commit->rsa_identity_fpr), ==, 0);
   /* Important to add the commit _without_ the reveal here. */
   sr_state_add_commit(dup_commit);
   tt_int_op(digestmap_size(state->commits), ==, 1);
   /* Our commit should be valid that is authoritative, contains a reveal, be
    * in the state and commitment and reveal values match. */
-  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 1);
+  tt_int_op(should_keep_commit(commit, commit->rsa_identity_fpr), ==, 1);
   /* The commit shouldn't be kept if it's not verified that is no matchin
    * hashed reveal. */
   {
@@ -1119,15 +1104,15 @@ test_keep_commit(void *arg)
     memcpy(place_holder.hashed_reveal, commit->hashed_reveal,
            sizeof(place_holder.hashed_reveal));
     memset(commit->hashed_reveal, 0, sizeof(commit->hashed_reveal));
-    tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 0);
+    tt_int_op(should_keep_commit(commit, commit->rsa_identity_fpr), ==, 0);
     memcpy(commit->hashed_reveal, place_holder.hashed_reveal,
            sizeof(commit->hashed_reveal));
   }
   /* We shouldn't keep a commit that has no reveal. */
-  tt_int_op(should_keep_commit(dup_commit, &dup_commit->auth_identity), ==, 0);
+  tt_int_op(should_keep_commit(dup_commit, dup_commit->rsa_identity_fpr), ==, 0);
   /* We must not keep a commit that is not the same from the commit phase. */
   memset(commit->encoded_commit, 0, sizeof(commit->encoded_commit));
-  tt_int_op(should_keep_commit(commit, &commit->auth_identity), ==, 0);
+  tt_int_op(should_keep_commit(commit, commit->rsa_identity_fpr), ==, 0);
 
  done:
   sr_commit_free(commit);
