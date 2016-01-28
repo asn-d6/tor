@@ -443,10 +443,10 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
 /* Compare commit identity RSA fingerprint and return the result. This
  * should exclusively be used by smartlist_sort(). */
 static int
-compare_commit_identity_(const void **_a, const void **_b)
+compare_reveal_(const void **_a, const void **_b)
 {
-  return strcmp(((sr_commit_t *)*_a)->rsa_identity_fpr,
-                ((sr_commit_t *)*_b)->rsa_identity_fpr);
+  return strcmp(((sr_commit_t *)*_a)->hashed_reveal,
+                ((sr_commit_t *)*_b)->hashed_reveal);
 }
 
 /* Given <b>commit</b> give the line that we should place in our votes.
@@ -944,7 +944,7 @@ sr_compute_srv(void)
   DIGESTMAP_FOREACH(state_commits, key, sr_commit_t *, c) {
     smartlist_add(commits, c);
   } DIGESTMAP_FOREACH_END;
-  smartlist_sort(commits, compare_commit_identity_);
+  smartlist_sort(commits, compare_reveal_);
 
   /* Now for each commit for that sorted list in ascending order, we'll
    * build the element for each authority that needs to go into the srv
