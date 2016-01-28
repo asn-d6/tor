@@ -221,7 +221,7 @@ commit_has_reveal_value(const sr_commit_t *commit)
 }
 
 /* Parse the encoded commit. The format is:
- *    base64-encode( H(REVEAL) || TIMESTAMP )
+ *    base64-encode( TIMESTAMP || H(REVEAL) )
  *
  * If successfully decoded and parsed, commit is updated and 0 is returned.
  * On error, return -1. */
@@ -261,11 +261,12 @@ commit_decode(const char *encoded, sr_commit_t *commit)
     goto error;
   }
 
-  /* First is the hashed reaveal. */
-  memcpy(commit->hashed_reveal, b64_decoded, sizeof(commit->hashed_reveal));
-  offset += sizeof(commit->hashed_reveal);
-  /* Next is timestamp. */
-  commit->commit_ts = (time_t) tor_ntohll(get_uint64(b64_decoded + offset));
+  /* First is the timestamp (8 bytes). */
+  commit->commit_ts = (time_t) tor_ntohll(get_uint64(b64_decoded));
+  offset += sizeof(uint64_t);
+  /* Next is hashed reveal. */
+  memcpy(commit->hashed_reveal, b64_decoded + offset,
+         sizeof(commit->hashed_reveal));
   /* Copy the base64 blob to the commit. Useful for voting. */
   strncpy(commit->encoded_commit, encoded, sizeof(commit->encoded_commit));
 
@@ -353,7 +354,7 @@ reveal_encode(sr_commit_t *commit, char *dst, size_t len)
 
 /* Encode the given commit object to dst which is a buffer large enough to
  * put the base64-encoded commit. The format is as follow:
- *     COMMIT = base64-encode( H(REVEAL) || TIMESTAMP )
+ *     COMMIT = base64-encode( TIMESTAMP || H(REVEAL) )
  * Return base64 encoded length on success else a negative value.
  */
 STATIC int
@@ -365,11 +366,12 @@ commit_encode(sr_commit_t *commit, char *dst, size_t len)
   tor_assert(commit);
   tor_assert(dst);
 
-  /* First is the hashed reveal. */
-  memcpy(buf, commit->hashed_reveal, sizeof(commit->hashed_reveal));
-  offset += sizeof(commit->hashed_reveal);
-  /* and then the timestamp */
-  set_uint64(buf + offset, tor_htonll((uint64_t) commit->commit_ts));
+  /* First is the timestamp (8 bytes). */
+  set_uint64(buf, tor_htonll((uint64_t) commit->commit_ts));
+  offset += sizeof(uint64_t);
+  /* and then the hashed reveal. */
+  memcpy(buf + offset, commit->hashed_reveal,
+         sizeof(commit->hashed_reveal));
 
   /* Clean the buffer and then b64 encode it. */
   memset(dst, 0, len);
