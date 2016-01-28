@@ -2890,9 +2890,9 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
     tor_assert(tok->n_args >= 3);
 
     /* Hash algorithm. */
-    smartlist_add(chunks, tok->args[1]);
-    /* Commit's authority RSA fingerprint. */
     smartlist_add(chunks, tok->args[0]);
+    /* Commit's authority RSA fingerprint. */
+    smartlist_add(chunks, tok->args[1]);
     /* Commit value. */
     smartlist_add(chunks, tok->args[2]);
     if (tok->n_args > 3) {

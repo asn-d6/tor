@@ -463,8 +463,8 @@ get_vote_line_from_commit(const sr_commit_t *commit)
   case SR_PHASE_COMMIT:
     tor_asprintf(&vote_line, "%s %s %s %s\n",
                  commit_ns_str,
-                 commit->rsa_identity_fpr,
                  crypto_digest_algorithm_get_name(commit->alg),
+                 commit->rsa_identity_fpr,
                  commit->encoded_commit);
     break;
   case SR_PHASE_REVEAL:
@@ -477,8 +477,8 @@ get_vote_line_from_commit(const sr_commit_t *commit)
     }
     tor_asprintf(&vote_line, "%s %s %s %s %s\n",
                  commit_ns_str,
-                 commit->rsa_identity_fpr,
                  crypto_digest_algorithm_get_name(commit->alg),
+                 commit->rsa_identity_fpr,
                  commit->encoded_commit, reveal_str);
     break;
   }
