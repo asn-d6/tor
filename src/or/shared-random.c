@@ -330,7 +330,7 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
 /* Encode a reveal element using a given commit object to dst which is a
  * buffer large enough to put the base64-encoded reveal construction. The
  * format is as follow:
- *     REVEAL = base64-encode( TIMESTAMP || RN )
+ *     REVEAL = base64-encode( TIMESTAMP || H(RN) )
  * Return base64 encoded length on success else a negative value.
  */
 STATIC int
@@ -354,7 +354,7 @@ reveal_encode(sr_commit_t *commit, char *dst, size_t len)
 
 /* Encode the given commit object to dst which is a buffer large enough to
  * put the base64-encoded commit. The format is as follow:
- *     COMMIT = base64-encode( TIMESTAMP || H(REVEAL) )
+ *     COMMIT = base64-encode( TIMESTAMP || H(H(RN)) )
  * Return base64 encoded length on success else a negative value.
  */
 STATIC int
@@ -867,7 +867,7 @@ sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
 
   {
     int ret;
-    char raw_rand[SR_RANDOM_NUMBER_LEN];
+    char raw_rand[SR_RANDOM_NUMBER_LEN] = {0};
     /* Generate the reveal random value */
     crypto_rand(raw_rand, sizeof(commit->random_number));
     /* Hash our random value in order to avoid sending the raw bytes of our

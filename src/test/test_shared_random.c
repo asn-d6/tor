@@ -302,30 +302,30 @@ test_encoding(void *arg)
   int ret, duper_rand = 42;
   /* Random number is 32 bytes. */
   char raw_rand[32];
-  uint64_t ts = 1449159312;
+  uint64_t ts = 1454333590;
   char hashed_rand[DIGEST256_LEN], hashed_reveal[DIGEST256_LEN];
   sr_commit_t parsed_commit;
 
-  /* Encoded commit is: base64-encode( H(H(42)) || 1449159312). Remember
+  /* Encoded commit is: base64-encode( 1454333590 || H(H(42)) ). Remember
    * that we do no expose the raw bytes of our PRNG to the network thus
    * explaining the double H(). */
   static const char *encoded_commit =
-    "iCJnPe0Vxcw2zY5TkFNVrPhuSBfPB4XLdaUGwKAhSqIAAAAAVmBqkA==";
-  /* Encoded reveal is: base64-encode( H(42) || 1449159312). */
+    "AAAAAFavXpZbx2LRneYFSLPCP8DLp9BXfeH5FXzbkxM4iRXKGeA54g==";
+  /* Encoded reveal is: base64-encode( 1454333590 || H(42) ). */
   static const char *encoded_reveal =
-    "AAAAAFZgapAk9x9kTjiQWUqjHwSAEOdPAfCaurXgjPy173SzYjeC2g==";
+    "AAAAAFavXpYk9x9kTjiQWUqjHwSAEOdPAfCaurXgjPy173SzYjeC2g==";
 
   /* Set up our raw random bytes array. */
   memset(raw_rand, 0, sizeof(raw_rand));
   memcpy(raw_rand, &duper_rand, sizeof(duper_rand));
   /* Hash random number. */
-  ret = crypto_digest256(hashed_rand, raw_rand, sizeof(raw_rand),
-                         DIGEST_SHA3_256);
+  ret = crypto_digest256(hashed_rand, raw_rand,
+                         sizeof(raw_rand), SR_DIGEST_ALG);
   tt_int_op(0, ==, ret);
   /* Hash reveal value. */
   tt_int_op(SR_REVEAL_BASE64_LEN, ==, strlen(encoded_reveal));
   ret = crypto_digest256(hashed_reveal, encoded_reveal,
-                         strlen(encoded_reveal), DIGEST_SHA3_256);
+                         strlen(encoded_reveal), SR_DIGEST_ALG);
   tt_int_op(0, ==, ret);
   tt_int_op(SR_COMMIT_BASE64_LEN, ==, strlen(encoded_commit));
 
