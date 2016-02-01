@@ -625,6 +625,9 @@ test_sr_setup_commits(void)
     strlcpy(commit_a->encoded_reveal,
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             sizeof(commit_a->encoded_reveal));
+    memcpy(commit_a->hashed_reveal,
+           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+           sizeof(commit_a->hashed_reveal));
   }
 
   { /* Commit from auth 'b' */
@@ -638,6 +641,9 @@ test_sr_setup_commits(void)
     strlcpy(commit_b->encoded_reveal,
             "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
           sizeof(commit_b->encoded_reveal));
+    memcpy(commit_b->hashed_reveal,
+           "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+           sizeof(commit_b->hashed_reveal));
   }
 
   { /* Commit from auth 'c' */
@@ -651,6 +657,9 @@ test_sr_setup_commits(void)
     strlcpy(commit_c->encoded_reveal,
             "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
             sizeof(commit_c->encoded_reveal));
+    memcpy(commit_c->hashed_reveal,
+           "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+           sizeof(commit_c->hashed_reveal));
   }
 
   { /* Commit from auth 'd' */
@@ -664,6 +673,9 @@ test_sr_setup_commits(void)
     strlcpy(commit_d->encoded_reveal,
             "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
             sizeof(commit_d->encoded_reveal));
+    memcpy(commit_d->hashed_reveal,
+           "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+           sizeof(commit_d->hashed_reveal));
     /* Clean up its reveal info */
     memcpy(place_holder, commit_d, sizeof(*place_holder));
     memset(commit_d->encoded_reveal, 0, sizeof(commit_d->encoded_reveal));
