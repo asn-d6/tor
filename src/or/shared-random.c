@@ -442,13 +442,14 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   return srv;
 }
 
-/* Compare commit identity RSA fingerprint and return the result. This
- * should exclusively be used by smartlist_sort(). */
+/* Compare reveal values and return the result. This should exclusively be used
+ * by smartlist_sort(). */
 static int
 compare_reveal_(const void **_a, const void **_b)
 {
-  return strcmp(((sr_commit_t *)*_a)->hashed_reveal,
-                ((sr_commit_t *)*_b)->hashed_reveal);
+  const sr_commit_t *a = *_a, *b = *_b;
+  return fast_memcmp(a->hashed_reveal, b->hashed_reveal,
+                     sizeof(a->hashed_reveal));
 }
 
 /* Given <b>commit</b> give the line that we should place in our votes.
