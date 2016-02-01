@@ -461,16 +461,16 @@ test_vote(void *arg)
     tt_int_op(ret, ==, 5);
     tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-commit");
     tt_str_op(smartlist_get(tokens, 1), OP_EQ,
-              our_commit->rsa_identity_fpr);
-    tt_str_op(smartlist_get(tokens, 2), OP_EQ,
               crypto_digest_algorithm_get_name(DIGEST_SHA3_256));
+    tt_str_op(smartlist_get(tokens, 2), OP_EQ,
+              our_commit->rsa_identity_fpr);
     tt_str_op(smartlist_get(tokens, 3), OP_EQ, our_commit->encoded_commit);
     tt_str_op(smartlist_get(tokens, 4), OP_EQ, our_commit->encoded_reveal);
 
     /* Finally, does this vote line creates a valid commit object? */
     smartlist_t *args = smartlist_new();
-    smartlist_add(args, smartlist_get(tokens, 2));
     smartlist_add(args, smartlist_get(tokens, 1));
+    smartlist_add(args, smartlist_get(tokens, 2));
     smartlist_add(args, smartlist_get(tokens, 3));
     smartlist_add(args, smartlist_get(tokens, 4));
     sr_commit_t *parsed_commit = sr_parse_commit(args);
