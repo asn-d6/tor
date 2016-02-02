@@ -180,23 +180,20 @@ verify_commit_and_reveal(const sr_commit_t *commit)
   {
     /* We first hash the reveal we just received. */
     char received_hashed_reveal[sizeof(commit->hashed_reveal)];
+
+    /* Only sha3-256 is supported. */
+    if (commit->alg != SR_DIGEST_ALG) {
+      goto invalid;
+    }
+
     /* Use the invariant length since the encoded reveal variable has an
      * extra byte for the NUL terminated byte. */
-    switch (commit->alg) {
-    case DIGEST_SHA1:
-    case DIGEST_SHA256:
-    case DIGEST_SHA512:
-    case DIGEST_SHA3_512:
+    if (crypto_digest256(received_hashed_reveal, commit->encoded_reveal,
+                         SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
+      /* Unable to digest the reveal blob, this is unlikely. */
       goto invalid;
-    case DIGEST_SHA3_256:
-      /* Only sha3-256 is supported and the default. */
-    default:
-      if (crypto_digest256(received_hashed_reveal, commit->encoded_reveal,
-                           SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
-        /* Unable to digest the reveal blob, this is unlikely. */
-        goto invalid;
-      }
     }
+
     /* Now compare that with the hashed_reveal we received in COMMIT. */
     if (fast_memneq(received_hashed_reveal, commit->hashed_reveal,
                     sizeof(received_hashed_reveal))) {
@@ -889,23 +886,12 @@ sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
   }
 
   /* Now let's create the commitment */
-
-  switch (commit->alg) {
-  case DIGEST_SHA1:
-  case DIGEST_SHA256:
-  case DIGEST_SHA512:
-  case DIGEST_SHA3_512:
-    tor_assert(0);
-  case DIGEST_SHA3_256:
-    /* Only sha3-256 is supported and the default. */
-  default:
-    /* The invariant length is used here since the encoded reveal variable
-     * has an extra byte added for the NULL terminated byte. */
-    if (crypto_digest256(commit->hashed_reveal, commit->encoded_reveal,
-                         SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
-      goto error;
-    }
-    break;
+  tor_assert(commit->alg == SR_DIGEST_ALG);
+  /* The invariant length is used here since the encoded reveal variable
+   * has an extra byte added for the NULL terminated byte. */
+  if (crypto_digest256(commit->hashed_reveal, commit->encoded_reveal,
+                       SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
+    goto error;
   }
 
   /* Now get the base64 blob that corresponds to our commit. */
