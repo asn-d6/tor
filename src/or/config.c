@@ -1589,7 +1589,7 @@ options_act(const or_options_t *old_options)
      directories, so that we never accidentally launch the non-anonymous hidden
      services thinking they are anonymous. */
   if (running_tor && options->RendezvousSingleOnionServiceNonAnonymousServer) {
-    if (rend_service_poison_all_rsos_dirs() < 0) {
+    if (rend_service_poison_all_rsos_dirs(NULL) < 0) {
       log_warn(LD_GENERAL,"Failed to mark hidden services as RSOS.");
       return -1;
     }
@@ -1599,7 +1599,7 @@ options_act(const or_options_t *old_options)
      been poisoned by RSOS, and refuse to launch them if so. */
   if (!options->RendezvousSingleOnionServiceNonAnonymousServer &&
       num_rend_services()) {
-    if (rend_services_are_rsos_poisoned()) {
+    if (rend_services_are_rsos_poisoned(NULL)) {
       log_warn(LD_GENERAL, "Trying to launch hidden services that used to be "
                "in the non-anonymous RSOS mode. This is not allowed.");
       return -1;

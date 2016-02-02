@@ -8,12 +8,14 @@
 
 #define CONTROL_PRIVATE
 #define CIRCUITBUILD_PRIVATE
+#define RENDSERVICE_PRIVATE
 
 #include "or.h"
 #include "test.h"
 #include "control.h"
 #include "config.h"
 #include "rendcommon.h"
+#include "rendservice.h"
 #include "routerset.h"
 #include "circuitbuild.h"
 #include "test_helpers.h"
@@ -435,12 +437,63 @@ test_hs_rend_data(void *arg)
   rend_data_free(client_dup);
 }
 
+/* Test that RSOS poisoning works. */
+static void
+test_rsos_poisoning(void *arg)
+{
+  int ret = -1;
+  rend_service_t *service_1 = tor_malloc_zero(sizeof(rend_service_t));
+  char *dir1 = tor_strdup(get_fname("test_hs_dir1"));
+  rend_service_t *service_2 = tor_malloc_zero(sizeof(rend_service_t));
+  char *dir2 = tor_strdup(get_fname("test_hs_dir2"));
+  smartlist_t *services = smartlist_new();
+
+  (void) arg;
+
+  /* Poison these two services and make sure that they are poisoned. */
+
+#ifdef _WIN32
+  ret = mkdir(dir1);
+  tt_assert(ret == 0);
+  ret = mkdir(dir2);
+#else
+  ret = mkdir(dir1, 0700);
+  tt_assert(ret == 0);
+  ret = mkdir(dir2, 0700);
+#endif
+  tt_assert(ret == 0);
+
+  service_1->directory = dir1;
+  service_2->directory = dir2;
+  smartlist_add(services, service_1);
+  smartlist_add(services, service_2);
+
+  /* Not poisoned yet. Test this */
+  ret = rend_services_are_rsos_poisoned(services);
+  tor_assert(!ret);
+
+  /* Poison! Poison! Poison! */
+  rend_service_poison_all_rsos_dirs(services);
+
+  /* Poisoning test */
+  ret = rend_services_are_rsos_poisoned(services);
+  tor_assert(ret);
+
+ done:
+  rend_service_free(service_1);
+  rend_service_free(service_2);
+  smartlist_free(services);
+}
+
+
 struct testcase_t hs_tests[] = {
   { "hs_rend_data", test_hs_rend_data, TT_FORK,
     NULL, NULL },
   { "hs_desc_event", test_hs_desc_event, TT_FORK,
     NULL, NULL },
   { "pick_tor2web_rendezvous_node", test_pick_tor2web_rendezvous_node, TT_FORK,
+    NULL, NULL },
+  { "rsos_poisoning", test_rsos_poisoning, TT_FORK,
     NULL, NULL },
   { "pick_bad_tor2web_rendezvous_node",
     test_pick_bad_tor2web_rendezvous_node, TT_FORK,
