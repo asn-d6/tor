@@ -61,42 +61,6 @@ static int dirvote_publish_consensus(void);
  * Voting
  * =====*/
 
-/** Return a heap-allocated string that contains the ed25519 master key to
- *  signing key certificate. */
-static char *
-get_sr_cert_chain_str(void)
-{
-  char *sr_cert_chain_str = NULL;
-
-  { /* Get our (ed25519 master key -> ed25519 signing key) certificate */
-    char ed_cert_base64[256]; /* XXX is this enough? */
-    const tor_cert_t *signing_key_cert = get_master_signing_key_cert();
-
-    if (!signing_key_cert) {
-      log_warn(LD_GENERAL, "Couldn't get our own signing key cert.");
-      goto done;
-    }
-
-    if (base64_encode(ed_cert_base64, sizeof(ed_cert_base64),
-                      (const char*)signing_key_cert->encoded,
-                      signing_key_cert->encoded_len,
-                      BASE64_ENCODE_MULTILINE) < 0) {
-      log_err(LD_BUG,"Couldn't base64-encode signing key certificate!");
-      goto done;
-    }
-
-    tor_asprintf(&sr_cert_chain_str,
-                 "signing-ed25519\n"
-                 "-----BEGIN ED25519 CERT-----\n"
-                 "%s"
-                 "-----END ED25519 CERT-----\n",
-                 ed_cert_base64);
-  }
-
- done:
-  return sr_cert_chain_str;
-}
-
 /** Return a new string containing the string representation of the vote in
  * <b>v3_ns</b>, signed with our v3 signing key <b>private_signing_key</b>.
  * For v3 authorities. */
@@ -112,7 +76,6 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
   uint32_t addr;
   char *client_versions_line = NULL, *server_versions_line = NULL;
   char *shared_random_vote_str = NULL;
-  char *shared_random_cert_chain_str = NULL;
   networkstatus_voter_info_t *voter;
   char *status = NULL;
 
@@ -153,14 +116,8 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
     packages = tor_strdup("");
   }
 
-  /* Get shared randomness info for votes */
-  shared_random_cert_chain_str = get_sr_cert_chain_str();
-  if (!shared_random_cert_chain_str) {
-    log_warn(LD_GENERAL, "Failed to get the SR cert chain! Skipping.");
-  } else {
     /* Get shared random commitments/reveals line(s). */
-    shared_random_vote_str = sr_get_string_for_vote();
-  }
+  shared_random_vote_str = sr_get_string_for_vote();
 
   {
     char published[ISO_TIME_LEN+1];
@@ -202,7 +159,6 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  "params %s\n"
                  "dir-source %s %s %s %s %d %d\n"
                  "contact %s\n"
-                 "%s" /* shared random cert chain */
                  "%s", /* shared randomness information */
                  v3_ns->type == NS_TYPE_VOTE ? "vote" : "opinion",
                  methods,
@@ -217,8 +173,6 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
                  voter->nickname, fingerprint, voter->address,
                  fmt_addr32(addr), voter->dir_port, voter->or_port,
                  voter->contact,
-                 shared_random_cert_chain_str ?
-                           shared_random_cert_chain_str : "",
                  shared_random_vote_str ?
                            shared_random_vote_str : "");
 
@@ -227,7 +181,6 @@ format_networkstatus_vote(crypto_pk_t *private_signing_key,
     tor_free(flag_thresholds);
     tor_free(methods);
     tor_free(shared_random_vote_str);
-    tor_free(shared_random_cert_chain_str);
 
     if (!tor_digest_is_zero(voter->legacy_id_digest)) {
       char fpbuf[HEX_DIGEST_LEN+1];
