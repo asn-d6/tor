@@ -46,8 +46,8 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 /* As VAR, but the option name and member name are the same. */
 #define V(member, conftype, initvalue) \
   VAR(#member, conftype, member, initvalue)
-/* Our persistent state magic number. Yes we got the 42s! */
-#define SR_DISK_STATE_MAGIC 42424242
+/* Our persistent state magic number. */
+#define SR_DISK_STATE_MAGIC 0x98AB1254
 /* Each protocol phase has 12 rounds  */
 #define SHARED_RANDOM_N_ROUNDS 12
 
