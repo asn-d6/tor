@@ -333,6 +333,7 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
 STATIC int
 reveal_encode(const sr_commit_t *commit, char *dst, size_t len)
 {
+  int ret;
   size_t offset = 0;
   char buf[SR_REVEAL_LEN] = {0};
 
@@ -346,7 +347,10 @@ reveal_encode(const sr_commit_t *commit, char *dst, size_t len)
 
   /* Let's clean the buffer and then b64 encode it. */
   memset(dst, 0, len);
-  return base64_encode(dst, len, buf, sizeof(buf), 0);
+  ret = base64_encode(dst, len, buf, sizeof(buf), 0);
+  /* Wipe this buffer because it contains our random value. */
+  memwipe(buf, 0, sizeof(buf));
+  return ret;
 }
 
 /* Encode the given commit object to dst which is a buffer large enough to
