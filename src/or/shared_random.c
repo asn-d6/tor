@@ -331,7 +331,7 @@ reveal_decode(const char *encoded, sr_commit_t *commit)
  * Return base64 encoded length on success else a negative value.
  */
 STATIC int
-reveal_encode(sr_commit_t *commit, char *dst, size_t len)
+reveal_encode(const sr_commit_t *commit, char *dst, size_t len)
 {
   size_t offset = 0;
   char buf[SR_REVEAL_LEN] = {0};
@@ -355,7 +355,7 @@ reveal_encode(sr_commit_t *commit, char *dst, size_t len)
  * Return base64 encoded length on success else a negative value.
  */
 STATIC int
-commit_encode(sr_commit_t *commit, char *dst, size_t len)
+commit_encode(const sr_commit_t *commit, char *dst, size_t len)
 {
   size_t offset = 0;
   char buf[SR_COMMIT_LEN] = {0};
@@ -846,7 +846,7 @@ sr_commit_free(sr_commit_t *commit)
 /* Generate the commitment/reveal value for the protocol run starting at
  * <b>timestamp</b>. <b>my_rsa_cert</b> is our authority RSA certificate. */
 sr_commit_t *
-sr_generate_our_commit(time_t timestamp, authority_cert_t *my_rsa_cert)
+sr_generate_our_commit(time_t timestamp, const authority_cert_t *my_rsa_cert)
 {
   sr_commit_t *commit = NULL;
   char fingerprint[FINGERPRINT_LEN+1];
