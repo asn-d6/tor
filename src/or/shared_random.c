@@ -510,7 +510,7 @@ srv_to_ns_string(const sr_srv_t *srv, const char *key)
  * string with their data that could be put in a vote or a consensus. Caller
  * must free the returned string.  Return NULL if no SRVs were provided. */
 static char *
-get_ns_str_from_sr_values(sr_srv_t *prev_srv, sr_srv_t *cur_srv)
+get_ns_str_from_sr_values(const sr_srv_t *prev_srv, const sr_srv_t *cur_srv)
 {
   smartlist_t *chunks = NULL;
   char *srv_str;
@@ -749,7 +749,7 @@ should_keep_srv(int n_agreements)
  * current SRV value else the previous one. NULL is returned if no appropriate
  * value could be found. */
 STATIC sr_srv_t *
-get_majority_srv_from_votes(smartlist_t *votes, unsigned int current)
+get_majority_srv_from_votes(const smartlist_t *votes, unsigned int current)
 {
   const uint8_t *value;
   sr_srv_t *the_srv = NULL;
@@ -1154,7 +1154,7 @@ sr_get_string_for_vote(void)
  * should NEVER change the state nor the state should be changed in between
  * consensus creation. */
 char *
-sr_get_string_for_consensus(smartlist_t *votes)
+sr_get_string_for_consensus(const smartlist_t *votes)
 {
   char *srv_str;
   const or_options_t *options = get_options();
