@@ -50,6 +50,8 @@ static const char *dstate_cur_srv_key = "SharedRandCurrentValue";
 #define SR_DISK_STATE_MAGIC 0x98AB1254
 /* Each protocol phase has 12 rounds  */
 #define SHARED_RANDOM_N_ROUNDS 12
+/* Number of phase we have in a protocol. */
+#define SHARED_RANDOM_N_PHASES 2
 
 static int
 disk_state_validate_cb(void *old_state, void *state, void *default_state,
@@ -148,7 +150,7 @@ get_next_valid_after_time(time_t now)
 STATIC time_t
 get_state_valid_until_time(time_t now)
 {
-  int total_rounds = SHARED_RANDOM_N_ROUNDS * 2;
+  int total_rounds = SHARED_RANDOM_N_ROUNDS * SHARED_RANDOM_N_PHASES;
   int current_round, voting_interval, rounds_left, beginning_of_current_round;
   time_t valid_until;
 
@@ -180,7 +182,7 @@ STATIC sr_phase_t
 get_sr_protocol_phase(time_t valid_after)
 {
   /* Shared random protocol has two phases, commit and reveal. */
-  int total_periods = SHARED_RANDOM_N_ROUNDS * 2;
+  int total_periods = SHARED_RANDOM_N_ROUNDS * SHARED_RANDOM_N_PHASES;
   int current_slot;
 
   /* Split time into slots of size 'voting_interval'. See which slot we are
