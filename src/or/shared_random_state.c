@@ -522,7 +522,10 @@ disk_state_put_commit_line(const sr_commit_t *commit, config_line_t *line)
                commit->rsa_identity_fpr,
                commit->encoded_commit,
                reveal_str != NULL ? reveal_str : "");
-  tor_free(reveal_str);
+  if (reveal_str != NULL) {
+    memwipe(reveal_str, 0, strlen(reveal_str));
+    tor_free(reveal_str);
+  }
 }
 
 /* From a valid srv object and an allocated config line, set the line's
