@@ -20,7 +20,7 @@
 #include "policies.h"
 #include "routerlist.h"
 #include "routerparse.h"
-#include "shared-random.h"
+#include "shared_random.h"
 #include "test.h"
 #include "test_dir_common.h"
 

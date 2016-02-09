@@ -105,7 +105,7 @@ char *sr_get_string_for_vote(void);
 char *sr_get_string_for_consensus(const smartlist_t *votes);
 void sr_commit_free(sr_commit_t *commit);
 
-/* Private methods (only used by shared-random-state.c): */
+/* Private methods (only used by shared_random_state.c): */
 
 void sr_compute_srv(void);
 sr_commit_t *sr_generate_our_commit(time_t timestamp,

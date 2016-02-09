@@ -57,7 +57,7 @@
 #include "routerlist.h"
 #include "routerparse.h"
 #include "scheduler.h"
-#include "shared-random.h"
+#include "shared_random.h"
 #include "statefile.h"
 #include "status.h"
 #include "util_process.h"

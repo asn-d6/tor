@@ -30,7 +30,7 @@
 #include "routerlist.h"
 #include "routerparse.h"
 #include "routerset.h"
-#include "shared-random-state.h"
+#include "shared_random_state.h"
 #include "test.h"
 #include "test_dir_common.h"
 #include "torcert.h"
