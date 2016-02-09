@@ -397,6 +397,7 @@ disk_state_parse_commits(sr_state_t *state,
   return 0;
 
  error:
+  SMARTLIST_FOREACH(args, char *, cp, tor_free(cp));
   smartlist_free(args);
   return -1;
 }
@@ -436,38 +437,36 @@ disk_state_parse_srv(const char *value, sr_srv_t *dst)
   return ret;
 }
 
-/* Parse the SharedRandPreviousValue line from the state.
- * Return 0 on success else -1. */
+/* Parse both SharedRandCurrentValue and SharedRandPreviousValue line from
+ * the state. Return 0 on success else -1. */
 static int
 disk_state_parse_sr_values(sr_state_t *state,
                            const sr_disk_state_t *disk_state)
 {
   config_line_t *line;
 
-  for (line = disk_state->SharedRandValues; line; line = line->next) {
-    if (!strcasecmp(line->key, dstate_prev_srv_key)) {
-      /* Try to parse the previous SRV */
-      if (line->value == NULL) {
-        continue;
-      }
-      state->previous_srv = tor_malloc_zero(sizeof(*state->previous_srv));
-      if (disk_state_parse_srv(line->value, state->previous_srv) < 0) {
-        log_warn(LD_BUG, "SR: Broken previous SRV line in state %s",
-                 escaped(line->value));
-        return -1;
-      }
+  tor_assert(state);
+  tor_assert(disk_state);
 
+  for (line = disk_state->SharedRandValues; line; line = line->next) {
+    sr_srv_t *srv = NULL;
+    if (line->value == NULL) {
+      continue;
+    }
+    srv = tor_malloc_zero(sizeof(*srv));
+    if (disk_state_parse_srv(line->value, srv) < 0) {
+      log_warn(LD_BUG, "SR: Broken current SRV line in state %s",
+               escaped(line->value));
+      tor_free(srv);
+      return -1;
+    }
+    if (!strcasecmp(line->key, dstate_prev_srv_key)) {
+      state->previous_srv = srv;
     } else if (!strcasecmp(line->key, dstate_cur_srv_key)) {
-      /* Try to parse the current SRV */
-      if (line->value == NULL) {
-        continue;
-      }
-      state->current_srv = tor_malloc_zero(sizeof(*state->current_srv));
-      if (disk_state_parse_srv(line->value, state->current_srv) < 0) {
-        log_warn(LD_BUG, "SR: Broken current SRV line in state %s",
-                 escaped(line->value));
-        return -1;
-      }
+      state->current_srv = srv;
+    } else {
+      /* Unknown key. Ignoring. */
+      tor_free(srv);
     }
   }
 
