@@ -323,6 +323,13 @@ disk_state_validate(const sr_disk_state_t *state)
     goto invalid;
   }
 
+  /* Make sure we don't have a valid after time that is earlier than a valid
+   * until time which would make things not work well. */
+  if (state->ValidAfter >= state->ValidUntil) {
+    log_info(LD_DIR, "SR: Disk state valid after/until times are invalid.");
+    goto invalid;
+  }
+
   return 0;
 
  invalid:
