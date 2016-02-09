@@ -28,7 +28,7 @@
 #include "routerparse.h"
 #include "entrynodes.h"
 #include "torcert.h"
-#include "shared-random.h"
+#include "shared_random.h"
 
 #undef log
 #include <math.h>

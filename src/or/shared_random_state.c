@@ -2,7 +2,7 @@
 /* See LICENSE for licensing information */
 
 /**
- * \file shared-random.c
+ * \file shared_random.c
  * \brief Functions and data structures needed to accomplish the shared
  * random protocol as defined in proposal #250.
  **/
@@ -10,13 +10,13 @@
 #define SHARED_RANDOM_STATE_PRIVATE
 
 #include "or.h"
-#include "shared-random.h"
+#include "shared_random.h"
 #include "config.h"
 #include "confparse.h"
 #include "dirvote.h"
 #include "networkstatus.h"
 #include "router.h"
-#include "shared-random-state.h"
+#include "shared_random_state.h"
 
 /* Default filename of the shared random state on disk. */
 static const char *default_fname = "sr-state";
