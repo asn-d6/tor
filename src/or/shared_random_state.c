@@ -151,8 +151,8 @@ STATIC time_t
 get_state_valid_until_time(time_t now)
 {
   int total_rounds = SHARED_RANDOM_N_ROUNDS * SHARED_RANDOM_N_PHASES;
-  int current_round, voting_interval, rounds_left, beginning_of_current_round;
-  time_t valid_until;
+  int current_round, voting_interval, rounds_left;
+  time_t valid_until, beginning_of_current_round;
 
   voting_interval = get_voting_interval();
   /* Find the time the current round started. */
