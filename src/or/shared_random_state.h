@@ -4,7 +4,7 @@
 #ifndef TOR_SHARED_RANDOM_STATE_H
 #define TOR_SHARED_RANDOM_STATE_H
 
-#include "shared-random.h"
+#include "shared_random.h"
 
 /* Action that can be performed on the state for any objects. */
 typedef enum {
@@ -95,7 +95,7 @@ typedef struct sr_disk_state_t {
 
 void sr_state_update(time_t valid_after);
 
-/* Private methods (only used by shared-random.c): */
+/* Private methods (only used by shared_random.c): */
 
 time_t get_next_valid_after_time(time_t now);
 void sr_state_set_valid_after(time_t valid_after);

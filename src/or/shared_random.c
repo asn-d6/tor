@@ -2,7 +2,7 @@
 /* See LICENSE for licensing information */
 
 /**
- * \file shared-random.c
+ * \file shared_random.c
  *
  * \brief Functions and data structure needed to accomplish the shared
  * random protocol as defined in proposal #250.
@@ -51,7 +51,7 @@
  * - To support rebooting authorities and to avoid double voting, each dirauth
  *   saves the current state of the protocol on disk so that it can resume
  *   normally in case of reboot. The disk state (sr_disk_state_t) is managed by
- *   shared-random-state.c:state_query() and we go to extra lengths to ensure
+ *   shared_random_state.c:state_query() and we go to extra lengths to ensure
  *   that the state is flushed on disk everytime we receive any useful
  *   information like commits or SRVs.
  *
@@ -88,14 +88,14 @@
 #define SHARED_RANDOM_PRIVATE
 
 #include "or.h"
-#include "shared-random.h"
+#include "shared_random.h"
 #include "config.h"
 #include "confparse.h"
 #include "networkstatus.h"
 #include "routerkeys.h"
 #include "router.h"
 #include "routerlist.h"
-#include "shared-random-state.h"
+#include "shared_random_state.h"
 
 /* String prefix of shared random values in votes/consensuses. */
 static const char *previous_srv_str = "shared-rand-previous-value";
