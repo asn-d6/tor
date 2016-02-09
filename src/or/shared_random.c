@@ -571,7 +571,7 @@ commit_is_authoritative(const sr_commit_t *commit,
  * current phase and state of the protocol. Return 1 if the commit should be
  * added to our state or 0 if not. */
 STATIC int
-should_keep_commit(sr_commit_t *commit, const char *voter_key)
+should_keep_commit(const sr_commit_t *commit, const char *voter_key)
 {
   sr_commit_t *saved_commit;
 

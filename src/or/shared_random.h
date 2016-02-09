@@ -133,7 +133,8 @@ STATIC int commitments_are_the_same(const sr_commit_t *commit_one,
                                     const sr_commit_t *commit_two);
 STATIC int commit_is_authoritative(const sr_commit_t *commit,
                                    const char *voter_key);
-STATIC int should_keep_commit(sr_commit_t *commit, const char *voter_key);
+STATIC int should_keep_commit(const sr_commit_t *commit,
+                              const char *voter_key);
 STATIC void save_commit_during_reveal_phase(const sr_commit_t *commit);
 
 #endif /* SHARED_RANDOM_PRIVATE */
