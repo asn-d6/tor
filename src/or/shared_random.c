@@ -979,7 +979,7 @@ sr_compute_srv(void)
  *    num_reveals, value
  */
 sr_srv_t *
-sr_parse_srv(smartlist_t *args)
+sr_parse_srv(const smartlist_t *args)
 {
   char *value;
   int num_reveals, ok;
@@ -1015,7 +1015,7 @@ sr_parse_srv(smartlist_t *args)
  *  algname, RSA fingerprint, commit value[, reveal value]
  */
 sr_commit_t *
-sr_parse_commit(smartlist_t *args)
+sr_parse_commit(const smartlist_t *args)
 {
   char *value;
   digest_algorithm_t alg;

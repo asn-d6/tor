@@ -99,8 +99,8 @@ void sr_save_and_cleanup(void);
 void sr_act_post_consensus(const networkstatus_t *consensus);
 void sr_handle_received_commits(smartlist_t *commits,
                                 crypto_pk_t *voter_key);
-sr_commit_t *sr_parse_commit(smartlist_t *args);
-sr_srv_t *sr_parse_srv(smartlist_t *args);
+sr_commit_t *sr_parse_commit(const smartlist_t *args);
+sr_srv_t *sr_parse_srv(const smartlist_t *args);
 char *sr_get_string_for_vote(void);
 char *sr_get_string_for_consensus(smartlist_t *votes);
 void sr_commit_free(sr_commit_t *commit);

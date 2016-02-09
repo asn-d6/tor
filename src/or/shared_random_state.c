@@ -303,7 +303,7 @@ disk_state_set(sr_disk_state_t *state)
 /* Return -1 if the disk state is invalid (something in there that we can't or
  * shouldn't use). Return 0 if everything checks out. */
 static int
-disk_state_validate(sr_disk_state_t *state)
+disk_state_validate(const sr_disk_state_t *state)
 {
   time_t now;
 
@@ -348,7 +348,8 @@ disk_state_validate_cb(void *old_state, void *state, void *default_state,
 /* Parse the Commit line(s) in the disk state and translate them to the
  * the memory state. Return 0 on success else -1 on error. */
 static int
-disk_state_parse_commits(sr_state_t *state, sr_disk_state_t *disk_state)
+disk_state_parse_commits(sr_state_t *state,
+                         const sr_disk_state_t *disk_state)
 {
   config_line_t *line;
   smartlist_t *args = NULL;
@@ -429,7 +430,8 @@ disk_state_parse_srv(const char *value, sr_srv_t *dst)
 /* Parse the SharedRandPreviousValue line from the state.
  * Return 0 on success else -1. */
 static int
-disk_state_parse_sr_values(sr_state_t *state, sr_disk_state_t *disk_state)
+disk_state_parse_sr_values(sr_state_t *state,
+                           const sr_disk_state_t *disk_state)
 {
   config_line_t *line;
 
@@ -466,7 +468,7 @@ disk_state_parse_sr_values(sr_state_t *state, sr_disk_state_t *disk_state)
 /* Parse the given disk state and set a newly allocated state. On success,
  * return that state else NULL. */
 static sr_state_t *
-disk_state_parse(sr_disk_state_t *new_disk_state)
+disk_state_parse(const sr_disk_state_t *new_disk_state)
 {
   sr_state_t *new_state = state_new(default_fname, time(NULL));
 
@@ -495,7 +497,7 @@ disk_state_parse(sr_disk_state_t *new_disk_state)
 /* From a valid commit object and an allocated config line, set the line's
  * value to the state string representation of a commit. */
 static void
-disk_state_put_commit_line(sr_commit_t *commit, config_line_t *line)
+disk_state_put_commit_line(const sr_commit_t *commit, config_line_t *line)
 {
   char *reveal_str = NULL;
 
@@ -518,7 +520,7 @@ disk_state_put_commit_line(sr_commit_t *commit, config_line_t *line)
 /* From a valid srv object and an allocated config line, set the line's
  * value to the state string representation of a shared random value. */
 static void
-disk_state_put_srv_line(sr_srv_t *srv, config_line_t *line)
+disk_state_put_srv_line(const sr_srv_t *srv, config_line_t *line)
 {
   char encoded[HEX_DIGEST256_LEN + 1];
 
@@ -816,7 +818,7 @@ state_query_get_commit(const char *rsa_fpr)
 /* Helper function: This handles the GET state action using an
  * <b>obj_type</b> and <b>data</b> needed for the action. */
 static void *
-state_query_get_(sr_state_object_t obj_type, void *data)
+state_query_get_(sr_state_object_t obj_type, const void *data)
 {
   void *obj = NULL;
 
