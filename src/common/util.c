@@ -5451,14 +5451,14 @@ clamp_double_to_int64(double number)
 uint64_t
 tor_htonll(uint64_t a)
 {
-  if (htonl(1) == 1) {
-    /* Big endian. */
-    return a;
-  } else {
-    /* Little endian. The worst... */
-    return htonl((uint32_t)(a>>32)) |
-      (((uint64_t)htonl((uint32_t)a))<<32);
-  }
+#ifdef WORDS_BIGENDIAN
+  /* Big endian. */
+  return a;
+#else /* WORDS_BIGENDIAN */
+  /* Little endian. The worst... */
+  return htonl((uint32_t)(a>>32)) |
+    (((uint64_t)htonl((uint32_t)a))<<32);
+#endif /* WORDS_BIGENDIAN */
 }
 
 /** Return a uint64_t value from <b>a</b> in host byte order. */
