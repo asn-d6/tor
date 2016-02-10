@@ -125,24 +125,24 @@ get_voting_interval(void)
 static time_t
 get_start_time_of_current_round(time_t now)
 {
-  return now - (now % get_voting_interval());
-}
+  const or_options_t *options = get_options();
+  int voting_interval = get_voting_interval();
+  voting_schedule_t *new_voting_schedule =
+    get_voting_schedule(options, now, LOG_INFO);
+  tor_assert(new_voting_schedule);
 
-/* Using the time <b>now</b>, return the valid-after time. */
-time_t
-get_next_valid_after_time(time_t now)
-{
-  long interval;
+  /* First, get the start time of the next round */
+  time_t next_start = new_voting_schedule->interval_starts;
+  /* Now roll back next_start by a voting interval to find the start time of
+     the current round. */
+  time_t curr_start = dirvote_get_start_of_next_interval(
+                                     next_start - voting_interval - 1,
+                                     voting_interval,
+                                     options->TestingV3AuthVotingStartOffset);
 
-  networkstatus_t *consensus = networkstatus_get_live_consensus(now);
-  if (consensus != NULL) {
-    interval = consensus->fresh_until - consensus->valid_after;
-  } else {
-    interval = get_voting_interval();
-  }
+  tor_free(new_voting_schedule);
 
-  return dirvote_get_start_of_next_interval(now, interval,
-                            get_options()->TestingV3AuthVotingStartOffset);
+  return curr_start;
 }
 
 /* Return the time we should expire the state file created at <b>now</b>.
