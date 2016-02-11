@@ -489,7 +489,7 @@ test_vote(void *arg)
     tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-previous-value");
     tt_str_op(smartlist_get(tokens, 1), OP_EQ, "42");
     tt_str_op(smartlist_get(tokens, 2), OP_EQ,
-           "5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A");
+           "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo=");
 
     /* minor cleanup */
     SMARTLIST_FOREACH(tokens, char *, s, tor_free(s));
@@ -503,7 +503,7 @@ test_vote(void *arg)
     tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-current-value");
     tt_str_op(smartlist_get(tokens, 1), OP_EQ, "128");
     tt_str_op(smartlist_get(tokens, 2), OP_EQ,
-           "4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E");
+           "Tk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk4=");
 
     /* Clean up */
     sr_commit_free(parsed_commit);

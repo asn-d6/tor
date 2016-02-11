@@ -42,6 +42,11 @@
  * Formula is taken from base64_encode_size. This adds up to 56 bytes. */
 #define SR_REVEAL_BASE64_LEN \
   (((SR_REVEAL_LEN - 1) / 3) * 4 + 4)
+/* Length of base64 encoded shared random value. It's 32 bytes long so 44
+ * bytes from the base64_encode_size formula. That includes the '='
+ * character at the end. */
+#define SR_SRV_VALUE_BASE64_LEN \
+  (((DIGEST256_LEN - 1) / 3) * 4 + 4)
 
 /* Protocol phase. */
 typedef enum {
@@ -104,6 +109,7 @@ sr_srv_t *sr_parse_srv(const smartlist_t *args);
 char *sr_get_string_for_vote(void);
 char *sr_get_string_for_consensus(const smartlist_t *votes);
 void sr_commit_free(sr_commit_t *commit);
+void sr_srv_encode(char *dst, const sr_srv_t *srv);
 
 /* Private methods (only used by shared_random_state.c): */
 
