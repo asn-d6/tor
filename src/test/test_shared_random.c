@@ -536,7 +536,7 @@ test_vote(void *arg)
     tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-previous-value");
     tt_str_op(smartlist_get(tokens, 1), OP_EQ, "42");
     tt_str_op(smartlist_get(tokens, 2), OP_EQ,
-           "5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A");
+           "WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo=");
 
     /* minor cleanup */
     SMARTLIST_FOREACH(tokens, char *, s, tor_free(s));
@@ -550,7 +550,7 @@ test_vote(void *arg)
     tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-current-value");
     tt_str_op(smartlist_get(tokens, 1), OP_EQ, "128");
     tt_str_op(smartlist_get(tokens, 2), OP_EQ,
-           "4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E4E");
+           "Tk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk4=");
 
     /* Clean up */
     sr_commit_free(parsed_commit);
@@ -576,10 +576,8 @@ const char *sr_state_str = "Version 1\n"
      "17aUsYuMeRjd2N1r8yNyg7aHqRa6gf4z7QPoxxAZbp0AAAAAVmfUSg==\n"
   "Commit sha3-256 36637026573A04110CF3E6B1D201FB9A98B88734 "
      "DDDYtripvdOU+XPEUm5xpU64d9IURSds1xSwQsgeB8oAAAAAVmfUSg==\n"
-  "SharedRandCurrentValue 3 F1D59E5B5D8A1334C61222C680ED54549ED9F7"
-     "509E92845CC6DE90F4A8673852\n"
-  "SharedRandPreviousValue 4 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-     "AAAAAAAAAAAAAAAAAAAAAAAAAAA\n";
+  "SharedRandCurrentValue 3 8dWeW12KEzTGEiLGgO1UVJ7Z91CekoRcxt6Q9KhnOFI=\n"
+  "SharedRandPreviousValue 4 qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=\n";
 
 /** Create an SR disk state, parse it and validate that the parsing went
  *  well. Yes! */

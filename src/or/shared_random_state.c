@@ -533,7 +533,7 @@ disk_state_put_commit_line(const sr_commit_t *commit, config_line_t *line)
 static void
 disk_state_put_srv_line(const sr_srv_t *srv, config_line_t *line)
 {
-  char encoded[HEX_DIGEST256_LEN + 1];
+  char encoded[SR_SRV_VALUE_BASE64_LEN + 1];
 
   tor_assert(line);
 
@@ -542,8 +542,7 @@ disk_state_put_srv_line(const sr_srv_t *srv, config_line_t *line)
   if (srv == NULL) {
     return;
   }
-  base16_encode(encoded, sizeof(encoded), (const char *) srv->value,
-                sizeof(srv->value));
+  sr_srv_encode(encoded, srv);
   tor_asprintf(&line->value, "%d %s", srv->num_reveals, encoded);
 }
 

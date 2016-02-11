@@ -503,11 +503,11 @@ static char *
 srv_to_ns_string(const sr_srv_t *srv, const char *key)
 {
   char *srv_str;
-  char srv_hash_encoded[HEX_DIGEST256_LEN + 1];
+  char srv_hash_encoded[SR_SRV_VALUE_BASE64_LEN + 1];
   tor_assert(srv);
   tor_assert(key);
-  base16_encode(srv_hash_encoded, sizeof(srv_hash_encoded),
-                (const char *) srv->value, sizeof(srv->value));
+
+  sr_srv_encode(srv_hash_encoded, srv);
   tor_asprintf(&srv_str, "%s %d %s\n", key,
                srv->num_reveals, srv_hash_encoded);
   log_debug(LD_DIR, "SR: Consensus SRV line: %s", srv_str);
@@ -828,6 +828,25 @@ get_majority_srv_from_votes(const smartlist_t *votes, int current)
   return the_srv;
 }
 
+/* Encode the given shared random value and put it in dst. Destination
+ * buffer must be at least SR_SRV_VALUE_BASE64_LEN plus the NULL byte. */
+void
+sr_srv_encode(char *dst, const sr_srv_t *srv)
+{
+  int ret;
+  /* Extra byte for the NULL terminated char. */
+  char buf[SR_SRV_VALUE_BASE64_LEN + 1];
+
+  tor_assert(dst);
+  tor_assert(srv);
+
+  ret = base64_encode(buf, sizeof(buf), (const char *) srv->value,
+                      sizeof(srv->value), 0);
+  /* Always expect the full length without the NULL byte. */
+  tor_assert(ret == (sizeof(buf) - 1));
+  strncpy(dst, buf, sizeof(buf));
+}
+
 /* Free a commit object. */
 void
 sr_commit_free(sr_commit_t *commit)
@@ -968,7 +987,7 @@ sr_srv_t *
 sr_parse_srv(const smartlist_t *args)
 {
   char *value;
-  int num_reveals, ok;
+  int num_reveals, ok, ret;
   sr_srv_t *srv = NULL;
 
   tor_assert(args);
@@ -983,13 +1002,24 @@ sr_parse_srv(const smartlist_t *args)
   if (!ok) {
     goto end;
   }
-  srv = tor_malloc_zero(sizeof(*srv));
-  srv->num_reveals = num_reveals;
-
   /* Second and last argument is the shared random value it self. */
   value = smartlist_get(args, 1);
-  base16_decode((char *) srv->value, sizeof(srv->value), value,
-                HEX_DIGEST256_LEN);
+  if (strlen(value) != SR_SRV_VALUE_BASE64_LEN) {
+    goto end;
+  }
+
+  srv = tor_malloc_zero(sizeof(*srv));
+  srv->num_reveals = num_reveals;
+  /* We substract one byte from the srclen because the function ignores the
+   * '=' character in the given buffer. This is broken but it's a documented
+   * behavior of the implementation. */
+  ret = base64_decode((char *) srv->value, sizeof(srv->value), value,
+                      SR_SRV_VALUE_BASE64_LEN - 1);
+  if (ret != sizeof(srv->value)) {
+    tor_free(srv);
+    srv = NULL;
+    goto end;
+  }
  end:
   return srv;
 }
