@@ -2887,7 +2887,11 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
    */
   chunks = smartlist_new();
   SMARTLIST_FOREACH_BEGIN(commits, directory_token_t *, tok) {
-    tor_assert(tok->n_args >= 3);
+    /* There should be at least 3 arguments and not more than 4 else it's
+     * invalid. */
+    if (tok->n_args < 3 || tok->n_args > 4) {
+      goto err;
+    }
 
     /* Hash algorithm. */
     smartlist_add(chunks, tok->args[0]);
