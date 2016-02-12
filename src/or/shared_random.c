@@ -144,14 +144,13 @@ commit_log(const sr_commit_t *commit)
   log_debug(LD_DIR, "SR: Commit from %s", commit->rsa_identity_fpr);
 
   if (commit->commit_ts >= 0) {
-    log_debug(LD_DIR, "SR: Commit: [TS: %ld] [H(R): %s...]",
-             commit->commit_ts, hex_str(commit->hashed_reveal, 5));
+    log_debug(LD_DIR, "SR: Commit: [TS: %ld] [Encoded: %s]",
+              commit->commit_ts, commit->encoded_commit);
   }
 
   if (commit->reveal_ts >= 0) {
-    log_debug(LD_DIR, "SR: Reveal: [TS: %ld] [H(RN): %s...] [R: %s]",
-              commit->reveal_ts, hex_str(commit->random_number, 5),
-              commit->encoded_reveal);
+    log_debug(LD_DIR, "SR: Reveal: [TS: %ld] [Encoded: %s]",
+              commit->reveal_ts, safe_str(commit->encoded_reveal));
   } else {
     log_debug(LD_DIR, "SR: Reveal: UNKNOWN");
   }
@@ -438,8 +437,12 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   crypto_digest256((char *) srv->value, msg, sizeof(msg), SR_DIGEST_ALG);
   srv->num_reveals = reveal_num;
 
-  log_debug(LD_DIR, "SR: Generated SRV: %s",
-            hex_str((const char *) srv->value, HEX_DIGEST256_LEN));
+  {
+    /* Debugging. */
+    char srv_hash_encoded[SR_SRV_VALUE_BASE64_LEN + 1];
+    sr_srv_encode(srv_hash_encoded, srv);
+    log_debug(LD_DIR, "SR: Generated SRV: %s", srv_hash_encoded);
+  }
   return srv;
 }
 
