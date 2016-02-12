@@ -888,20 +888,9 @@ sr_generate_our_commit(time_t timestamp, const authority_cert_t *my_rsa_cert)
   /* New commit with our identity key. */
   commit = commit_new(fingerprint);
 
-  {
-    int ret;
-    char raw_rand[SR_RANDOM_NUMBER_LEN] = {0};
-    /* Generate the reveal random value */
-    crypto_rand(raw_rand, sizeof(commit->random_number));
-    /* Hash our random value in order to avoid sending the raw bytes of our
-     * PRNG to the network. */
-    ret = crypto_digest256(commit->random_number, raw_rand,
-                           sizeof(raw_rand), SR_DIGEST_ALG);
-    memwipe(raw_rand, 0, sizeof(raw_rand));
-    if (ret < 0) {
-      goto error;
-    }
-  }
+  /* Generate the reveal random value */
+  crypto_strongest_rand(commit->random_number,
+                        sizeof(commit->random_number));
   commit->commit_ts = commit->reveal_ts = timestamp;
 
   /* Now get the base64 blob that corresponds to our reveal */
