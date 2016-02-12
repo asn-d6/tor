@@ -905,7 +905,7 @@ sr_generate_our_commit(time_t timestamp, const authority_cert_t *my_rsa_cert)
   /* The invariant length is used here since the encoded reveal variable
    * has an extra byte added for the NULL terminated byte. */
   if (crypto_digest256(commit->hashed_reveal, commit->encoded_reveal,
-                       SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
+                       SR_REVEAL_BASE64_LEN, commit->alg)) {
     goto error;
   }
 
@@ -971,7 +971,7 @@ sr_compute_srv(void)
     SMARTLIST_FOREACH(chunks, char *, s, tor_free(s));
     smartlist_free(chunks);
     if (crypto_digest256(hashed_reveals, reveals, strlen(reveals),
-                         SR_DIGEST_ALG) < 0) {
+                         SR_DIGEST_ALG)) {
       goto end;
     }
     tor_assert(reveal_num < UINT8_MAX);
