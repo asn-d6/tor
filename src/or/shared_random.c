@@ -188,7 +188,7 @@ verify_commit_and_reveal(const sr_commit_t *commit)
     /* Use the invariant length since the encoded reveal variable has an
      * extra byte for the NUL terminated byte. */
     if (crypto_digest256(received_hashed_reveal, commit->encoded_reveal,
-                         SR_REVEAL_BASE64_LEN, commit->alg) < 0) {
+                         SR_REVEAL_BASE64_LEN, commit->alg)) {
       /* Unable to digest the reveal blob, this is unlikely. */
       goto invalid;
     }
