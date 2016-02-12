@@ -88,7 +88,7 @@ typedef struct sr_commit_t {
   /* H(RN) which is what we used as the random value for this commit. We
    * don't use the raw bytes since those are sent on the network thus
    * avoiding possible information leaks of our PRNG. */
-  char random_number[DIGEST256_LEN];
+  uint8_t random_number[DIGEST256_LEN];
   /* Timestamp of commit. Correspond to TIMESTAMP. */
   time_t commit_ts;
   /* This is the whole reveal message. We use it during verification */
