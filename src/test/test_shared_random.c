@@ -232,7 +232,7 @@ test_sr_commit(void *arg)
     /* We should have a reveal value. */
     tt_assert(commit_has_reveal_value(our_commit));
     /* We should have a random value. */
-    tt_assert(!tor_mem_is_zero(our_commit->random_number,
+    tt_assert(!tor_mem_is_zero((char *) our_commit->random_number,
                                sizeof(our_commit->random_number)));
     /* Commit and reveal timestamp should be the same. */
     tt_int_op(our_commit->commit_ts, ==, our_commit->reveal_ts);
