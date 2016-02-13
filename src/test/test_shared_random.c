@@ -88,6 +88,8 @@ test_get_sr_protocol_phase(void *arg)
   ;
 }
 
+static networkstatus_t *mock_consensus = NULL;
+
 static void
 test_get_state_valid_until_time(void *arg)
 {
@@ -144,6 +146,14 @@ test_get_state_valid_until_time(void *arg)
   ;
 }
 
+/* Mock function to immediately return our local 'mock_consensus'. */
+static networkstatus_t *
+mock_networkstatus_get_live_consensus(time_t now)
+{
+  (void) now;
+  return mock_consensus;
+}
+
 /** Test the get_next_valid_after_time() function. */
 static void
 test_get_next_valid_after_time(void *arg)
@@ -154,6 +164,23 @@ test_get_next_valid_after_time(void *arg)
   int retval;
 
   (void) arg;
+
+  {
+    /* Setup a fake consensus just to get the times out of it, since
+       get_next_valid_after_time() needs them. */
+    mock_consensus = tor_malloc_zero(sizeof(networkstatus_t));
+
+    retval = parse_rfc1123_time("Mon, 13 Jan 2016 16:00:00 UTC",
+                                &mock_consensus->fresh_until);
+    tt_int_op(retval, ==, 0);
+
+    retval = parse_rfc1123_time("Mon, 13 Jan 2016 15:00:00 UTC",
+                                &mock_consensus->valid_after);
+    tt_int_op(retval, ==, 0);
+
+    MOCK(networkstatus_get_live_consensus,
+         mock_networkstatus_get_live_consensus);
+  }
 
   {
     /* Get the valid after time if called at 00:00:00 */
@@ -191,7 +218,7 @@ test_get_next_valid_after_time(void *arg)
  }
 
  done:
-  ;
+  networkstatus_vote_free(mock_consensus);
 }
 
 extern const char AUTHORITY_CERT_1[];
@@ -755,8 +782,6 @@ get_test_vote_with_curr_srv(const char *srv)
 
   return vote;
 }
-
-static networkstatus_t *mock_consensus = NULL;
 
 /* Mock function to return the value located in the options instead of the
  * consensus so we can modify it at will. */
