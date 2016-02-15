@@ -145,22 +145,6 @@ get_start_time_of_current_round(time_t now)
   return curr_start;
 }
 
-/* Using the time <b>now</b>, return the next voting valid-after time. */
-time_t
-get_next_valid_after_time(time_t now)
-{
-  int next_valid_after_time;
-  const or_options_t *options = get_options();
-  voting_schedule_t *new_voting_schedule =
-    get_voting_schedule(options, now, LOG_INFO);
-  tor_assert(new_voting_schedule);
-
-  next_valid_after_time = new_voting_schedule->interval_starts;
-  tor_free(new_voting_schedule);
-
-  return next_valid_after_time;
-}
-
 /* Return the time we should expire the state file created at <b>now</b>.
  * We expire the state file in the beginning of the next protocol run. */
 STATIC time_t

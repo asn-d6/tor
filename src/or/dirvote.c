@@ -2493,6 +2493,22 @@ dirvote_get_start_of_next_interval(time_t now, int interval, int offset)
   return next;
 }
 
+/* Using the time <b>now</b>, return the next voting valid-after time. */
+time_t
+get_next_valid_after_time(time_t now)
+{
+  int next_valid_after_time;
+  const or_options_t *options = get_options();
+  voting_schedule_t *new_voting_schedule =
+    get_voting_schedule(options, now, LOG_INFO);
+  tor_assert(new_voting_schedule);
+
+  next_valid_after_time = new_voting_schedule->interval_starts;
+  tor_free(new_voting_schedule);
+
+  return next_valid_after_time;
+}
+
 static voting_schedule_t voting_schedule = {0};
 
 /** Set voting_schedule to hold the timing for the next vote we should be

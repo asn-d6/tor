@@ -162,6 +162,7 @@ time_t dirvote_get_start_of_next_interval(time_t now,
                                           int offset);
 void dirvote_recalculate_timing(const or_options_t *options, time_t now);
 void dirvote_act(const or_options_t *options, time_t now);
+time_t get_next_valid_after_time(time_t now);
 
 /* invoked on timers and by outside triggers. */
 struct pending_vote_t * dirvote_add_vote(const char *vote_body,
