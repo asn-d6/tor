@@ -136,7 +136,7 @@ desc_encrypted_data_free_contents(hs_desc_encrypted_data_t *desc)
 
 /* Encode an ed25519 certificate type and put the newly allocated string in
  * cert_str_out. Return 0 on success else a negative value. */
-static int
+STATIC int
 encode_cert(const tor_cert_t *cert, char **cert_str_out)
 {
   int ret = -1;
@@ -177,7 +177,7 @@ err:
 /* Encode the given link specifier object into a newly allocated string.
  * This can't fail so caller can always assume a valid string being
  * returned. */
-static char *
+STATIC char *
 encode_link_specifiers(const smartlist_t *specs)
 {
   char *encoded_b64 = NULL;
@@ -446,7 +446,7 @@ compute_padding_length(size_t srclen)
 /* Given a buffer, pad it up to the encrypted section padding requirement. Set
  * the newly allocated string in padded_out and return the length of the
  * padded buffer. */
-static size_t
+STATIC size_t
 build_plaintext_padding(const char *plaintext, size_t plaintext_len,
                         uint8_t **padded_out)
 {
@@ -781,7 +781,7 @@ rsa_ed25519_crosscert_check(const uint8_t *crosscert,
 
 /* Given an encoded string of the link specifiers, return a newly allocated
  * list of decoded link specifiers. Return NULL on error. */
-static smartlist_t *
+STATIC smartlist_t *
 decode_link_specifiers(const char *encoded)
 {
   int decoded_len;
@@ -913,7 +913,7 @@ decode_create2_list(hs_desc_encrypted_data_t *desc, const char *list)
 
 /* Given a certificate, validate the certificate for certain conditions.
  * Return 1 iff if all conditions pass or 0 if one of them fails. */
-static int
+STATIC int
 validate_certificate(tor_cert_t *cert, uint8_t type, int sig_included,
                      const char *log_obj_type)
 {
@@ -946,7 +946,7 @@ validate_certificate(tor_cert_t *cert, uint8_t type, int sig_included,
 
 /* Return true iff the given length of the encrypted data of a descriptor
  * passes validation. */
-static int
+STATIC int
 validate_encrypted_data_length(size_t len)
 {
   /* Check for the minimum length possible. */
@@ -1101,7 +1101,7 @@ done:
  * introduction point from that section. Return a newly allocated introduction
  * point object containing the decoded data. Return NULL if the section can't
  * be decoded. */
-static hs_desc_intro_point_t *
+STATIC hs_desc_intro_point_t *
 decode_introduction_point(const hs_descriptor_t *desc, const char *start,
                           const char *end)
 {

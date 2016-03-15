@@ -206,4 +206,23 @@ int hs_desc_decode_plaintext(const char *encoded,
 int hs_desc_decode_encrypted(const hs_descriptor_t *desc,
                              hs_desc_encrypted_data_t *desc_out);
 
+#ifdef HS_DESCRIPTOR_PRIVATE
+
+/* Encoding. */
+STATIC int encode_cert(const tor_cert_t *cert, char **cert_str_out);
+STATIC char *encode_link_specifiers(const smartlist_t *specs);
+STATIC size_t build_plaintext_padding(const char *plaintext,
+                                      size_t plaintext_len,
+                                      uint8_t **padded_out);
+/* Decoding. */
+STATIC smartlist_t *decode_link_specifiers(const char *encoded);
+STATIC hs_desc_intro_point_t *decode_introduction_point(
+                                const hs_descriptor_t *desc,
+                                const char *text, const char *end);
+STATIC int validate_encrypted_data_length(size_t len);
+STATIC int validate_certificate(tor_cert_t *cert, uint8_t type,
+                                int sig_included, const char *log_obj_type);
+
+#endif /* HS_DESCRIPTOR_PRIVATE */
+
 #endif /* TOR_HS_DESCRIPTOR_H */
