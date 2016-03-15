@@ -1152,6 +1152,7 @@ struct testgroup_t testgroups[] = {
   { "guardfraction/", guardfraction_tests },
   { "extorport/", extorport_tests },
   { "hs/", hs_tests },
+  { "hs_descriptor/", hs_descriptor },
   { "introduce/", introduce_tests },
   { "keypin/", keypin_tests },
   { "link-handshake/", link_handshake_tests },
