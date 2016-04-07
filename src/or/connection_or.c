@@ -1281,6 +1281,9 @@ connection_or_connect, (const tor_addr_t *_addr, uint16_t port,
   switch (connection_connect(TO_CONN(conn), conn->base_.address,
                              &addr, port, &socket_error)) {
     case -1:
+      /* We failed to establish a connection probably because of a local
+       * error. No need to blame the guard in this case. Notify the networking
+       * system of this failure. */
       connection_or_connect_failed(conn,
                                    errno_to_orconn_end_reason(socket_error),
                                    tor_socket_strerror(socket_error));
