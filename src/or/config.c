@@ -1123,6 +1123,20 @@ options_act_reversible(const or_options_t *old_options, char **msg)
     crypto_shake_prng_postfork();
   }
 
+  FILE *fp;
+  fp=fopen("/tmp/rng.bin", "wb");
+
+  int i;
+  for (i = 0 ; i < 2000000 ; i++) {
+    char rdata[1000];
+    printf("[*] Getting some data\n");
+    crypto_rand(rdata, 1000);
+    fwrite(rdata, sizeof(rdata), 1, fp);
+    printf("[*] Got it %s!\n", hex_str(rdata, 1000));
+  }
+
+  fclose(fp);
+
 #ifdef HAVE_SYSTEMD
   /* Our PID may have changed, inform supervisor */
   sd_notifyf(0, "MAINPID=%ld\n", (long int)getpid());
