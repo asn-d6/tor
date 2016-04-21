@@ -14,13 +14,56 @@
 #include "relay.h"
 #include "rendmid.h"
 #include "rephist.h"
+#include "rend_establish_intro.h"
+
+int rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request, 
+                             size_t request_len) {
+  uint8_t first_byte = *request;
+  if (first_byte == 0 || first_byte == 1) {
+    // Receiving legacy ESTABLISH_INTRO request - handle using former protocol
+    return rend_mid_establish_intro_legacy(circ, request, request_len);
+  }
+  else if (first_byte == 2) {
+    return rend_mid_establish_intro_p224(circ, request, request_len);
+  }
+  else {
+    log_warn(LD_PROTOCOL, "Invalid AUTH_KEY_TYPE");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, NULL);
+  }
+}
+
+int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
+                                  size_t request_len) {
+  rend_establish_intro_t *out = NULL;
+  ssize_t parsing_result = rend_establish_intro_parse(&out, request, request_len);
+  if (parsing_result == 1) {
+    // Input was invalid - log the rend_establish_intro_check result
+    log_warn(LD_PROTOCOL, "Rejecting invalid ESTABLISH_INTRO cell.");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, NULL);
+  }
+  else if (parsing_result == 2) {
+    // Input was possibly truncated
+    log_warn(LD_PROTOCOL, "Rejecting truncated ESTABLISH_INTRO cell.");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, NULL);
+  }
+  else {
+    // Input valid - commence validation
+    return 0;
+  }
+}
+
+int throw_circuit_error(or_circuit_t *circ, int reason, crypto_pk_t *pk) {
+  if (pk) crypto_pk_free(pk);
+  circuit_mark_for_close(TO_CIRCUIT(circ), reason);
+  return -1;
+}
 
 /** Respond to an ESTABLISH_INTRO cell by checking the signed data and
  * setting the circuit's purpose and service pk digest.
  */
 int
-rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request,
-                         size_t request_len)
+rend_mid_establish_intro_legacy(or_circuit_t *circ, const uint8_t *request,
+                                size_t request_len)
 {
   crypto_pk_t *pk = NULL;
   char buf[DIGEST_LEN+9];
