@@ -11,6 +11,7 @@
 #include "circuitlist.h"
 #include "circuituse.h"
 #include "config.h"
+#include "crypto.h"
 #include "relay.h"
 #include "rendmid.h"
 #include "rephist.h"
@@ -20,10 +21,15 @@ int rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request,
                              size_t request_len) {
   uint8_t first_byte = *request;
   if (first_byte == 0 || first_byte == 1) {
-    // Receiving legacy ESTABLISH_INTRO request - handle using former protocol
+    log_info(LD_REND,
+        "Received a legacy ESTABLISH_INTRO request on circuit %u",
+        (unsigned) circ->p_circ_id);
     return rend_mid_establish_intro_legacy(circ, request, request_len);
   }
   else if (first_byte == 2) {
+    log_info(LD_REND,
+        "Received an ESTABLISH_INTRO request on circuit %u",
+        (unsigned) circ->p_circ_id);
     return rend_mid_establish_intro_p224(circ, request, request_len);
   }
   else {
@@ -46,14 +52,45 @@ int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
     log_warn(LD_PROTOCOL, "Rejecting truncated ESTABLISH_INTRO cell.");
     return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, NULL);
   }
-  else {
-    // Input valid - commence validation
-    return 0;
+  // Input valid - commence validation
+  if (out->auth_key_type != 2) {
+    log_warn(LD_PROTOCOL, "Invalid AUTH_KEY_TYPE: must be in {0, 1, 2}");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, NULL);
   }
+  // Since auth key is 2, auth key must be a ed25519_public_key_t
+  const size_t kh_len = sizeof(circ->rend_circ_nonce);
+  const char *kh = circ->rend_circ_nonce;
+  const char *msg = (char*) out->start_cell;
+  const size_t auth_msg_len = (char*) (out->end_mac_fields) - msg;
+  char *mac = tor_malloc(SHA3_256_MAC_LEN);
+  int mac_errors = crypto_hmac_sha3_256(mac, kh, kh_len, msg, auth_msg_len);
+  if (mac_errors != 0) {
+    log_warn(LD_PROTOCOL, "Error computing ESTABLISH_INTRO handshake_auth");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, mac);
+  }
+  if (tor_memneq(mac, out->handshake_sha3_256, SHA3_256_MAC_LEN)) {
+    log_warn(LD_PROTOCOL, "ESTABLISH_INTRO handshake_auth not as expected");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, mac);
+  }
+  tor_free(mac);
+
+  /* uint8_t *sig_array = rend_establish_intro_getarray_sig(out); */
+  /* ed25519_signature_t sig_struct = { sig_array }; */
+  /* const size_t sig_msg_len = (char*) (out->end_sig_fields) - msg; */
+  /* const ed25519_public_key_t auth_key_struct = { out->auth_key }; */
+
+  /* int sig_mismatch = ed25519_checksig(&sig, (uint8_t*) msg, sig_msg_len, &auth_key); */
+  /* if (sig_mismatch) { */
+  /*   log_warn(LD_PROTOCOL, "ESTABLISH_INTRO signature not as expected"); */
+  /*   return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, mac); */
+  /* } */
+
+  // Cell has valid handshake and signature
+  return 0;
 }
 
-int throw_circuit_error(or_circuit_t *circ, int reason, crypto_pk_t *pk) {
-  if (pk) crypto_pk_free(pk);
+int throw_circuit_error(or_circuit_t *circ, int reason, char *mac) {
+  if (mac) tor_free(mac);
   circuit_mark_for_close(TO_CIRCUIT(circ), reason);
   return -1;
 }
@@ -73,10 +110,6 @@ rend_mid_establish_intro_legacy(or_circuit_t *circ, const uint8_t *request,
   or_circuit_t *c;
   char serviceid[REND_SERVICE_ID_LEN_BASE32+1];
   int reason = END_CIRC_REASON_INTERNAL;
-
-  log_info(LD_REND,
-           "Received an ESTABLISH_INTRO request on circuit %u",
-           (unsigned) circ->p_circ_id);
 
   if (circ->base_.purpose != CIRCUIT_PURPOSE_OR || circ->base_.n_chan) {
     log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
