@@ -20,13 +20,16 @@ struct extension_st {
 typedef struct extension_st extension_t;
 #if !defined(TRUNNEL_OPAQUE) && !defined(TRUNNEL_OPAQUE_REND_ESTABLISH_INTRO)
 struct rend_establish_intro_st {
+  const uint8_t *start_cell;
   uint8_t auth_key_type;
   uint8_t auth_key_len;
   TRUNNEL_DYNARRAY_HEAD(, uint8_t) auth_key;
   uint8_t n_extensions;
   TRUNNEL_DYNARRAY_HEAD(, struct extension_st *) extensions;
+  const uint8_t *end_mac_fields;
   uint8_t handshake_sha3_256[SHA3_256_MAC_LEN];
   uint8_t siglen;
+  const uint8_t *end_sig_fields;
   TRUNNEL_DYNARRAY_HEAD(, uint8_t) sig;
   uint8_t trunnel_error_code_;
 };
@@ -146,6 +149,9 @@ const char *rend_establish_intro_check(const rend_establish_intro_t *obj);
  * functions. Return true iff errors were cleared.
  */
 int rend_establish_intro_clear_errors(rend_establish_intro_t *obj);
+/** Return the position for start_cell when we parsed this object
+ */
+const uint8_t * rend_establish_intro_get_start_cell(const rend_establish_intro_t *inp);
 /** Return the value of the auth_key_type field of the
  * rend_establish_intro_t in 'inp'
  */
@@ -230,6 +236,9 @@ struct extension_st * * rend_establish_intro_getarray_extensions(rend_establish_
  * 'inp' on failure.
  */
 int rend_establish_intro_setlen_extensions(rend_establish_intro_t *inp, size_t newlen);
+/** Return the position for end_mac_fields when we parsed this object
+ */
+const uint8_t * rend_establish_intro_get_end_mac_fields(const rend_establish_intro_t *inp);
 /** Return the (constant) length of the array holding the
  * handshake_sha3_256 field of the rend_establish_intro_t in 'inp'.
  */
@@ -256,6 +265,9 @@ uint8_t rend_establish_intro_get_siglen(rend_establish_intro_t *inp);
  * code on 'inp' on failure.
  */
 int rend_establish_intro_set_siglen(rend_establish_intro_t *inp, uint8_t val);
+/** Return the position for end_sig_fields when we parsed this object
+ */
+const uint8_t * rend_establish_intro_get_end_sig_fields(const rend_establish_intro_t *inp);
 /** Return the length of the dynamic array holding the sig field of
  * the rend_establish_intro_t in 'inp'.
  */

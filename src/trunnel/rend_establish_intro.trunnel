@@ -7,16 +7,19 @@ struct extension {
 }
 
 struct rend_establish_intro {
+  @ptr start_cell;
   u8 auth_key_type;
   u8 auth_key_len;
   u8 auth_key[auth_key_len];
   u8 n_extensions;
   struct extension extensions[n_extensions];
+  @ptr end_mac_fields;
   // Modify if any new handshake types are added
   union handshake[auth_key_type] {
     2: u8 sha3_256[SHA3_256_MAC_LEN];
     default: fail;
   };
   u8 siglen;
+  @ptr end_sig_fields;
   u8 sig[siglen];
 };

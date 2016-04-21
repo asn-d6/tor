@@ -332,6 +332,11 @@ rend_establish_intro_free(rend_establish_intro_t *obj)
   trunnel_free_(obj);
 }
 
+const uint8_t *
+rend_establish_intro_get_start_cell(const rend_establish_intro_t *inp)
+{
+  return inp->start_cell;
+}
 uint8_t
 rend_establish_intro_get_auth_key_type(rend_establish_intro_t *inp)
 {
@@ -487,6 +492,11 @@ rend_establish_intro_setlen_extensions(rend_establish_intro_t *inp, size_t newle
   TRUNNEL_SET_ERROR_CODE(inp);
   return -1;
 }
+const uint8_t *
+rend_establish_intro_get_end_mac_fields(const rend_establish_intro_t *inp)
+{
+  return inp->end_mac_fields;
+}
 size_t
 rend_establish_intro_getlen_handshake_sha3_256(const rend_establish_intro_t *inp)
 {
@@ -523,6 +533,11 @@ rend_establish_intro_set_siglen(rend_establish_intro_t *inp, uint8_t val)
 {
   inp->siglen = val;
   return 0;
+}
+const uint8_t *
+rend_establish_intro_get_end_sig_fields(const rend_establish_intro_t *inp)
+{
+  return inp->end_sig_fields;
 }
 size_t
 rend_establish_intro_getlen_sig(const rend_establish_intro_t *inp)
@@ -807,6 +822,7 @@ rend_establish_intro_parse_into(rend_establish_intro_t *obj, const uint8_t *inpu
   size_t remaining = len_in;
   ssize_t result = 0;
   (void)result;
+  obj->start_cell = ptr;
 
   /* Parse u8 auth_key_type */
   CHECK_REMAINING(1, truncated);
@@ -845,6 +861,7 @@ rend_establish_intro_parse_into(rend_establish_intro_t *obj, const uint8_t *inpu
       TRUNNEL_DYNARRAY_ADD(extension_t *, &obj->extensions, elt, {extension_free(elt);});
     }
   }
+  obj->end_mac_fields = ptr;
 
   /* Parse union handshake[auth_key_type] */
   switch (obj->auth_key_type) {
@@ -866,6 +883,7 @@ rend_establish_intro_parse_into(rend_establish_intro_t *obj, const uint8_t *inpu
   CHECK_REMAINING(1, truncated);
   obj->siglen = (trunnel_get_uint8(ptr));
   remaining -= 1; ptr += 1;
+  obj->end_sig_fields = ptr;
 
   /* Parse u8 sig[siglen] */
   CHECK_REMAINING(obj->siglen, truncated);
