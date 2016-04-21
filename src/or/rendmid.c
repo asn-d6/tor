@@ -34,7 +34,7 @@ int rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request,
   }
   else {
     log_warn(LD_PROTOCOL, "Invalid AUTH_KEY_TYPE");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, NULL);
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
 }
 
@@ -44,18 +44,22 @@ int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
   ssize_t parsing_result = rend_establish_intro_parse(&out, request, request_len);
   if (parsing_result == 1) {
     // Input was invalid - log the rend_establish_intro_check result
+    tor_free(out);
     log_warn(LD_PROTOCOL, "Rejecting invalid ESTABLISH_INTRO cell.");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, NULL);
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
   else if (parsing_result == 2) {
     // Input was possibly truncated
+    tor_free(out);
     log_warn(LD_PROTOCOL, "Rejecting truncated ESTABLISH_INTRO cell.");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, NULL);
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
   // Input valid - commence validation
   if (out->auth_key_type != 2) {
-    log_warn(LD_PROTOCOL, "Invalid AUTH_KEY_TYPE: must be in {0, 1, 2}");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, NULL);
+    tor_free(out);
+    log_warn(LD_PROTOCOL,
+             "Invalid ESTABLSH_INTRO AUTH_KEY_TYPE: must be in {0, 1, 2}");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
   // Since auth key is 2, auth key must be a ed25519_public_key_t
   const size_t kh_len = sizeof(circ->rend_circ_nonce);
@@ -64,33 +68,52 @@ int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
   const size_t auth_msg_len = (char*) (out->end_mac_fields) - msg;
   char *mac = tor_malloc(SHA3_256_MAC_LEN);
   int mac_errors = crypto_hmac_sha3_256(mac, kh, kh_len, msg, auth_msg_len);
+  tor_free(mac);
   if (mac_errors != 0) {
+    tor_free(out);
     log_warn(LD_PROTOCOL, "Error computing ESTABLISH_INTRO handshake_auth");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, mac);
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
   if (tor_memneq(mac, out->handshake_sha3_256, SHA3_256_MAC_LEN)) {
+    tor_free(out);
     log_warn(LD_PROTOCOL, "ESTABLISH_INTRO handshake_auth not as expected");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, mac);
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
-  tor_free(mac);
 
-  /* uint8_t *sig_array = rend_establish_intro_getarray_sig(out); */
-  /* ed25519_signature_t sig_struct = { sig_array }; */
-  /* const size_t sig_msg_len = (char*) (out->end_sig_fields) - msg; */
-  /* const ed25519_public_key_t auth_key_struct = { out->auth_key }; */
+  ed25519_signature_t sig_struct;
+  uint8_t *sig_array = rend_establish_intro_getarray_sig(out);
+  memcpy(sig_struct.sig, sig_array, out->siglen);
 
-  /* int sig_mismatch = ed25519_checksig(&sig, (uint8_t*) msg, sig_msg_len, &auth_key); */
-  /* if (sig_mismatch) { */
-  /*   log_warn(LD_PROTOCOL, "ESTABLISH_INTRO signature not as expected"); */
-  /*   return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL, mac); */
-  /* } */
+  ed25519_public_key_t key_struct;
+  uint8_t *key_array = rend_establish_intro_getarray_auth_key(out);
+  memcpy(key_struct.pubkey, key_array, out->auth_key_len);
 
-  // Cell has valid handshake and signature
+  // Already copied to structs, can now free these
+  tor_free(sig_array);
+  tor_free(key_array);
+
+  int sig_mismatch = ed25519_checksig(&sig_struct, (uint8_t*) msg, out->siglen, &key_struct);
+  if (sig_mismatch) {
+    tor_free(out);
+    log_warn(LD_PROTOCOL, "ESTABLISH_INTRO signature not as expected");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+  }
+
+  // Cell has valid handshake and signature.
+  // Make sure the circuit is neither an intro point nor a rend point.
+  if (circ->base_.purpose != CIRCUIT_PURPOSE_OR) {
+    tor_free(out);
+    log_warn(LD_PROTOCOL,
+         "Rejecting ESTABLISH_INTRO on non-OR or non-edge circuit.");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+  }
+
+  // Finally, make sure the key is not in use by another circuit
+  // TODO how to do this?
   return 0;
 }
 
-int throw_circuit_error(or_circuit_t *circ, int reason, char *mac) {
-  if (mac) tor_free(mac);
+int throw_circuit_error(or_circuit_t *circ, int reason) {
   circuit_mark_for_close(TO_CIRCUIT(circ), reason);
   return -1;
 }
