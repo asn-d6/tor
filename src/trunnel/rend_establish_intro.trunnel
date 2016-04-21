@@ -1,0 +1,22 @@
+const SHA3_256_MAC_LEN = 32;
+
+struct extension {
+  u8 field_type;
+  u8 field_len;
+  u8 field[field_len];
+}
+
+struct rend_establish_intro {
+  u8 auth_key_type;
+  u8 auth_key_len;
+  u8 auth_key[auth_key_len];
+  u8 n_extensions;
+  struct extension extensions[n_extensions];
+  // Modify if any new handshake types are added
+  union handshake[auth_key_type] {
+    2: u8 sha3_256[SHA3_256_MAC_LEN];
+    default: fail;
+  };
+  u8 siglen;
+  u8 sig[siglen];
+};
