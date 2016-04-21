@@ -2033,6 +2033,27 @@ crypto_hmac_sha256(char *hmac_out,
   tor_assert(rv);
 }
 
+/** Compute a 256-bit digest of <b>len</b> bytes in data stored in <b>m</b>,
+ * using the algorithm <b>algorithm</b>.  Write the DIGEST_LEN256-byte result
+ * into <b>digest</b>.  Return 0 on success, 1 on failure. */
+int crypto_hmac_sha3_256(char *hmac_out,
+                          const char *key, size_t key_len,
+                          const char *msg, size_t msg_len)
+{
+  char *key_msg_concat = NULL;
+  tor_assert(key_len < INT_MAX);
+  tor_assert(msg_len < INT_MAX);
+  size_t key_msg_concat_len = key_len + msg_len;
+  key_msg_concat = tor_malloc(key_msg_concat_len);
+  // From p224 0.3, first pass hmac is just h(k|m)
+  memcpy(key_msg_concat, key, key_len);
+  memcpy(key_msg_concat + key_len, msg, msg_len);
+  int result = crypto_digest256(hmac_out, key_msg_concat, key_msg_concat_len, DIGEST_SHA3_256);
+  tor_free(key_msg_concat);
+  return result;
+
+}
+
 /** Internal state for a eXtendable-Output Function (XOF). */
 struct crypto_xof_t {
   keccak_state s;
