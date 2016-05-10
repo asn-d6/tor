@@ -1436,6 +1436,19 @@ test_dir_measured_bw_kb_cache(void *arg)
   return;
 }
 
+static char *
+my_dirvote_compute_params(smartlist_t *votes, int method, int total_authorities)
+{
+  smartlist_t *s = dirvote_compute_params(votes, method, total_authorities);
+  tor_assert(s);
+  char *res = smartlist_join_strings(s, " ", 0, NULL);
+  SMARTLIST_FOREACH(s, char *, cp, tor_free(cp));
+  smartlist_free(s);
+  return res;
+}
+
+#define dirvote_compute_params my_dirvote_compute_params
+
 static void
 test_dir_param_voting(void *arg)
 {
@@ -1551,6 +1564,43 @@ extern const char AUTHORITY_CERT_2[];
 extern const char AUTHORITY_SIGNKEY_2[];
 extern const char AUTHORITY_CERT_3[];
 extern const char AUTHORITY_SIGNKEY_3[];
+
+static void
+test_dir_param_voting_lookup(void *arg)
+{
+  (void)arg;
+  smartlist_t *lst = smartlist_new();
+
+  smartlist_split_string(lst,
+                         "moomin=9 moomin=10 moomintroll=5 fred "
+                         "jack= electricity=sdk opa=6z abc=9 abcd=99",
+                         NULL, 0, 0);
+
+  tt_int_op(1000,
+            OP_EQ, dirvote_get_intermediate_param_value(lst, "ab", 1000));
+  tt_int_op(9, OP_EQ, dirvote_get_intermediate_param_value(lst, "abc", 1000));
+  tt_int_op(99, OP_EQ, dirvote_get_intermediate_param_value(lst, "abcd", 1000));
+
+  /* moomin appears twice. */
+  tt_int_op(-100, OP_EQ,
+            dirvote_get_intermediate_param_value(lst, "moomin", -100));
+  /* fred and jack are truncated */
+  tt_int_op(-100, OP_EQ,
+            dirvote_get_intermediate_param_value(lst, "fred", -100));
+  tt_int_op(-100, OP_EQ,
+            dirvote_get_intermediate_param_value(lst, "jack", -100));
+  /* electricity and opa aren't integers. */
+  tt_int_op(-100, OP_EQ,
+            dirvote_get_intermediate_param_value(lst, "electricity", -100));
+  tt_int_op(-100, OP_EQ,
+            dirvote_get_intermediate_param_value(lst, "opa", -100));
+
+ done:
+  SMARTLIST_FOREACH(lst, char *, cp, tor_free(cp));
+  smartlist_free(lst);
+}
+
+#undef dirvote_compute_params
 
 /** Helper: Test that two networkstatus_voter_info_t do in fact represent the
  * same voting authority, and that they do in fact have all the same
@@ -4268,6 +4318,7 @@ struct testcase_t dir_tests[] = {
   DIR_LEGACY(measured_bw_kb),
   DIR_LEGACY(measured_bw_kb_cache),
   DIR_LEGACY(param_voting),
+  DIR(param_voting_lookup, 0),
   DIR_LEGACY(v3_networkstatus),
   DIR(random_weighted, 0),
   DIR(scale_bw, 0),
