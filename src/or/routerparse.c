@@ -2886,19 +2886,21 @@ extract_shared_random_commits(networkstatus_t *ns, smartlist_t *tokens)
   SMARTLIST_FOREACH_BEGIN(commits, directory_token_t *, tok) {
     /* There should be at least 3 arguments and not more than 4 else it's
      * invalid. */
-    if (tok->n_args < 3 || tok->n_args > 4) {
+    if (tok->n_args < 4 || tok->n_args > 5) {
       goto err;
     }
 
-    /* Hash algorithm. */
-    smartlist_add(chunks, tok->args[0]);
-    /* Commit's authority RSA fingerprint. */
-    smartlist_add(chunks, tok->args[1]);
     /* Commit value. */
+    smartlist_add(chunks, tok->args[0]);
+    /* Hash algorithm. */
+    smartlist_add(chunks, tok->args[1]);
+    /* Commit's authority RSA fingerprint. */
     smartlist_add(chunks, tok->args[2]);
-    if (tok->n_args > 3) {
+    /* Commit value. */
+    smartlist_add(chunks, tok->args[3]);
+    if (tok->n_args > 4) {
       /* A reveal value might also be included */;
-      smartlist_add(chunks, tok->args[3]);
+      smartlist_add(chunks, tok->args[4]);
     }
     sr_commit_t *commit = sr_parse_commit(chunks);
     smartlist_clear(chunks);
