@@ -41,7 +41,7 @@ int rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request,
 int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
                                   size_t request_len) {
   rend_establish_intro_t *out = NULL;
-  ssize_t parsing_result = rend_establish_intro_parse(&out, request, request_len);
+  size_t parsing_result = rend_establish_intro_parse(&out, request, request_len);
   if (parsing_result == 1) {
     // Input was invalid - log the rend_establish_intro_check result
     tor_free(out);
@@ -62,16 +62,15 @@ int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
     return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
   // Since auth key is 2, auth key must be a ed25519_public_key_t
-  const size_t kh_len = sizeof(circ->rend_circ_nonce);
   const char *kh = circ->rend_circ_nonce;
+  const size_t kh_len = DIGEST_LEN;
   const char *msg = (char*) out->start_cell;
   const size_t auth_msg_len = (char*) (out->end_mac_fields) - msg;
-  char *mac = tor_malloc(SHA3_256_MAC_LEN);
+  char mac[SHA3_256_MAC_LEN];
   int mac_errors = crypto_hmac_sha3_256(mac, kh, kh_len, msg, auth_msg_len);
-  tor_free(mac);
   if (mac_errors != 0) {
     tor_free(out);
-    log_warn(LD_PROTOCOL, "Error computing ESTABLISH_INTRO handshake_auth");
+    log_warn(LD_BUG, "Error computing ESTABLISH_INTRO handshake_auth");
     return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
   if (tor_memneq(mac, out->handshake_sha3_256, SHA3_256_MAC_LEN)) {
@@ -92,6 +91,7 @@ int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
   tor_free(sig_array);
   tor_free(key_array);
 
+  // TODO figure out how to incorporate the prefix: ask Nick!
   int sig_mismatch = ed25519_checksig(&sig_struct, (uint8_t*) msg, out->siglen, &key_struct);
   if (sig_mismatch) {
     tor_free(out);
@@ -104,12 +104,42 @@ int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
   if (circ->base_.purpose != CIRCUIT_PURPOSE_OR) {
     tor_free(out);
     log_warn(LD_PROTOCOL,
-         "Rejecting ESTABLISH_INTRO on non-OR or non-edge circuit.");
+             "Rejecting ESTABLISH_INTRO on non-OR or non-edge circuit.");
     return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
 
-  // Finally, make sure the key is not in use by another circuit
-  // TODO how to do this?
+  // For simplicity, don't save the key itself, only a 20-byte hash of the key.
+  char pk_digest[DIGEST_LEN];
+  if (crypto_digest(pk_digest, (const char *)key_struct.pubkey, ED25519_PUBKEY_LEN)<0) {
+    tor_free(out);
+    log_warn(LD_BUG, "Couldn't hash public key");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+  }
+
+  // Make sure the key is not in use by another circuit; reject if so.
+  or_circuit_t *c = circuit_get_intro_point((const uint8_t *)pk_digest);
+  if (c != NULL) {
+    tor_free(out);
+    log_warn(LD_PROTOCOL, "Authentication key already in use");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+  }
+
+  // Associate key with circuit and set circuit purpose
+  circuit_set_intro_point_digest(circ, (uint8_t *)pk_digest);
+  circuit_change_purpose(TO_CIRCUIT(circ), CIRCUIT_PURPOSE_INTRO_POINT);
+
+  // Acknowledge the request.
+  // Currently, just a single byte with a value of 0, since no extensions yet.
+  char ack[1] = {0};
+  if (relay_send_command_from_edge(0, TO_CIRCUIT(circ),
+                                   RELAY_COMMAND_INTRO_ESTABLISHED,
+                                   (const char *)ack, 1, NULL)<0) {
+    tor_free(out);
+    log_warn(LD_BUG, "Couldn't send INTRO_ESTABLISHED cell.");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+  }
+
+  // We are done!
   return 0;
 }
 
