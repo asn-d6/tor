@@ -2648,7 +2648,7 @@ rend_service_launch_establish_intro(rend_service_t *service,
                                                  service->auth_type);
   launched->intro_key = crypto_pk_dup_key(intro->intro_key);
   if (launched->base_.state == CIRCUIT_STATE_OPEN)
-    rend_service_intro_has_opened(launched);
+    rend_service_intro_has_opened_legacy(launched);
   return 0;
 }
 
@@ -2692,8 +2692,62 @@ count_intro_point_circuits(const rend_service_t *service)
 /** Called when we're done building a circuit to an introduction point:
  *  sends a RELAY_ESTABLISH_INTRO cell.
  */
+void rend_service_intro_has_opened(origin_circuit_t *circuit) {
+  return rend_service_intro_has_opened_legacy(circuit);
+}
+
+void rend_service_intro_has_opened_p224(origin_circuit_t *circuit) {
+  // Ensure this is for establish intro
+  tor_assert(circuit->base_.purpose == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO);
+  rend_service_t *service = rend_service_get_by_pk_digest(
+                circuit->rend_data->rend_pk_digest);
+  if (!service) {
+    log_warn(LD_REND, "Unrecognized service ID.");
+    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_NOSUCHSERVICE);
+  }
+
+  if ((count_intro_point_circuits(service) -
+       smartlist_len(service->expiring_nodes)) >
+      service->n_intro_points_wanted) {
+    /* const or_options_t *options = get_options(); */
+    /* Remove the intro point associated with this circuit, it's being
+     * repurposed or closed thus cleanup memory. */
+    rend_intro_point_t *intro = find_intro_point(circuit);
+    if (intro != NULL) {
+      smartlist_remove(service->intro_nodes, intro);
+      rend_intro_point_free(intro);
+    }
+
+    if (get_options()->ExcludeNodes) {
+      circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_NONE);
+    } else {
+      tor_assert(circuit->build_state->is_internal);
+      circuit_change_purpose(TO_CIRCUIT(circuit), CIRCUIT_PURPOSE_C_GENERAL);
+      {
+        rend_data_t *rend_data = circuit->rend_data;
+        circuit->rend_data = NULL;
+        rend_data_free(rend_data);
+      }
+      {
+        crypto_pk_t *intro_key = circuit->intro_key;
+        circuit->intro_key = NULL;
+        crypto_pk_free(intro_key);
+      }
+
+      circuit_has_opened(circuit);
+    }
+    return;
+  }
+
+  // Generate short-term keypair for use in ESTABLISH_INTRO
+  ed25519_keypair_t key_struct;
+  if(ed25519_keypair_generate(&key_struct, 0) < 0) {
+      return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_NONE);
+  }
+}
+
 void
-rend_service_intro_has_opened(origin_circuit_t *circuit)
+rend_service_intro_has_opened_legacy(origin_circuit_t *circuit)
 {
   rend_service_t *service;
   size_t len;

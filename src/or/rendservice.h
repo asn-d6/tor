@@ -76,6 +76,8 @@ void rend_hsdir_routers_changed(void);
 void rend_consider_descriptor_republication(void);
 
 void rend_service_intro_has_opened(origin_circuit_t *circuit);
+void rend_service_intro_has_opened_p224(origin_circuit_t *circuit);
+void rend_service_intro_has_opened_legacy(origin_circuit_t *circuit);
 int rend_service_intro_established(origin_circuit_t *circuit,
                                    const uint8_t *request,
                                    size_t request_len);
