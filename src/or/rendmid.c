@@ -17,8 +17,13 @@
 #include "rephist.h"
 #include "rend_establish_intro.h"
 
-int rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request, 
+int rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request,
                              size_t request_len) {
+  if (request_len < 1) { /* Defensive length check */
+    log_warn(LD_PROTOCOL, "Incomplete ESTABLISH_INTRO cell.");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+  }
+
   uint8_t first_byte = *request;
   if (first_byte == 0 || first_byte == 1) {
     log_info(LD_REND,
@@ -41,19 +46,22 @@ int rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request,
 int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
                                   size_t request_len) {
   rend_establish_intro_t *out = NULL;
+
+  /* XXX rename rend_establish_intro_parse() func to denote prop224 */
   size_t parsing_result = rend_establish_intro_parse(&out, request, request_len);
+  /* XXX aren't error retvals negative here??? */
   if (parsing_result == 1) {
     // Input was invalid - log the rend_establish_intro_check result
     tor_free(out);
     log_warn(LD_PROTOCOL, "Rejecting invalid ESTABLISH_INTRO cell.");
     return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
-  }
-  else if (parsing_result == 2) {
+  } else if (parsing_result == 2) {
     // Input was possibly truncated
     tor_free(out);
     log_warn(LD_PROTOCOL, "Rejecting truncated ESTABLISH_INTRO cell.");
     return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
+
   // Input valid - commence validation
   if (out->auth_key_type != 2) {
     tor_free(out);
@@ -101,6 +109,9 @@ int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
 
   // Cell has valid handshake and signature.
   // Make sure the circuit is neither an intro point nor a rend point.
+  /* XXX Move this to top of function. Why here? */
+  /* XXX Should we also check circ->base_.n_chan like we do in
+     rend_mid_establish_intro_legacy(). */
   if (circ->base_.purpose != CIRCUIT_PURPOSE_OR) {
     tor_free(out);
     log_warn(LD_PROTOCOL,

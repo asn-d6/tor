@@ -2707,6 +2707,7 @@ void rend_service_intro_has_opened_p224(origin_circuit_t *circuit) {
     return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_NOSUCHSERVICE);
   }
 
+  /* XXX what is this? */
   if ((count_intro_point_circuits(service) -
        smartlist_len(service->expiring_nodes)) >
       service->n_intro_points_wanted) {
@@ -2744,7 +2745,6 @@ void rend_service_intro_has_opened_p224(origin_circuit_t *circuit) {
   if(ed25519_keypair_generate(&key_struct, 0) < 0) {
       return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_NONE);
   }
-
 
   // Create empty establish_intro cell
   rend_establish_intro_t *cell = rend_establish_intro_new();
