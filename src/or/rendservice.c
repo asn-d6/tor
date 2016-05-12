@@ -25,6 +25,7 @@
 #include "rendservice.h"
 #include "router.h"
 #include "relay.h"
+#include "rend_establish_intro.h"
 #include "rephist.h"
 #include "replaycache.h"
 #include "routerlist.h"
@@ -2709,7 +2710,6 @@ void rend_service_intro_has_opened_p224(origin_circuit_t *circuit) {
   if ((count_intro_point_circuits(service) -
        smartlist_len(service->expiring_nodes)) >
       service->n_intro_points_wanted) {
-    /* const or_options_t *options = get_options(); */
     /* Remove the intro point associated with this circuit, it's being
      * repurposed or closed thus cleanup memory. */
     rend_intro_point_t *intro = find_intro_point(circuit);
@@ -2744,6 +2744,85 @@ void rend_service_intro_has_opened_p224(origin_circuit_t *circuit) {
   if(ed25519_keypair_generate(&key_struct, 0) < 0) {
       return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_NONE);
   }
+
+
+  // Create empty establish_intro cell
+  rend_establish_intro_t *cell = rend_establish_intro_new();
+
+  // Set AUTH_KEY_TYPE: 2 means ed25519
+  rend_establish_intro_set_auth_key_type(cell, 2);
+
+  // Set AUTH_KEY_LEN field
+  // Must also set byte-length of AUTH_KEY to match
+  int auth_key_len = DIGEST256_LEN;
+  rend_establish_intro_set_auth_key_len(cell, auth_key_len);
+  rend_establish_intro_setlen_auth_key(cell, auth_key_len);
+
+  // Set AUTH_KEY field
+  uint8_t *auth_key_ptr = rend_establish_intro_getarray_auth_key(cell);
+  memcpy(auth_key_ptr, key_struct.pubkey.pubkey, auth_key_len);
+
+  // No extensions for now
+  rend_establish_intro_set_n_extensions(cell, 0);
+  rend_establish_intro_setlen_extensions(cell, 0);
+
+  // Generate handshake
+  int handshake_len = SHA3_256_MAC_LEN;
+  char mac[handshake_len];
+  const char *kh = circuit->cpath->prev->rend_circ_nonce;
+  const size_t kh_len = DIGEST_LEN;
+  const char *msg = (char*) cell->start_cell;
+  const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
+  if (crypto_hmac_sha3_256(mac, kh, kh_len, msg, auth_msg_len)<0) {
+    log_warn(LD_BUG, "Unable to generate handshake for ESTABLISH_INTRO cell.");
+    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
+  }
+
+  // Then add handshake to cell
+  uint8_t *handshake_ptr =
+    rend_establish_intro_getarray_handshake_sha3_256(cell);
+  memcpy(handshake_ptr, mac, handshake_len);
+
+  // Set signature length
+  int sig_len = ED25519_SIG_LEN;
+  rend_establish_intro_set_siglen(cell, sig_len);
+  rend_establish_intro_setlen_sig(cell, sig_len);
+
+  // TODO figure out whether to prepend a string to sig or not
+  ed25519_signature_t sig_struct;
+  if (ed25519_sign(&sig_struct, (uint8_t*) msg, sig_len, &key_struct)) {
+    log_warn(LD_BUG, "Unable to generate signature for ESTABLISH_INTRO cell.");
+    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
+  }
+
+  // And write the signature to the cell
+  uint8_t *sig_ptr =
+    rend_establish_intro_getarray_sig(cell);
+  memcpy(sig_ptr, sig_struct.sig, sig_len);
+
+  // Finally, get a binary string and encode the cell
+  int len = 1 + 1 + auth_key_len + 1 + handshake_len + 1 + sig_len;
+  uint8_t buf[len];
+  ssize_t bytes_used = rend_establish_intro_encode(buf, len, cell);
+  if (bytes_used < 0) {
+    log_warn(LD_BUG, "Unable to generate valid ESTABLISH_INTRO cell");
+    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
+  }
+
+  // Double check for truncation
+  tor_assert(bytes_used == len);
+
+  // Free the cell object and send the message
+  rend_establish_intro_free(cell);
+  if (relay_send_command_from_edge(0, TO_CIRCUIT(circuit),
+                                   RELAY_COMMAND_ESTABLISH_INTRO,
+                                   (const char *)buf, len, circuit->cpath->prev)<0) {
+    log_warn(LD_GENERAL, "Couldn't send introduction request");
+    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
+  }
+
+  /* We've attempted to use this circuit */
+  pathbias_count_use_attempt(circuit);
 }
 
 void
