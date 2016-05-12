@@ -348,13 +348,13 @@ rend_establish_intro_set_auth_key_type(rend_establish_intro_t *inp, uint8_t val)
   inp->auth_key_type = val;
   return 0;
 }
-uint8_t
+uint16_t
 rend_establish_intro_get_auth_key_len(rend_establish_intro_t *inp)
 {
   return inp->auth_key_len;
 }
 int
-rend_establish_intro_set_auth_key_len(rend_establish_intro_t *inp, uint8_t val)
+rend_establish_intro_set_auth_key_len(rend_establish_intro_t *inp, uint16_t val)
 {
   inp->auth_key_len = val;
   return 0;
@@ -380,8 +380,8 @@ rend_establish_intro_set_auth_key(rend_establish_intro_t *inp, size_t idx, uint8
 int
 rend_establish_intro_add_auth_key(rend_establish_intro_t *inp, uint8_t elt)
 {
-#if SIZE_MAX >= UINT8_MAX
-  if (inp->auth_key.n_ == UINT8_MAX)
+#if SIZE_MAX >= UINT16_MAX
+  if (inp->auth_key.n_ == UINT16_MAX)
     goto trunnel_alloc_failed;
 #endif
   TRUNNEL_DYNARRAY_ADD(uint8_t, &inp->auth_key, elt, {});
@@ -400,8 +400,8 @@ int
 rend_establish_intro_setlen_auth_key(rend_establish_intro_t *inp, size_t newlen)
 {
   uint8_t *newptr;
-#if UINT8_MAX < SIZE_MAX
-  if (newlen > UINT8_MAX)
+#if UINT16_MAX < SIZE_MAX
+  if (newlen > UINT16_MAX)
     goto trunnel_alloc_failed;
 #endif
   newptr = trunnel_dynarray_setlen(&inp->auth_key.allocated_,
@@ -523,13 +523,13 @@ rend_establish_intro_getarray_handshake_sha3_256(rend_establish_intro_t *inp)
 {
   return inp->handshake_sha3_256;
 }
-uint8_t
+uint16_t
 rend_establish_intro_get_siglen(rend_establish_intro_t *inp)
 {
   return inp->siglen;
 }
 int
-rend_establish_intro_set_siglen(rend_establish_intro_t *inp, uint8_t val)
+rend_establish_intro_set_siglen(rend_establish_intro_t *inp, uint16_t val)
 {
   inp->siglen = val;
   return 0;
@@ -560,8 +560,8 @@ rend_establish_intro_set_sig(rend_establish_intro_t *inp, size_t idx, uint8_t el
 int
 rend_establish_intro_add_sig(rend_establish_intro_t *inp, uint8_t elt)
 {
-#if SIZE_MAX >= UINT8_MAX
-  if (inp->sig.n_ == UINT8_MAX)
+#if SIZE_MAX >= UINT16_MAX
+  if (inp->sig.n_ == UINT16_MAX)
     goto trunnel_alloc_failed;
 #endif
   TRUNNEL_DYNARRAY_ADD(uint8_t, &inp->sig, elt, {});
@@ -580,8 +580,8 @@ int
 rend_establish_intro_setlen_sig(rend_establish_intro_t *inp, size_t newlen)
 {
   uint8_t *newptr;
-#if UINT8_MAX < SIZE_MAX
-  if (newlen > UINT8_MAX)
+#if UINT16_MAX < SIZE_MAX
+  if (newlen > UINT16_MAX)
     goto trunnel_alloc_failed;
 #endif
   newptr = trunnel_dynarray_setlen(&inp->sig.allocated_,
@@ -642,8 +642,8 @@ rend_establish_intro_encoded_len(const rend_establish_intro_t *obj)
   /* Length of u8 auth_key_type */
   result += 1;
 
-  /* Length of u8 auth_key_len */
-  result += 1;
+  /* Length of u16 auth_key_len */
+  result += 2;
 
   /* Length of u8 auth_key[auth_key_len] */
   result += TRUNNEL_DYNARRAY_LEN(&obj->auth_key);
@@ -672,8 +672,8 @@ rend_establish_intro_encoded_len(const rend_establish_intro_t *obj)
       break;
   }
 
-  /* Length of u8 siglen */
-  result += 1;
+  /* Length of u16 siglen */
+  result += 2;
 
   /* Length of u8 sig[siglen] */
   result += TRUNNEL_DYNARRAY_LEN(&obj->sig);
@@ -711,12 +711,12 @@ rend_establish_intro_encode(uint8_t *output, const size_t avail, const rend_esta
   trunnel_set_uint8(ptr, (obj->auth_key_type));
   written += 1; ptr += 1;
 
-  /* Encode u8 auth_key_len */
+  /* Encode u16 auth_key_len */
   trunnel_assert(written <= avail);
-  if (avail - written < 1)
+  if (avail - written < 2)
     goto truncated;
-  trunnel_set_uint8(ptr, (obj->auth_key_len));
-  written += 1; ptr += 1;
+  trunnel_set_uint16(ptr, trunnel_htons(obj->auth_key_len));
+  written += 2; ptr += 2;
 
   /* Encode u8 auth_key[auth_key_len] */
   {
@@ -769,12 +769,12 @@ rend_establish_intro_encode(uint8_t *output, const size_t avail, const rend_esta
       break;
   }
 
-  /* Encode u8 siglen */
+  /* Encode u16 siglen */
   trunnel_assert(written <= avail);
-  if (avail - written < 1)
+  if (avail - written < 2)
     goto truncated;
-  trunnel_set_uint8(ptr, (obj->siglen));
-  written += 1; ptr += 1;
+  trunnel_set_uint16(ptr, trunnel_htons(obj->siglen));
+  written += 2; ptr += 2;
 
   /* Encode u8 sig[siglen] */
   {
@@ -829,10 +829,10 @@ rend_establish_intro_parse_into(rend_establish_intro_t *obj, const uint8_t *inpu
   obj->auth_key_type = (trunnel_get_uint8(ptr));
   remaining -= 1; ptr += 1;
 
-  /* Parse u8 auth_key_len */
-  CHECK_REMAINING(1, truncated);
-  obj->auth_key_len = (trunnel_get_uint8(ptr));
-  remaining -= 1; ptr += 1;
+  /* Parse u16 auth_key_len */
+  CHECK_REMAINING(2, truncated);
+  obj->auth_key_len = trunnel_ntohs(trunnel_get_uint16(ptr));
+  remaining -= 2; ptr += 2;
 
   /* Parse u8 auth_key[auth_key_len] */
   CHECK_REMAINING(obj->auth_key_len, truncated);
@@ -879,10 +879,10 @@ rend_establish_intro_parse_into(rend_establish_intro_t *obj, const uint8_t *inpu
       break;
   }
 
-  /* Parse u8 siglen */
-  CHECK_REMAINING(1, truncated);
-  obj->siglen = (trunnel_get_uint8(ptr));
-  remaining -= 1; ptr += 1;
+  /* Parse u16 siglen */
+  CHECK_REMAINING(2, truncated);
+  obj->siglen = trunnel_ntohs(trunnel_get_uint16(ptr));
+  remaining -= 2; ptr += 2;
   obj->end_sig_fields = ptr;
 
   /* Parse u8 sig[siglen] */

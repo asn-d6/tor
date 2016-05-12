@@ -22,13 +22,13 @@ typedef struct extension_st extension_t;
 struct rend_establish_intro_st {
   const uint8_t *start_cell;
   uint8_t auth_key_type;
-  uint8_t auth_key_len;
+  uint16_t auth_key_len;
   TRUNNEL_DYNARRAY_HEAD(, uint8_t) auth_key;
   uint8_t n_extensions;
   TRUNNEL_DYNARRAY_HEAD(, struct extension_st *) extensions;
   const uint8_t *end_mac_fields;
   uint8_t handshake_sha3_256[SHA3_256_MAC_LEN];
-  uint8_t siglen;
+  uint16_t siglen;
   const uint8_t *end_sig_fields;
   TRUNNEL_DYNARRAY_HEAD(, uint8_t) sig;
   uint8_t trunnel_error_code_;
@@ -164,12 +164,12 @@ int rend_establish_intro_set_auth_key_type(rend_establish_intro_t *inp, uint8_t 
 /** Return the value of the auth_key_len field of the
  * rend_establish_intro_t in 'inp'
  */
-uint8_t rend_establish_intro_get_auth_key_len(rend_establish_intro_t *inp);
+uint16_t rend_establish_intro_get_auth_key_len(rend_establish_intro_t *inp);
 /** Set the value of the auth_key_len field of the
  * rend_establish_intro_t in 'inp' to 'val'. Return 0 on success;
  * return -1 and set the error code on 'inp' on failure.
  */
-int rend_establish_intro_set_auth_key_len(rend_establish_intro_t *inp, uint8_t val);
+int rend_establish_intro_set_auth_key_len(rend_establish_intro_t *inp, uint16_t val);
 /** Return the length of the dynamic array holding the auth_key field
  * of the rend_establish_intro_t in 'inp'.
  */
@@ -259,12 +259,12 @@ uint8_t * rend_establish_intro_getarray_handshake_sha3_256(rend_establish_intro_
 /** Return the value of the siglen field of the rend_establish_intro_t
  * in 'inp'
  */
-uint8_t rend_establish_intro_get_siglen(rend_establish_intro_t *inp);
+uint16_t rend_establish_intro_get_siglen(rend_establish_intro_t *inp);
 /** Set the value of the siglen field of the rend_establish_intro_t in
  * 'inp' to 'val'. Return 0 on success; return -1 and set the error
  * code on 'inp' on failure.
  */
-int rend_establish_intro_set_siglen(rend_establish_intro_t *inp, uint8_t val);
+int rend_establish_intro_set_siglen(rend_establish_intro_t *inp, uint16_t val);
 /** Return the position for end_sig_fields when we parsed this object
  */
 const uint8_t * rend_establish_intro_get_end_sig_fields(const rend_establish_intro_t *inp);
