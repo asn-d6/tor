@@ -330,6 +330,7 @@ test_sr_commit(void *arg)
    * takes from a vote line and see if we can parse it correctly. */
   {
     sr_commit_t *parsed_commit;
+    smartlist_add(args, tor_strdup("1"));
     smartlist_add(args,
                tor_strdup(crypto_digest_algorithm_get_name(our_commit->alg)));
     smartlist_add(args, tor_strdup(sr_commit_get_rsa_fpr(our_commit)));
@@ -341,6 +342,7 @@ test_sr_commit(void *arg)
     tt_mem_op(parsed_commit, OP_EQ, our_commit, sizeof(*parsed_commit));
     /* Cleanup */
     tor_free(smartlist_get(args, 0)); /* strdup here. */
+    tor_free(smartlist_get(args, 1)); /* strdup here. */
     smartlist_clear(args);
     sr_commit_free(parsed_commit);
   }
@@ -505,16 +507,17 @@ test_vote(void *arg)
     char *commit_line = smartlist_get(chunks, 1);
     tt_assert(commit_line);
     ret = smartlist_split_string(tokens, commit_line, " ", 0, 0);
-    tt_int_op(ret, ==, 5);
+    tt_int_op(ret, ==, 6);
     tt_str_op(smartlist_get(tokens, 0), OP_EQ, "shared-rand-commit");
-    tt_str_op(smartlist_get(tokens, 1), OP_EQ,
+    tt_str_op(smartlist_get(tokens, 1), OP_EQ, "1");
+    tt_str_op(smartlist_get(tokens, 2), OP_EQ,
               crypto_digest_algorithm_get_name(DIGEST_SHA3_256));
     char digest[DIGEST_LEN];
-    base16_decode(digest, sizeof(digest), smartlist_get(tokens, 2),
+    base16_decode(digest, sizeof(digest), smartlist_get(tokens, 3),
                   HEX_DIGEST_LEN);
     tt_mem_op(digest, ==, our_commit->rsa_identity, sizeof(digest));
-    tt_str_op(smartlist_get(tokens, 3), OP_EQ, our_commit->encoded_commit);
-    tt_str_op(smartlist_get(tokens, 4), OP_EQ, our_commit->encoded_reveal);
+    tt_str_op(smartlist_get(tokens, 4), OP_EQ, our_commit->encoded_commit);
+    tt_str_op(smartlist_get(tokens, 5), OP_EQ, our_commit->encoded_reveal);
 
     /* Finally, does this vote line creates a valid commit object? */
     smartlist_t *args = smartlist_new();
@@ -522,6 +525,7 @@ test_vote(void *arg)
     smartlist_add(args, smartlist_get(tokens, 2));
     smartlist_add(args, smartlist_get(tokens, 3));
     smartlist_add(args, smartlist_get(tokens, 4));
+    smartlist_add(args, smartlist_get(tokens, 5));
     sr_commit_t *parsed_commit = sr_parse_commit(args);
     tt_assert(parsed_commit);
     tt_mem_op(parsed_commit, ==, our_commit, sizeof(*our_commit));
