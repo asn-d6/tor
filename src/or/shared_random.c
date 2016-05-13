@@ -1257,6 +1257,13 @@ sr_get_string_for_consensus(const smartlist_t *votes)
 void
 sr_act_post_consensus(const networkstatus_t *consensus)
 {
+  /* Don't act if our state hasn't been initialized. We can be called during
+   * boot time when loading consensus from disk which is prior to the
+   * initialization of the SR subsystem. */
+  if (!sr_state_is_initialized()) {
+    return;
+  }
+
   /* Start by freeing the current SRVs since the SRVs we believed during
    * voting do not really matter. Now that all the votes are in, we use the
    * majority's opinion on which are the active SRVs. */

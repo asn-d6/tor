@@ -1229,6 +1229,14 @@ sr_state_save(void)
   state_query(SR_STATE_ACTION_SAVE, 0, NULL, NULL);
 }
 
+/* Return 1 iff the state has been initialized that is it exists in memory.
+ * Return 0 otherwise. */
+int
+sr_state_is_initialized(void)
+{
+  return sr_state == NULL ? 0 : 1;
+}
+
 /* Initialize the disk and memory state.
  *
  * If save_to_disk is set to 1, the state is immediately saved to disk after

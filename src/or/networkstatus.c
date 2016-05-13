@@ -1797,6 +1797,13 @@ networkstatus_set_current_consensus(const char *consensus,
 
   router_dir_info_changed();
 
+  /* A new consensus has been set. Pass it to the shared random subsystem to
+   * update the SR state with its content. We only need to do this for one
+   * consensus flavor. */
+  if (flav == FLAV_NS && c != NULL) {
+    sr_act_post_consensus(c);
+  }
+
   result = 0;
  done:
   if (free_consensus)
