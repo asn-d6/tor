@@ -1083,7 +1083,8 @@ sr_parse_commit(const smartlist_t *args)
   value = smartlist_get(args, 0);
   version = (uint32_t) tor_parse_ulong(value, 10, 1, UINT32_MAX, NULL, NULL);
   if (version < SR_PROTO_VERSION) {
-    log_info(LD_DIR, "SR: Commit version is not supported.");
+    log_info(LD_DIR, "SR: Commit version %d (%s) is not supported.", version,
+             escaped(value));
     goto error;
   }
 
@@ -1101,8 +1102,8 @@ sr_parse_commit(const smartlist_t *args)
   rsa_identity_fpr = smartlist_get(args, 2);
   if (base16_decode(digest, DIGEST_LEN, rsa_identity_fpr,
                     HEX_DIGEST_LEN) < 0) {
-    log_warn(LD_DIR, "SR: RSA fingerprint '%s' not decodable",
-             rsa_identity_fpr);
+    log_warn(LD_DIR, "SR: RSA fingerprint %s not decodable",
+             escaped(rsa_identity_fpr));
     goto error;
   }
   /* Let's make sure, for extra safety, that this fingerprint is known to
@@ -1111,7 +1112,7 @@ sr_parse_commit(const smartlist_t *args)
   if (trusteddirserver_get_by_v3_auth_digest(digest) == NULL) {
     log_warn(LD_DIR, "SR: Fingerprint %s is not from a recognized "
                      "authority. Discarding commit.",
-             rsa_identity_fpr);
+             escaped(rsa_identity_fpr));
     goto error;
   }
 
