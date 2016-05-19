@@ -596,8 +596,8 @@ test_vote(void *arg)
 
 const char *sr_state_str = "Version 1\n"
   "TorVersion 0.2.9.0-alpha-dev\n"
-  "ValidAfter 2666-04-19 07:16:00\n"
-  "ValidUntil 2666-04-20 07:16:00\n"
+  "ValidAfter 2037-04-19 07:16:00\n"
+  "ValidUntil 2037-04-20 07:16:00\n"
   "Commit 1 sha3-256 FA3CEC2C99DC68D3166B9B6E4FA21A4026C2AB1C "
       "7M8GdubCAAdh7WUG0DiwRyxTYRKji7HATa7LLJEZ/UAAAAAAVmfUSg== "
       "AAAAAFZn1EojfIheIw42bjK3VqkpYyjsQFSbv/dxNna3Q8hUEPKpOw==\n"
