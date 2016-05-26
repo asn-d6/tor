@@ -784,7 +784,7 @@ test_sr_compute_srv(void *arg)
   sr_srv_t *current_srv = NULL;
 
 #define SRV_TEST_VECTOR \
-  "928BD1474ADE26CB039FD2562A229D2F936D483CDF528F1FA5FB68F2BDADBA99"
+  "C3E2E6F48E541F8CB47DAC097050D09ED0AFE0CAC52AF129FCD3D20166B70463"
 
   MOCK(trusteddirserver_get_by_v3_auth_digest,
        trusteddirserver_get_by_v3_auth_digest_m);

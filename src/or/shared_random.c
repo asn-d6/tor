@@ -403,10 +403,10 @@ get_srv_element_from_commit(const sr_commit_t *commit)
 
 /* Return a srv object that is built with the construction:
  *    SRV = SHA3-256("shared-random" | INT_8(reveal_num) |
- *                   INT_8(version) | HASHED_REVEALS | previous_SRV)
+ *                   INT_4(version) | HASHED_REVEALS | previous_SRV)
  * This function cannot fail. */
 static sr_srv_t *
-generate_srv(const char *hashed_reveals, uint8_t reveal_num,
+generate_srv(const char *hashed_reveals, uint64_t reveal_num,
              const sr_srv_t *previous_srv)
 {
   char msg[DIGEST256_LEN + SR_SRV_MSG_LEN] = {0};
@@ -418,9 +418,9 @@ generate_srv(const char *hashed_reveals, uint8_t reveal_num,
   /* Add the invariant token. */
   memcpy(msg, SR_SRV_TOKEN, SR_SRV_TOKEN_LEN);
   offset += SR_SRV_TOKEN_LEN;
-  set_uint8(msg + offset, reveal_num);
+  set_uint64(msg + offset, reveal_num);
   offset += 1;
-  set_uint8(msg + offset, SR_PROTO_VERSION);
+  set_uint32(msg + offset, SR_PROTO_VERSION);
   offset += 1;
   memcpy(msg + offset, hashed_reveals, DIGEST256_LEN);
   offset += DIGEST256_LEN;
@@ -505,7 +505,7 @@ srv_to_ns_string(const sr_srv_t *srv, const char *key)
   tor_assert(key);
 
   sr_srv_encode(srv_hash_encoded, sizeof(srv_hash_encoded), srv);
-  tor_asprintf(&srv_str, "%s %d %s\n", key,
+  tor_asprintf(&srv_str, "%s %" PRIu64 " %s\n", key,
                srv->num_reveals, srv_hash_encoded);
   log_debug(LD_DIR, "SR: Consensus SRV line: %s", srv_str);
   return srv_str;
@@ -954,7 +954,7 @@ sr_generate_our_commit(time_t timestamp, const authority_cert_t *my_rsa_cert)
 void
 sr_compute_srv(void)
 {
-  size_t reveal_num = 0;
+  uint64_t reveal_num = 0;
   char *reveals = NULL;
   smartlist_t *chunks, *commits;
   digestmap_t *state_commits;
@@ -1011,8 +1011,7 @@ sr_compute_srv(void)
                          SR_DIGEST_ALG)) {
       goto end;
     }
-    tor_assert(reveal_num < UINT8_MAX);
-    current_srv = generate_srv(hashed_reveals, (uint8_t) reveal_num,
+    current_srv = generate_srv(hashed_reveals, reveal_num,
                                sr_state_get_previous_srv());
     sr_state_set_current_srv(current_srv);
     /* We have a fresh SRV, flag our state. */
@@ -1034,7 +1033,8 @@ sr_srv_t *
 sr_parse_srv(const smartlist_t *args)
 {
   char *value;
-  int num_reveals, ok, ret;
+  int ok, ret;
+  uint64_t num_reveals;
   sr_srv_t *srv = NULL;
 
   tor_assert(args);
@@ -1044,8 +1044,8 @@ sr_parse_srv(const smartlist_t *args)
   }
 
   /* First argument is the number of reveal values */
-  num_reveals = (int)tor_parse_long(smartlist_get(args, 0),
-                               10, 0, INT32_MAX, &ok, NULL);
+  num_reveals = tor_parse_uint64(smartlist_get(args, 0),
+                                 10, 0, UINT64_MAX, &ok, NULL);
   if (!ok) {
     goto end;
   }
@@ -1095,8 +1095,8 @@ sr_parse_commit(const smartlist_t *args)
   value = smartlist_get(args, 0);
   version = (uint32_t) tor_parse_ulong(value, 10, 1, UINT32_MAX, NULL, NULL);
   if (version < SR_PROTO_VERSION) {
-    log_info(LD_DIR, "SR: Commit version %d (%s) is not supported.", version,
-             escaped(value));
+    log_info(LD_DIR, "SR: Commit version %" PRIu32 " (%s) is not supported.",
+             version, escaped(value));
     goto error;
   }
 
