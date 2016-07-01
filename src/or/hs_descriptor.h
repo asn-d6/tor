@@ -192,6 +192,9 @@ STATIC char *encode_link_specifiers(const smartlist_t *specs);
 STATIC smartlist_t *decode_link_specifiers(const char *encoded);
 STATIC hs_desc_intro_point_t *decode_introduction_point(const char *text,
                                                         const char *end);
+STATIC size_t build_plaintext_padding(const char *plaintext,
+                                      size_t plaintext_len,
+                                      uint8_t **padded_out);
 
 #endif /* HS_DESCRIPTOR_PRIVATE */
 

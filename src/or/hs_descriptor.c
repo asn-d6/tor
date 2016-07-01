@@ -455,7 +455,7 @@ compute_padding_length(size_t srclen)
   size_t padding_len;
 
   /* Make sure we won't overflow. */
-  tor_assert(srclen > (SIZE_T_CEILING - HS_DESC_PLAINTEXT_PADDING_MULTIPLE));
+  tor_assert(srclen <= (SIZE_T_CEILING - HS_DESC_PLAINTEXT_PADDING_MULTIPLE));
   /* Get the extra length we need to add. For example, if srclen is 234 bytes,
    * this will expand to (2 * 128) == 256 thus an extra 22 bytes. */
   padding_len = CEIL_DIV(srclen, HS_DESC_PLAINTEXT_PADDING_MULTIPLE) *
@@ -468,7 +468,7 @@ compute_padding_length(size_t srclen)
 /* Given a buffer, pad it up to the encrypted section padding requirement. Set
  * the newly allocated string in padded_out and return the length of the
  * padded buffer. */
-static size_t
+STATIC size_t
 build_plaintext_padding(const char *plaintext, size_t plaintext_len,
                         uint8_t **padded_out)
 {
