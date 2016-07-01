@@ -259,6 +259,36 @@ test_cert_encoding(void *arg)
   free(encoded);
 }
 
+/* Test the descriptor padding. */
+static void
+test_descriptor_padding(void *arg)
+{
+  char *plaintext;
+  size_t plaintext_len, padded_len;
+  uint8_t *padded_plaintext;
+
+  (void) arg;
+
+  { /* test #1: no padding */
+    plaintext_len = 128;
+    plaintext = tor_malloc(plaintext_len);
+    padded_len = build_plaintext_padding(plaintext, plaintext_len, &padded_plaintext);
+    tt_int_op(padded_len, ==, plaintext_len);
+    tor_free(plaintext);
+  }
+
+  { /* test #1: one byte padding? */
+    plaintext_len = 127;
+    plaintext = tor_malloc(plaintext_len);
+    padded_len = build_plaintext_padding(plaintext, plaintext_len, &padded_plaintext);
+    tt_int_op(padded_len, ==, 128);
+    tor_free(plaintext);
+  }
+
+
+ done: ;
+}
+
 static void
 test_link_specifier(void *arg)
 {
@@ -388,6 +418,9 @@ struct testcase_t hs_descriptor[] = {
     NULL, NULL },
   { "decode_descriptor", test_decode_descriptor, TT_FORK,
     NULL, NULL },
+  { "descriptor_padding", test_descriptor_padding, TT_FORK,
+    NULL, NULL },
+
 
   END_OF_TESTCASES
 };
