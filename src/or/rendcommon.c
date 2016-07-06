@@ -15,6 +15,7 @@
 #include "rendclient.h"
 #include "rendcommon.h"
 #include "rendmid.h"
+#include "hs_intropoint.h"
 #include "rendservice.h"
 #include "rephist.h"
 #include "router.h"
