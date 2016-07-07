@@ -13,14 +13,14 @@ TRUNNELINPUTS = \
 	src/trunnel/ed25519_cert.trunnel \
 	src/trunnel/link_handshake.trunnel \
 	src/trunnel/pwbox.trunnel \
-  src/trunnel/rend_establish_intro.trunnel
+	src/trunnel/hs_establish_intro.trunnel
 
 TRUNNELSOURCES = \
 	src/ext/trunnel/trunnel.c \
 	src/trunnel/ed25519_cert.c \
 	src/trunnel/link_handshake.c \
 	src/trunnel/pwbox.c \
-  src/trunnel/rend_establish_intro.c
+	src/trunnel/hs_establish_intro.c
 
 TRUNNELHEADERS = \
 	src/ext/trunnel/trunnel.h		\
@@ -29,7 +29,7 @@ TRUNNELHEADERS = \
 	src/trunnel/ed25519_cert.h		\
 	src/trunnel/link_handshake.h	 	\
 	src/trunnel/pwbox.h \
-  src/trunnel/rend_establish_intro.h
+	src/trunnel/hs_establish_intro.h
 
 src_trunnel_libor_trunnel_a_SOURCES = $(TRUNNELSOURCES)
 src_trunnel_libor_trunnel_a_CPPFLAGS = -DTRUNNEL_LOCAL_H $(AM_CPPFLAGS)

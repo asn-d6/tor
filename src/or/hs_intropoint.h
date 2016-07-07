@@ -5,21 +5,16 @@
 /* See LICENSE for licensing information */
 
 /**
- * \file rendmid.h
- * \brief Header file for rendmid.c.
+ * \file hs_intropoint.h
+ * \brief Header file for hs_intropoint.c.
  **/
 
 #ifndef TOR_HSINTRO_H
 #define TOR_HSINTRO_H
 
-int rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request,
+int hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
                              size_t request_len);
 
-int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
-                                  size_t request_len);
-
 void rend_service_intro_has_opened_p224(origin_circuit_t *circuit);
-
-int throw_circuit_error(or_circuit_t *circ, int reason);
 
 #endif

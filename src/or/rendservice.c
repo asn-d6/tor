@@ -25,7 +25,6 @@
 #include "rendservice.h"
 #include "router.h"
 #include "relay.h"
-#include "rend_establish_intro.h"
 #include "rephist.h"
 #include "replaycache.h"
 #include "routerlist.h"

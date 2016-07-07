@@ -4,7 +4,7 @@
 
 /**
  * \file hs_intropoint.c
- * \brief Implement introductions points for prop224
+ * \brief Implement next generation introductions point functionality
  **/
 
 #include "or.h"
@@ -13,41 +13,24 @@
 #include "relay.h"
 #include "rendmid.h"
 
-#include "rend_establish_intro.h"
+#include "hs_establish_intro.h"
 #include "hs_intropoint.h"
 
-int rend_mid_establish_intro(or_circuit_t *circ, const uint8_t *request,
-                             size_t request_len) {
-  if (request_len < 1) { /* Defensive length check */
-    log_warn(LD_PROTOCOL, "Incomplete ESTABLISH_INTRO cell.");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
-  }
 
-  uint8_t first_byte = *request;
-  if (first_byte == 0 || first_byte == 1) {
-    log_info(LD_REND,
-        "Received a legacy ESTABLISH_INTRO request on circuit %u",
-        (unsigned) circ->p_circ_id);
-    return rend_mid_establish_intro_legacy(circ, request, request_len);
-  }
-  else if (first_byte == 2) {
-    log_info(LD_REND,
-        "Received an ESTABLISH_INTRO request on circuit %u",
-        (unsigned) circ->p_circ_id);
-    return rend_mid_establish_intro_p224(circ, request, request_len);
-  }
-  else {
-    log_warn(LD_PROTOCOL, "Invalid AUTH_KEY_TYPE");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
-  }
+static int
+throw_circuit_error(or_circuit_t *circ, int reason)
+{
+  circuit_mark_for_close(TO_CIRCUIT(circ), reason);
+  return -1;
 }
 
-int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
-                                  size_t request_len) {
-  rend_establish_intro_t *out = NULL;
+static int
+hs_establish_intro(or_circuit_t *circ, const uint8_t *request,
+                   size_t request_len)
+{
+  hs_establish_intro_cell_t *out = NULL;
 
-  /* XXX rename rend_establish_intro_parse() func to denote prop224 */
-  size_t parsing_result = rend_establish_intro_parse(&out, request, request_len);
+  size_t parsing_result = hs_establish_intro_cell_parse(&out, request, request_len);
   /* XXX aren't error retvals negative here??? */
   if (parsing_result == 1) {
     // Input was invalid - log the rend_establish_intro_check result
@@ -87,11 +70,11 @@ int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
   }
 
   ed25519_signature_t sig_struct;
-  uint8_t *sig_array = rend_establish_intro_getarray_sig(out);
+  uint8_t *sig_array = hs_establish_intro_cell_getarray_sig(out);
   memcpy(sig_struct.sig, sig_array, out->siglen);
 
   ed25519_public_key_t key_struct;
-  uint8_t *key_array = rend_establish_intro_getarray_auth_key(out);
+  uint8_t *key_array = hs_establish_intro_cell_getarray_auth_key(out);
   memcpy(key_struct.pubkey, key_array, out->auth_key_len);
 
   // Already copied to structs, can now free these
@@ -153,9 +136,32 @@ int rend_mid_establish_intro_p224(or_circuit_t *circ, const uint8_t *request,
   return 0;
 }
 
-int throw_circuit_error(or_circuit_t *circ, int reason) {
-  circuit_mark_for_close(TO_CIRCUIT(circ), reason);
-  return -1;
+int
+hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
+                            size_t request_len)
+{
+  if (request_len < 1) { /* Defensive length check */
+    log_warn(LD_PROTOCOL, "Incomplete ESTABLISH_INTRO cell.");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+  }
+
+  uint8_t first_byte = *request;
+  if (first_byte == 0 || first_byte == 1) {
+    log_info(LD_REND,
+        "Received a legacy ESTABLISH_INTRO request on circuit %u",
+        (unsigned) circ->p_circ_id);
+    return rend_mid_establish_intro_legacy(circ, request, request_len);
+  }
+  else if (first_byte == 2) {
+    log_info(LD_REND,
+        "Received an ESTABLISH_INTRO request on circuit %u",
+        (unsigned) circ->p_circ_id);
+    return hs_establish_intro(circ, request, request_len);
+  }
+  else {
+    log_warn(LD_PROTOCOL, "Invalid AUTH_KEY_TYPE");
+    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+  }
 }
 
 #if 0
@@ -210,24 +216,24 @@ void rend_service_intro_has_opened_p224(origin_circuit_t *circuit)
   }
 
   // Create empty establish_intro cell
-  rend_establish_intro_t *cell = rend_establish_intro_new();
+  hs_establish_intro_cell_t *cell = rend_establish_intro_new();
 
   // Set AUTH_KEY_TYPE: 2 means ed25519
-  rend_establish_intro_set_auth_key_type(cell, 2);
+  hs_establish_intro_cell_set_auth_key_type(cell, 2);
 
   // Set AUTH_KEY_LEN field
   // Must also set byte-length of AUTH_KEY to match
   int auth_key_len = DIGEST256_LEN;
-  rend_establish_intro_set_auth_key_len(cell, auth_key_len);
-  rend_establish_intro_setlen_auth_key(cell, auth_key_len);
+  hs_establish_intro_cell_set_auth_key_len(cell, auth_key_len);
+  hs_establish_intro_cell_setlen_auth_key(cell, auth_key_len);
 
   // Set AUTH_KEY field
-  uint8_t *auth_key_ptr = rend_establish_intro_getarray_auth_key(cell);
+  uint8_t *auth_key_ptr = hs_establish_intro_cell_getarray_auth_key(cell);
   memcpy(auth_key_ptr, key_struct.pubkey.pubkey, auth_key_len);
 
   // No extensions for now
-  rend_establish_intro_set_n_extensions(cell, 0);
-  rend_establish_intro_setlen_extensions(cell, 0);
+  hs_establish_intro_cell_set_n_extensions(cell, 0);
+  hs_establish_intro_cell_setlen_extensions(cell, 0);
 
   // Generate handshake
   int handshake_len = SHA3_256_MAC_LEN;
@@ -243,13 +249,13 @@ void rend_service_intro_has_opened_p224(origin_circuit_t *circuit)
 
   // Then add handshake to cell
   uint8_t *handshake_ptr =
-    rend_establish_intro_getarray_handshake_sha3_256(cell);
+    hs_establish_intro_cell_getarray_handshake_sha3_256(cell);
   memcpy(handshake_ptr, mac, handshake_len);
 
   // Set signature length
   int sig_len = ED25519_SIG_LEN;
-  rend_establish_intro_set_siglen(cell, sig_len);
-  rend_establish_intro_setlen_sig(cell, sig_len);
+  hs_establish_intro_cell_set_siglen(cell, sig_len);
+  hs_establish_intro_cell_setlen_sig(cell, sig_len);
 
   // TODO figure out whether to prepend a string to sig or not
   ed25519_signature_t sig_struct;
@@ -260,13 +266,13 @@ void rend_service_intro_has_opened_p224(origin_circuit_t *circuit)
 
   // And write the signature to the cell
   uint8_t *sig_ptr =
-    rend_establish_intro_getarray_sig(cell);
+    hs_establish_intro_cell_getarray_sig(cell);
   memcpy(sig_ptr, sig_struct.sig, sig_len);
 
   // Finally, get a binary string and encode the cell
   int len = 1 + 1 + auth_key_len + 1 + handshake_len + 1 + sig_len;
   uint8_t buf[len];
-  ssize_t bytes_used = rend_establish_intro_encode(buf, len, cell);
+  ssize_t bytes_used = hs_establish_intro_cell_encode(buf, len, cell);
   if (bytes_used < 0) {
     log_warn(LD_BUG, "Unable to generate valid ESTABLISH_INTRO cell");
     return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
@@ -276,7 +282,7 @@ void rend_service_intro_has_opened_p224(origin_circuit_t *circuit)
   tor_assert(bytes_used == len);
 
   // Free the cell object and send the message
-  rend_establish_intro_free(cell);
+  hs_establish_intro_cell_free(cell);
   if (relay_send_command_from_edge(0, TO_CIRCUIT(circuit),
                                    RELAY_COMMAND_ESTABLISH_INTRO,
                                    (const char *)buf, len, circuit->cpath->prev)<0) {

@@ -32,6 +32,10 @@ rend_mid_establish_intro_legacy(or_circuit_t *circ, const uint8_t *request,
   char serviceid[REND_SERVICE_ID_LEN_BASE32+1];
   int reason = END_CIRC_REASON_INTERNAL;
 
+  log_info(LD_REND,
+           "Received an ESTABLISH_INTRO request on circuit %u",
+           (unsigned) circ->p_circ_id);
+
   if (circ->base_.purpose != CIRCUIT_PURPOSE_OR || circ->base_.n_chan) {
     log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
          "Rejecting ESTABLISH_INTRO on non-OR or non-edge circuit.");

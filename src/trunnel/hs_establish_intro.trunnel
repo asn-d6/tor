@@ -6,7 +6,7 @@ struct extension {
   u8 field[field_len];
 }
 
-struct rend_establish_intro {
+struct hs_establish_intro_cell {
   @ptr start_cell;
   u8 auth_key_type;
   u16 auth_key_len;
