@@ -7,32 +7,44 @@
  * \brief Implement next generation service functionality
  **/
 
+#include "or.h"
+#include "relay.h"
+#include "rendservice.h"
+#include "circuitlist.h"
+#include "circpathbias.h"
+
+#include "hs_service.h"
 #include "hs_establish_intro.h"
 
+/* XXX DOCDOC */
 static int
-get_establish_intro_payload(uint8_t *payload, uint8_t payload_len,
+get_establish_intro_payload(uint8_t *buf, size_t buf_len,
                             const hs_establish_intro_cell_t *cell)
 {
-  // Finally, get a binary string and encode the cell
-  int len = 1 + 1 + auth_key_len + 1 + handshake_len + 1 + sig_len;
-  uint8_t buf[len];
-  ssize_t bytes_used = hs_establish_intro_cell_encode(buf, len, cell);
-  if (bytes_used < 0) {
-    log_warn(LD_BUG, "Unable to generate valid ESTABLISH_INTRO cell");
-    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
+  if (buf_len < RELAY_PAYLOAD_SIZE) {
+    return -1;
   }
 
-  // Double check for truncation
-  tor_assert(bytes_used == len);
+  ssize_t bytes_used = hs_establish_intro_cell_encode(buf, buf_len, cell);
+  if (bytes_used < 0) {
+    return -1;
+  }
+
+  return 0;
 }
 
-static hs_establish_intro_cell_t
-generate_establish_intro_cell(void);
+/** XXX DOCDOCDOC cell is allocated on heap */
+static hs_establish_intro_cell_t *
+generate_establish_intro_cell(const char *circuit_key_material,
+                              size_t circuit_key_material_len)
 {
+  log_warn(LD_GENERAL,"Generating ESTABLISH_INTRO cell (key_material_len: %u)",
+           (unsigned) circuit_key_material_len);
+
   // Generate short-term keypair for use in ESTABLISH_INTRO
   ed25519_keypair_t key_struct;
   if(ed25519_keypair_generate(&key_struct, 0) < 0) {
-      return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_NONE);
+    return NULL;
   }
 
   hs_establish_intro_cell_t *cell = hs_establish_intro_cell_new();
@@ -57,13 +69,13 @@ generate_establish_intro_cell(void);
   // Generate handshake
   int handshake_len = SHA3_256_MAC_LEN;
   char mac[handshake_len];
-  const char *kh = circuit->cpath->prev->rend_circ_nonce;
-  const size_t kh_len = DIGEST_LEN;
   const char *msg = (char*) cell->start_cell;
   const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
-  if (crypto_hmac_sha3_256(mac, kh, kh_len, msg, auth_msg_len)<0) {
+  if (crypto_hmac_sha3_256(mac,
+                           circuit_key_material, circuit_key_material_len,
+                           msg, auth_msg_len)<0) {
     log_warn(LD_BUG, "Unable to generate handshake for ESTABLISH_INTRO cell.");
-    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
+    return NULL; /* XXX nicer error handling */
   }
 
   // Then add handshake to cell
@@ -80,7 +92,7 @@ generate_establish_intro_cell(void);
   ed25519_signature_t sig_struct;
   if (ed25519_sign(&sig_struct, (uint8_t*) msg, sig_len, &key_struct)) {
     log_warn(LD_BUG, "Unable to generate signature for ESTABLISH_INTRO cell.");
-    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
+    return NULL;
   }
 
   // And write the signature to the cell
@@ -91,24 +103,41 @@ generate_establish_intro_cell(void);
   return cell;
 }
 
-static void
+static int
 send_establish_intro_cell(origin_circuit_t *circuit)
 {
-  /* Get a populated ESTABLISH_INTRO cell */
-  hs_establish_intro_cell_t *cell = generate_establish_intro_cell();
+  int retval = -1;
+  hs_establish_intro_cell_t *cell = NULL;
 
-  /* Get the ESTABLISH_INTRO payload */
-  uint8_t *cell_payload = get_establish_intro_payload(cell);
+  /* Get a populated ESTABLISH_INTRO cell */
+  {
+    const char *circuit_key_material = circuit->cpath->prev->rend_circ_nonce;
+    cell = generate_establish_intro_cell(circuit_key_material,
+                                         sizeof(circuit_key_material));
+    if (!cell) {
+      log_warn(LD_GENERAL, "Couldn't generate ESTABLISH_INTRO cell!");
+      return -1;
+    }
+  }
+
+  /* Get payload of ESTABLISH_INTRO cell */
+  const size_t buf_len = RELAY_PAYLOAD_SIZE;
+  uint8_t buf[buf_len];
+  retval = get_establish_intro_payload(buf, buf_len, cell);
+  if (retval < 0) {
+    log_warn(LD_GENERAL, "Couldn't get ESTABLISH_INTRO payload!");
+    return -1;
+  }
 
   // Free the cell object
   hs_establish_intro_cell_free(cell); /* XXX don't free here */
 
-  /* Send the cell to the network! */
-  if (relay_send_command_from_edge(0, TO_CIRCUIT(circuit),
-                                   RELAY_COMMAND_ESTABLISH_INTRO,
-                                   (const char *)buf, len, circuit->cpath->prev)<0) {
+  /* Send the cell out there! */
+  if (relay_send_command_from_edge(0, TO_CIRCUIT(circuit), RELAY_COMMAND_ESTABLISH_INTRO,
+                                   (const char *)buf, buf_len,
+                                   circuit->cpath->prev) < 0) {
     log_warn(LD_GENERAL, "Couldn't send introduction request");
-    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
+    return -1;
   }
 
   return 0;
@@ -122,11 +151,15 @@ hs_service_intro_has_opened(origin_circuit_t *circuit)
 
   /* Check that this circuit is a server-side intro circuit */
   tor_assert(circuit->base_.purpose == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO);
+
+  /* LOL XXX */
+#if 0
   rend_service_t *service = rend_service_get_by_pk_digest(
                 circuit->rend_data->rend_pk_digest);
   if (!service) {
     log_warn(LD_REND, "Unrecognized service ID.");
-    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_NOSUCHSERVICE);
+    circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_NOSUCHSERVICE);
+    return;
   }
 
   /* Make sure this circuit is still needed. */
@@ -164,14 +197,17 @@ hs_service_intro_has_opened(origin_circuit_t *circuit)
     }
     return;
   }
+#endif
 
   retval = send_establish_intro_cell(circuit);
   if (retval < 0) {
     log_warn(LD_BUG, "XXX");
-    return circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
+    circuit_mark_for_close(TO_CIRCUIT(circuit), END_CIRC_REASON_INTERNAL);
+    return;
   }
 
   /* We've attempted to use this circuit */
+  /* XXX Wtf why */
   pathbias_count_use_attempt(circuit);
 }
 
