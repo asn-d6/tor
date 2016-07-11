@@ -79,6 +79,7 @@ generate_establish_intro_cell(const char *circuit_key_material,
   int handshake_len = SHA3_256_MAC_LEN;
   char mac[handshake_len];
   const char *msg = (char*) cell->start_cell;
+  /* XXX these pointers don't work if you don't parse */
   const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
   if (crypto_hmac_sha3_256(mac,
                            circuit_key_material, circuit_key_material_len,
