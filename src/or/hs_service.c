@@ -7,6 +7,8 @@
  * \brief Implement next generation service functionality
  **/
 
+#define HS_SERVICE_PRIVATE
+
 #include "or.h"
 #include "relay.h"
 #include "rendservice.h"
@@ -15,6 +17,12 @@
 
 #include "hs_service.h"
 #include "hs_establish_intro.h"
+
+/** XXX call chain:
+    hs_service_intro_has_opened ->
+    send_establish_intro_cell ->
+    generate_establish_intro_cell / get_establish_intro_payload
+*/
 
 /* XXX DOCDOC */
 static int
@@ -34,7 +42,7 @@ get_establish_intro_payload(uint8_t *buf, size_t buf_len,
 }
 
 /** XXX DOCDOCDOC cell is allocated on heap */
-static hs_establish_intro_cell_t *
+STATIC hs_establish_intro_cell_t *
 generate_establish_intro_cell(const char *circuit_key_material,
                               size_t circuit_key_material_len)
 {
