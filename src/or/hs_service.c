@@ -58,7 +58,7 @@ generate_establish_intro_cell(const char *circuit_key_material,
   hs_establish_intro_cell_t *cell = hs_establish_intro_cell_new();
 
   // Set AUTH_KEY_TYPE: 2 means ed25519
-  hs_establish_intro_cell_set_auth_key_type(cell, 2);
+  hs_establish_intro_cell_set_auth_key_type(cell, 2); /* XXX make definition */
 
   // Set AUTH_KEY_LEN field
   // Must also set byte-length of AUTH_KEY to match
@@ -96,9 +96,12 @@ generate_establish_intro_cell(const char *circuit_key_material,
   hs_establish_intro_cell_set_siglen(cell, sig_len);
   hs_establish_intro_cell_setlen_sig(cell, sig_len);
 
+  /* XXX These contents are prefixed with the string "Tor establish-intro cell v1". */
+
   // TODO figure out whether to prepend a string to sig or not
-  ed25519_signature_t sig_struct;
-  if (ed25519_sign(&sig_struct, (uint8_t*) msg, sig_len, &key_struct)) {
+  ed25519_signature_t sig;
+  const size_t sig_msg_len = (char*) (cell->end_sig_fields) - msg; /* XXX make sure this is right */
+  if (ed25519_sign(&sig, (uint8_t*) msg, sig_msg_len, &key_struct)) {
     log_warn(LD_BUG, "Unable to generate signature for ESTABLISH_INTRO cell.");
     return NULL;
   }
@@ -106,7 +109,7 @@ generate_establish_intro_cell(const char *circuit_key_material,
   // And write the signature to the cell
   uint8_t *sig_ptr =
     hs_establish_intro_cell_getarray_sig(cell);
-  memcpy(sig_ptr, sig_struct.sig, sig_len);
+  memcpy(sig_ptr, sig.sig, sig_len);
 
   return cell;
 }
