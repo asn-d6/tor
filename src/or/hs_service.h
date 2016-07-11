@@ -23,6 +23,13 @@ STATIC hs_establish_intro_cell_t *
 generate_establish_intro_cell(const char *circuit_key_material,
                               size_t circuit_key_material_len);
 
+STATIC int
+get_establish_intro_payload(uint8_t *buf, size_t buf_len,
+                            const hs_establish_intro_cell_t *cell);
+
+
+
+
 #endif
 
 #endif

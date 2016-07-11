@@ -25,7 +25,7 @@
 */
 
 /* XXX DOCDOC */
-static int
+STATIC int
 get_establish_intro_payload(uint8_t *buf, size_t buf_len,
                             const hs_establish_intro_cell_t *cell)
 {
@@ -34,7 +34,7 @@ get_establish_intro_payload(uint8_t *buf, size_t buf_len,
   }
 
   ssize_t bytes_used = hs_establish_intro_cell_encode(buf, buf_len, cell);
-  if (bytes_used < 0) {
+  if (bytes_used < 0) { /* XXX hiding -2 retval */
     return -1;
   }
 
@@ -71,8 +71,9 @@ generate_establish_intro_cell(const char *circuit_key_material,
   memcpy(auth_key_ptr, key_struct.pubkey.pubkey, auth_key_len);
 
   // No extensions for now
+  /* XXX setlen buf when newlen = 0 ? */
+  /* hs_establish_intro_cell_setlen_extensions(cell, 0); */
   hs_establish_intro_cell_set_n_extensions(cell, 0);
-  hs_establish_intro_cell_setlen_extensions(cell, 0);
 
   // Generate handshake
   int handshake_len = SHA3_256_MAC_LEN;
@@ -107,8 +108,7 @@ generate_establish_intro_cell(const char *circuit_key_material,
   }
 
   // And write the signature to the cell
-  uint8_t *sig_ptr =
-    hs_establish_intro_cell_getarray_sig(cell);
+  uint8_t *sig_ptr = hs_establish_intro_cell_getarray_sig(cell);
   memcpy(sig_ptr, sig.sig, sig_len);
 
   return cell;

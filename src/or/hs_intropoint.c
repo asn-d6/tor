@@ -7,6 +7,8 @@
  * \brief Implement next generation introductions point functionality
  **/
 
+#define HS_INTROPOINT_PRIVATE
+
 #include "or.h"
 #include "circuitlist.h"
 #include "circuituse.h"
@@ -37,7 +39,7 @@ get_auth_key_from_establish_intro_cell(ed25519_public_key_t *auth_key,
 }
 
 /* XXX rename out to cell */
-static int
+STATIC int
 verify_establish_intro_cell(hs_establish_intro_cell_t *out,
                             const char *circuit_key_material,
                             size_t circuit_key_material_len)
@@ -48,7 +50,6 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *out,
              "Invalid ESTABLSH_INTRO AUTH_KEY_TYPE: must be in {0, 1, 2}");
     return -1;
   }
-
 
   /* Verify the MAC */
   const char *msg = (char*) out->start_cell;
@@ -106,17 +107,12 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
   }
 
   /* Parse the cell */
-  size_t parsing_result = hs_establish_intro_cell_parse(&out, request, request_len);
+  ssize_t parsing_result = hs_establish_intro_cell_parse(&out, request, request_len);
   /* XXX aren't error retvals negative here??? */
-  if (parsing_result == 1) {
-    // Input was invalid - log the rend_establish_intro_check result
+  if (parsing_result < 0) {
     tor_free(out);  /* XXX better error management wtf!! */
-    log_warn(LD_PROTOCOL, "Rejecting invalid ESTABLISH_INTRO cell.");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
-  } else if (parsing_result == 2) {
-    // Input was possibly truncated
-    tor_free(out);
-    log_warn(LD_PROTOCOL, "Rejecting truncated ESTABLISH_INTRO cell.");
+    log_warn(LD_PROTOCOL, "Rejecting %s ESTABLISH_INTRO cell.",
+             parsing_result == -1 ? "invalid" : "truncated");
     return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
 
@@ -130,6 +126,7 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
   }
 
   /* Associate auth key with circuit, and make it an intro circuit */
+  /* XXX functionify */
   {
     char pk_digest[DIGEST_LEN];
     ed25519_public_key_t auth_key;

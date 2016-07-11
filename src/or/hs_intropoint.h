@@ -17,4 +17,13 @@ int hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
 
 void rend_service_intro_has_opened_p224(origin_circuit_t *circuit);
 
+#ifdef HS_INTROPOINT_PRIVATE
+
+STATIC int
+verify_establish_intro_cell(hs_establish_intro_cell_t *out,
+                            const char *circuit_key_material,
+                            size_t circuit_key_material_len);
+
+#endif
+
 #endif
