@@ -78,7 +78,10 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *out,
     get_auth_key_from_establish_intro_cell(&auth_key, out);
 
     // TODO figure out how to incorporate the prefix: ask Nick!
-    int sig_mismatch = ed25519_checksig(&sig_struct, (uint8_t*) msg, out->siglen, &auth_key);
+    const size_t sig_msg_len = (char*) (out->end_sig_fields) - msg;
+    int sig_mismatch = ed25519_checksig(&sig_struct,
+                                        (uint8_t*) msg, sig_msg_len,
+                                        &auth_key);
     if (sig_mismatch) {
       log_warn(LD_PROTOCOL, "ESTABLISH_INTRO signature not as expected");
       return -1;

@@ -94,7 +94,6 @@ generate_establish_intro_cell(const char *circuit_key_material,
     }
 
     /* sanity check */
-    printf("hihi %d\n", (int)encoded_len);
     tor_assert(encoded_len > ED25519_SIG_LEN + 2 + SHA3_256_MAC_LEN);
 
     /* Calculate MAC */
