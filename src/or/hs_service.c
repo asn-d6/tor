@@ -70,28 +70,29 @@ generate_establish_intro_cell(const char *circuit_key_material,
   uint8_t *auth_key_ptr = hs_establish_intro_cell_getarray_auth_key(cell);
   memcpy(auth_key_ptr, key_struct.pubkey.pubkey, auth_key_len);
 
-  // No extensions for now
-  /* XXX setlen buf when newlen = 0 ? */
-  /* hs_establish_intro_cell_setlen_extensions(cell, 0); */
+  /* No extensions for now */ /* XXX check correctness */
+  hs_establish_intro_cell_setlen_extensions(cell, 0);
   hs_establish_intro_cell_set_n_extensions(cell, 0);
 
-  // Generate handshake
-  int handshake_len = SHA3_256_MAC_LEN;
-  char mac[handshake_len];
-  const char *msg = (char*) cell->start_cell;
-  /* XXX these pointers don't work if you don't parse */
-  const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
-  if (crypto_hmac_sha3_256(mac,
-                           circuit_key_material, circuit_key_material_len,
-                           msg, auth_msg_len)<0) {
-    log_warn(LD_BUG, "Unable to generate handshake for ESTABLISH_INTRO cell.");
-    return NULL; /* XXX nicer error handling */
-  }
+  /* Calculate the cell MAC (HANDSHAKE_AUTH). */
+  {
+    int handshake_len = SHA3_256_MAC_LEN;
+    char mac[handshake_len];
+    /* XXX these pointers don't work if you don't parse */
+    const char *msg = (char*) cell->start_cell;
+    const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
+    if (crypto_hmac_sha3_256(mac,
+                             circuit_key_material, circuit_key_material_len,
+                             msg, auth_msg_len)<0) {
+      log_warn(LD_BUG, "Unable to generate handshake for ESTABLISH_INTRO cell.");
+      return NULL; /* XXX nicer error handling */
+    }
 
-  // Then add handshake to cell
-  uint8_t *handshake_ptr =
-    hs_establish_intro_cell_getarray_handshake_sha3_256(cell);
-  memcpy(handshake_ptr, mac, handshake_len);
+    /* Then add MAC to cell */
+    uint8_t *handshake_ptr =
+      hs_establish_intro_cell_getarray_handshake_sha3_256(cell);
+    memcpy(handshake_ptr, mac, handshake_len);
+  }
 
   // Set signature length
   int sig_len = ED25519_SIG_LEN;
@@ -102,7 +103,9 @@ generate_establish_intro_cell(const char *circuit_key_material,
 
   // TODO figure out whether to prepend a string to sig or not
   ed25519_signature_t sig;
-  const size_t sig_msg_len = (char*) (cell->end_sig_fields) - msg; /* XXX make sure this is right */
+  const char *msg = (char*) cell->start_cell;
+  /* XXX make sure this is right */
+  const size_t sig_msg_len = (char*) (cell->end_sig_fields) - msg;
   if (ed25519_sign(&sig, (uint8_t*) msg, sig_msg_len, &key_struct)) {
     log_warn(LD_BUG, "Unable to generate signature for ESTABLISH_INTRO cell.");
     return NULL;
