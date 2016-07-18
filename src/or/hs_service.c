@@ -4,7 +4,7 @@
 
 /**
  * \file hs_service.c
- * \brief Implement next generation service functionality
+ * \brief Implement next generation hidden service functionality
  **/
 
 #define HS_SERVICE_PRIVATE
@@ -19,7 +19,7 @@
 #include "hs_establish_intro.h"
 
 /** XXX call chain:
-    hs_service_intro_has_opened ->
+    hs_service_intro_circ_has_opened ->
     send_establish_intro_cell ->
     generate_establish_intro_cell / get_establish_intro_payload
 */
@@ -183,7 +183,7 @@ send_establish_intro_cell(origin_circuit_t *circuit)
 
 /** Our circuit to the intro point just opened! Send out an ESTABLISH_INTRO cell. */
 void
-hs_service_intro_has_opened(origin_circuit_t *circuit)
+hs_service_intro_circ_has_opened(origin_circuit_t *circuit)
 {
   int retval = -1;
 

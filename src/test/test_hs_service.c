@@ -24,27 +24,27 @@ test_establish_intro_cell(void *arg)
   (void) arg;
   int retval;
   char circuit_key_material[DIGEST_LEN] = {0};
-  const size_t buf_len = RELAY_PAYLOAD_SIZE;
-  uint8_t buf[buf_len];
+  uint8_t buf[RELAY_PAYLOAD_SIZE];
+  hs_establish_intro_cell_t *cell_out = NULL;
+  hs_establish_intro_cell_t *cell_in = NULL;
 
   crypto_rand(circuit_key_material, sizeof(circuit_key_material));
 
   /* Create outgoing ESTABLISH_INTRO cell and extract its payload so that we
      attempt to parse it. */
   {
-    hs_establish_intro_cell_t *cell_out = NULL;
-    cell_out = generate_establish_intro_cell(circuit_key_material, sizeof(circuit_key_material));
+    cell_out = generate_establish_intro_cell(circuit_key_material,
+                                             sizeof(circuit_key_material));
     tt_assert(cell_out);
 
-    retval = get_establish_intro_payload(buf, buf_len, cell_out);
+    retval = get_establish_intro_payload(buf, sizeof(buf), cell_out);
     tt_int_op(retval, >=, 0);
   }
 
   /* Parse it as the receiver */
   {
-    hs_establish_intro_cell_t *cell_in = NULL;
     ssize_t parse_result = hs_establish_intro_cell_parse(&cell_in,
-                                                         buf, buf_len);
+                                                         buf, sizeof(buf));
     tt_int_op(parse_result, >=, 0);
 
     retval = verify_establish_intro_cell(cell_in,
@@ -53,7 +53,9 @@ test_establish_intro_cell(void *arg)
     tt_int_op(retval, >=, 0);
   }
 
- done: ;
+ done:
+  hs_establish_intro_cell_free(cell_out);
+  hs_establish_intro_cell_free(cell_in);
 }
 
 struct testcase_t hs_service_tests[] = {

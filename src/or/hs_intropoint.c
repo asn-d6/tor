@@ -196,4 +196,3 @@ hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
     return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
 }
-

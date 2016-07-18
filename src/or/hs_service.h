@@ -15,7 +15,7 @@
 #include "or.h"
 #include "hs_establish_intro.h"
 
-void hs_service_intro_has_opened(origin_circuit_t *circuit);
+void hs_service_intro_circ_has_opened(origin_circuit_t *circuit);
 
 #ifdef HS_SERVICE_PRIVATE
 
