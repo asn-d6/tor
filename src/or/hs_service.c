@@ -62,7 +62,7 @@ generate_establish_intro_cell(const char *circuit_key_material,
 
   // Set AUTH_KEY_LEN field
   // Must also set byte-length of AUTH_KEY to match
-  int auth_key_len = DIGEST256_LEN;
+  int auth_key_len = ED25519_PUBKEY_LEN;
   hs_establish_intro_cell_set_auth_key_len(cell, auth_key_len);
   hs_establish_intro_cell_setlen_auth_key(cell, auth_key_len);
 
@@ -74,16 +74,34 @@ generate_establish_intro_cell(const char *circuit_key_material,
   hs_establish_intro_cell_setlen_extensions(cell, 0);
   hs_establish_intro_cell_set_n_extensions(cell, 0);
 
+  /* Set signature length */ /* XXX dirty but we need it for _encode() */
+  int sig_len = ED25519_SIG_LEN;
+  hs_establish_intro_cell_set_siglen(cell, sig_len);
+  hs_establish_intro_cell_setlen_sig(cell, sig_len);
+
   /* Calculate the cell MAC (HANDSHAKE_AUTH). */
   {
-    int handshake_len = SHA3_256_MAC_LEN;
-    char mac[handshake_len];
-    /* XXX these pointers don't work if you don't parse */
-    const char *msg = (char*) cell->start_cell;
-    const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
+    /* This is used temporarily to calculate MACs and signatures */
+    uint8_t cell_bytes_tmp[RELAY_PAYLOAD_SIZE] = {0};
+    ssize_t encoded_len;
+    char mac[SHA3_256_MAC_LEN];
+
+    encoded_len = hs_establish_intro_cell_encode(cell_bytes_tmp,sizeof(cell_bytes_tmp),
+                                         cell);
+    if (encoded_len < 0) {
+      log_warn(LD_OR, "Unable to pre-encode ESTABLISH_INTRO cell.");
+      return NULL; /* XXX nicer error handling! */
+    }
+
+    /* sanity check */
+    printf("hihi %d\n", (int)encoded_len);
+    tor_assert(encoded_len > ED25519_SIG_LEN + 2 + SHA3_256_MAC_LEN);
+
+    /* Calculate MAC */
     if (crypto_hmac_sha3_256(mac,
-                             circuit_key_material, circuit_key_material_len,
-                             msg, auth_msg_len)<0) {
+                         circuit_key_material, circuit_key_material_len,
+                         (const char*)cell_bytes_tmp,
+                         encoded_len - (ED25519_SIG_LEN + 2 + SHA3_256_MAC_LEN)) < 0) {
       log_warn(LD_BUG, "Unable to generate handshake for ESTABLISH_INTRO cell.");
       return NULL; /* XXX nicer error handling */
     }
@@ -91,29 +109,35 @@ generate_establish_intro_cell(const char *circuit_key_material,
     /* Then add MAC to cell */
     uint8_t *handshake_ptr =
       hs_establish_intro_cell_getarray_handshake_sha3_256(cell);
-    memcpy(handshake_ptr, mac, handshake_len);
+    memcpy(handshake_ptr, mac, sizeof(mac));
   }
 
-  // Set signature length
-  int sig_len = ED25519_SIG_LEN;
-  hs_establish_intro_cell_set_siglen(cell, sig_len);
-  hs_establish_intro_cell_setlen_sig(cell, sig_len);
+  /* Calculate the cell signature */
+  {
+    uint8_t cell_bytes_tmp[RELAY_PAYLOAD_SIZE] = {0}; /* XXX code dup */
+    ssize_t encoded_len;
 
-  /* XXX These contents are prefixed with the string "Tor establish-intro cell v1". */
+    /* XXX terrible workflow with encode */
+    encoded_len = hs_establish_intro_cell_encode(cell_bytes_tmp,sizeof(cell_bytes_tmp),
+                                         cell);
+    if (encoded_len < 0) {
+      log_warn(LD_OR, "Unable to pre-encode ESTABLISH_INTRO cell (2).");
+      return NULL; /* XXX nicer error handling! */
+    }
 
-  // TODO figure out whether to prepend a string to sig or not
-  ed25519_signature_t sig;
-  const char *msg = (char*) cell->start_cell;
-  /* XXX make sure this is right */
-  const size_t sig_msg_len = (char*) (cell->end_sig_fields) - msg;
-  if (ed25519_sign(&sig, (uint8_t*) msg, sig_msg_len, &key_struct)) {
-    log_warn(LD_BUG, "Unable to generate signature for ESTABLISH_INTRO cell.");
-    return NULL;
+    /* XXX These contents are prefixed with the string "Tor establish-intro cell v1". */
+    ed25519_signature_t sig;
+    if (ed25519_sign(&sig,
+                     (uint8_t*) cell_bytes_tmp, encoded_len - ED25519_SIG_LEN,
+                     &key_struct)) {
+      log_warn(LD_BUG, "Unable to generate signature for ESTABLISH_INTRO cell.");
+      return NULL;
+    }
+
+    // And write the signature to the cell
+    uint8_t *sig_ptr = hs_establish_intro_cell_getarray_sig(cell);
+    memcpy(sig_ptr, sig.sig, sig_len);
   }
-
-  // And write the signature to the cell
-  uint8_t *sig_ptr = hs_establish_intro_cell_getarray_sig(cell);
-  memcpy(sig_ptr, sig.sig, sig_len);
 
   return cell;
 }
