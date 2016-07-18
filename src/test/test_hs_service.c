@@ -27,8 +27,10 @@ test_establish_intro_cell(void *arg)
   const size_t buf_len = RELAY_PAYLOAD_SIZE;
   uint8_t buf[buf_len];
 
+  crypto_rand(circuit_key_material, sizeof(circuit_key_material));
+
   /* Create outgoing ESTABLISH_INTRO cell and extract its payload so that we
-     can try to parse it. */
+     attempt to parse it. */
   {
     hs_establish_intro_cell_t *cell_out = NULL;
     cell_out = generate_establish_intro_cell(circuit_key_material, sizeof(circuit_key_material));
