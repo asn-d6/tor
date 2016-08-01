@@ -3537,13 +3537,12 @@ rend_consider_services_intro_points(void)
     SMARTLIST_FOREACH_BEGIN(retry_nodes, rend_intro_point_t *, intro) {
       r = rend_service_launch_establish_intro(service, intro);
       if (r < 0) {
-        log_warn(LD_REND, "Error launching circuit to node %s for service %s.",
+        /* We failed to launch a circuit because of local network reasons. Just
+           ignore the failure for now, so that we try again later with the same
+           intro points in case the network comes back up. */
+        log_notice(LD_REND,"Error launching circ to node %s for service %s.",
                  safe_str_client(extend_info_describe(intro->extend_info)),
                  safe_str_client(service->service_id));
-        /* Unable to launch a circuit to that intro point, remove it from
-         * the valid list so we can create a new one. */
-        smartlist_remove(service->intro_nodes, intro);
-        rend_intro_point_free(intro);
         continue;
       }
       intro->circuit_retries++;
