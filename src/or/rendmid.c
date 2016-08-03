@@ -33,7 +33,7 @@ rend_mid_establish_intro_legacy(or_circuit_t *circ, const uint8_t *request,
   int reason = END_CIRC_REASON_INTERNAL;
 
   log_info(LD_REND,
-           "Received an ESTABLISH_INTRO request on circuit %u",
+           "Received a legacy ESTABLISH_INTRO request on circuit %u",
            (unsigned) circ->p_circ_id);
 
   if (circ->base_.purpose != CIRCUIT_PURPOSE_OR || circ->base_.n_chan) {

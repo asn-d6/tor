@@ -18,9 +18,11 @@
 #include "hs_service.h"
 #include "hs_establish_intro.h"
 
+#define AUTH_KEY_ED25519 2
+
 /** Given an ESTABLISH_INTRO <b>cell</b>, encode it and place its payload in
- *  <b>buf_out</b> of size <b>buf_out_len</b>. If <b>buf_out</b> is too small,
- *  return -1. Otherwise, return 0 if everything went well. */
+ *  <b>buf_out</b> which has size <b>buf_out_len</b>. If <b>buf_out</b> is too
+ *  small, return -1. Otherwise, return 0 if everything went well. */
 STATIC int
 get_establish_intro_payload(uint8_t *buf_out, size_t buf_out_len,
                             const hs_establish_intro_cell_t *cell)
@@ -38,7 +40,7 @@ get_establish_intro_payload(uint8_t *buf_out, size_t buf_out_len,
   return 0;
 }
 
-/** Given circuit handshake info in <b>circuit_key_material</b>, create and
+/** Given the circuit handshake info in <b>circuit_key_material</b>, create and
  *  return an ESTABLISH_INTRO cell. Return NULL if something went wrong.  The
  *  returned cell is allocated on the heap and it's the responsibility of the
  *  caller to free it. */
@@ -46,19 +48,22 @@ STATIC hs_establish_intro_cell_t *
 generate_establish_intro_cell(const char *circuit_key_material,
                               size_t circuit_key_material_len)
 {
-  log_warn(LD_GENERAL,"Generating ESTABLISH_INTRO cell (key_material_len: %u)",
+  hs_establish_intro_cell_t *cell = NULL;
+
+  log_warn(LD_GENERAL,
+           "Generating ESTABLISH_INTRO cell (key_material_len: %u)",
            (unsigned) circuit_key_material_len);
 
   /* Generate short-term keypair for use in ESTABLISH_INTRO */
   ed25519_keypair_t key_struct;
   if(ed25519_keypair_generate(&key_struct, 0) < 0) {
-    return NULL;
+    goto err;
   }
 
-  hs_establish_intro_cell_t *cell = hs_establish_intro_cell_new();
+  cell = hs_establish_intro_cell_new();
 
   /* Set AUTH_KEY_TYPE: 2 means ed25519 */
-  hs_establish_intro_cell_set_auth_key_type(cell, 2); /* XXX make definition */
+  hs_establish_intro_cell_set_auth_key_type(cell, AUTH_KEY_ED25519);
 
   /* Set AUTH_KEY_LEN field */
   /* Must also set byte-length of AUTH_KEY to match */
@@ -70,18 +75,22 @@ generate_establish_intro_cell(const char *circuit_key_material,
   uint8_t *auth_key_ptr = hs_establish_intro_cell_getarray_auth_key(cell);
   memcpy(auth_key_ptr, key_struct.pubkey.pubkey, auth_key_len);
 
-  /* No extensions for now */ /* XXX check correctness */
+  /* No cell extensions needed */
   hs_establish_intro_cell_setlen_extensions(cell, 0);
   hs_establish_intro_cell_set_n_extensions(cell, 0);
 
-  /* Set signature length */ /* XXX dirty but we need it for _encode() */
+  /* Set signature size.
+     We need to do this up here, because _encode() needs it and we need to call
+     _encode() to calculate the MAC and signature.
+  */
   int sig_len = ED25519_SIG_LEN;
   hs_establish_intro_cell_set_siglen(cell, sig_len);
   hs_establish_intro_cell_setlen_sig(cell, sig_len);
 
   /* Calculate the cell MAC (aka HANDSHAKE_AUTH). */
   {
-    /* This is used temporarily to calculate MACs and signatures */
+    /* To calculate HANDSHAKE_AUTH, we dump the cell in bytes, and then derive
+       the MAC from it. */
     uint8_t cell_bytes_tmp[RELAY_PAYLOAD_SIZE] = {0};
     ssize_t encoded_len;
     char mac[SHA3_256_MAC_LEN];
@@ -91,22 +100,22 @@ generate_establish_intro_cell(const char *circuit_key_material,
                                                  cell);
     if (encoded_len < 0) {
       log_warn(LD_OR, "Unable to pre-encode ESTABLISH_INTRO cell.");
-      return NULL; /* XXX nicer error handling! */
+      goto err;
     }
 
     /* sanity check */
     tor_assert(encoded_len > ED25519_SIG_LEN + 2 + SHA3_256_MAC_LEN);
 
-    /* Calculate MAC */
+    /* Calculate MAC of all fields before HANDSHAKE_AUTH */
     if (crypto_hmac_sha3_256(mac,
                          circuit_key_material, circuit_key_material_len,
                          (const char*)cell_bytes_tmp,
                          encoded_len - (ED25519_SIG_LEN + 2 + SHA3_256_MAC_LEN)) < 0) {
-      log_warn(LD_BUG, "Unable to generate handshake for ESTABLISH_INTRO cell.");
-      return NULL; /* XXX nicer error handling */
+      log_warn(LD_BUG, "Unable to generate MAC for ESTABLISH_INTRO cell.");
+      goto err;
     }
 
-    /* Then add MAC to cell */
+    /* Write the MAC to the cell */
     uint8_t *handshake_ptr =
       hs_establish_intro_cell_getarray_handshake_sha3_256(cell);
     memcpy(handshake_ptr, mac, sizeof(mac));
@@ -114,24 +123,26 @@ generate_establish_intro_cell(const char *circuit_key_material,
 
   /* Calculate the cell signature */
   {
-    uint8_t cell_bytes_tmp[RELAY_PAYLOAD_SIZE] = {0}; /* XXX code dup */
+    /* To calculate the sig we follow the same procedure as above. We first
+       dump the cell up to the sig, and then calculate the sig */
+    uint8_t cell_bytes_tmp[RELAY_PAYLOAD_SIZE] = {0};
     ssize_t encoded_len;
+    ed25519_signature_t sig;
 
-    /* XXX terrible workflow with encode */
-    encoded_len = hs_establish_intro_cell_encode(cell_bytes_tmp,sizeof(cell_bytes_tmp),
-                                         cell);
+    encoded_len = hs_establish_intro_cell_encode(cell_bytes_tmp,
+                                                 sizeof(cell_bytes_tmp),
+                                                 cell);
     if (encoded_len < 0) {
       log_warn(LD_OR, "Unable to pre-encode ESTABLISH_INTRO cell (2).");
-      return NULL; /* XXX nicer error handling! */
+      goto err;
     }
 
     /* XXX These contents are prefixed with the string "Tor establish-intro cell v1". */
-    ed25519_signature_t sig;
     if (ed25519_sign(&sig,
                      (uint8_t*) cell_bytes_tmp, encoded_len - ED25519_SIG_LEN,
                      &key_struct)) {
       log_warn(LD_BUG, "Unable to generate signature for ESTABLISH_INTRO cell.");
-      return NULL;
+      goto err;
     }
 
     /* And write the signature to the cell */
@@ -139,7 +150,12 @@ generate_establish_intro_cell(const char *circuit_key_material,
     memcpy(sig_ptr, sig.sig, sig_len);
   }
 
+  /* We are done! Return the cell! */
   return cell;
+
+ err:
+  tor_free(cell);
+  return NULL;
 }
 
 /** Send an ESTABLISH_INTRO cell in <b>circuit</b>. */

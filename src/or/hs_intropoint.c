@@ -48,7 +48,7 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *cell,
                             size_t circuit_key_material_len)
 {
   /* Make sure we understand the authentication version */
-  if (cell->auth_key_type != 2) {
+  if (cell->auth_key_type != 2) { /* XXX use AUTH_KEY_ED25519 */
     log_warn(LD_PROTOCOL,
              "Invalid ESTABLSH_INTRO AUTH_KEY_TYPE: must be in {0, 1, 2}");
     return -1;
@@ -94,42 +94,44 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *cell,
   return 0;
 }
 
-/** We just received an ESTABLISH_INTRO cell in circuit <b>circ</b>. Its
- *  payload is in <b>request</b>. Handle it. */
+/** We just received an ESTABLISH_INTRO cell in circuit <b>circ</b> with
+ *  payload in <b>request</b>. Handle it by becoming the intro point. Return 0
+ *  if everything went well, or -1 if there were errors. */
 static int
 handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
                    size_t request_len)
 {
   int retval;
-  hs_establish_intro_cell_t *out = NULL;
+  hs_establish_intro_cell_t *parsed_cell = NULL;
+
+  log_info(LD_REND,
+           "Received an ESTABLISH_INTRO request on circuit %u",
+           (unsigned) circ->p_circ_id);
 
   /* Basic sanity check on circuit purpose */
   /* XXX Should we also check circ->base_.n_chan like we do in
      rend_mid_establish_intro_legacy(). */
   if (circ->base_.purpose != CIRCUIT_PURPOSE_OR) {
-    tor_free(out);
     log_warn(LD_PROTOCOL,
              "Rejecting ESTABLISH_INTRO on non-OR or non-edge circuit.");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+    goto err;
   }
 
   /* Parse the cell */
-  ssize_t parsing_result = hs_establish_intro_cell_parse(&out, request, request_len);
+  ssize_t parsing_result = hs_establish_intro_cell_parse(&parsed_cell, request, request_len);
   /* XXX aren't error retvals negative here??? */
   if (parsing_result < 0) {
-    tor_free(out);  /* XXX better error management wtf!! */
     log_warn(LD_PROTOCOL, "Rejecting %s ESTABLISH_INTRO cell.",
              parsing_result == -1 ? "invalid" : "truncated");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+    goto err;
   }
 
-  retval = verify_establish_intro_cell(out,
+  retval = verify_establish_intro_cell(parsed_cell,
                                        circ->rend_circ_nonce,
                                        sizeof(circ->rend_circ_nonce));
   if (retval < 0) {
-    /* XXX */
-    /* tor_free(out) */
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+    log_warn(LD_PROTOCOL, "Failed to verify ESTABLISH_INTRO cell.");
+    goto err;
   }
 
   /* Associate auth key with circuit, and make it an intro circuit */
@@ -137,20 +139,18 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
   {
     char pk_digest[DIGEST_LEN];
     ed25519_public_key_t auth_key;
-    get_auth_key_from_establish_intro_cell(&auth_key, out);
+    get_auth_key_from_establish_intro_cell(&auth_key, parsed_cell);
 
     if (crypto_digest(pk_digest, (const char *)auth_key.pubkey, ED25519_PUBKEY_LEN)<0) {
-      tor_free(out);
       log_warn(LD_BUG, "Couldn't hash public key");
-      return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+      goto err;
     }
 
     /* Make sure the key is not in use by another circuit; reject if so. */
-    or_circuit_t *c = circuit_get_intro_point((const uint8_t *)pk_digest);
-    if (c != NULL) {
-      tor_free(out);
+    or_circuit_t *other_circ = circuit_get_intro_point((const uint8_t *)pk_digest);
+    if (other_circ) {
       log_warn(LD_PROTOCOL, "Authentication key already in use");
-      return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+      goto err;
     }
 
     /* Associate key with circuit and set circuit purpose */
@@ -164,13 +164,17 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
   if (relay_send_command_from_edge(0, TO_CIRCUIT(circ),
                                    RELAY_COMMAND_INTRO_ESTABLISHED,
                                    (const char *)ack, 1, NULL)<0) {
-    tor_free(out);
     log_warn(LD_BUG, "Couldn't send INTRO_ESTABLISHED cell.");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+    goto err;
   }
 
   /* We are done! */
   return 0;
+
+ err:
+  tor_free(parsed_cell);
+  circuit_mark_for_close(TO_CIRCUIT(circ), END_CIRC_REASON_TORPROTOCOL);
+  return -1;
 }
 
 /* We just received an ESTABLISH_INTRO cell in <b>circ</b>. Figure out of it's
@@ -186,14 +190,8 @@ hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
 
   uint8_t first_byte = *request; /* XXX maybe turn into switch */
   if (first_byte == 0 || first_byte == 1) {
-    log_info(LD_REND,
-        "Received a legacy ESTABLISH_INTRO request on circuit %u",
-        (unsigned) circ->p_circ_id);
     return rend_mid_establish_intro_legacy(circ, request, request_len);
   } else if (first_byte == 2) {
-    log_info(LD_REND,
-        "Received an ESTABLISH_INTRO request on circuit %u",
-        (unsigned) circ->p_circ_id);
     return handle_establish_intro(circ, request, request_len);
   } else {
     log_warn(LD_PROTOCOL, "Invalid AUTH_KEY_TYPE");
