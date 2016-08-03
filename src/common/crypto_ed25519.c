@@ -203,6 +203,31 @@ ed25519_sign(ed25519_signature_t *signature_out,
 }
 
 /**
+ * Like ed25519_sign(), but also prefix <b>msg</b> with <b>prefix_str</b>
+ * before signing. <b>prefix_str</b> must be a NUL-terminated string.
+ */
+int
+ed25519_sign_prefixed(ed25519_signature_t *signature_out,
+                      const uint8_t *msg, size_t len,
+                      const char *prefix_str,
+                      const ed25519_keypair_t *keypair)
+{
+  int retval;
+  size_t prefixed_msg_len = len + strlen(prefix_str);
+  uint8_t *prefixed_msg = tor_malloc_zero(prefixed_msg_len);
+
+  memcpy(prefixed_msg, prefix_str, strlen(prefix_str));
+  memcpy(prefixed_msg + strlen(prefix_str), msg, len);
+
+  retval = ed25519_sign(signature_out,
+                        prefixed_msg, prefixed_msg_len,
+                        keypair);
+  tor_free(prefixed_msg);
+
+  return retval;
+}
+
+/**
  * Check whether if <b>signature</b> is a valid signature for the
  * <b>len</b>-byte message in <b>msg</b> made with the key <b>pubkey</b>.
  *
@@ -215,6 +240,34 @@ ed25519_checksig(const ed25519_signature_t *signature,
 {
   return
     get_ed_impl()->open(signature->sig, msg, len, pubkey->pubkey) < 0 ? -1 : 0;
+}
+
+/**
+ * Like ed2519_checksig(), but also prefix <b>msg</b> with <b>prefix_str</b>
+ * before verifying signature. <b>prefix_str</b> must be a NUL-terminated
+ * string.
+ */
+int
+ed25519_checksig_prefixed(const ed25519_signature_t *signature,
+                          const uint8_t *msg, size_t len,
+                          const char *prefix_str,
+                          const ed25519_public_key_t *pubkey)
+{
+  int retval;
+
+  /* XXX Check against SIZE_T_CEILING */
+  size_t prefixed_msg_len = len + strlen(prefix_str);
+  uint8_t *prefixed_msg = tor_malloc_zero(prefixed_msg_len);
+
+  memcpy(prefixed_msg, prefix_str, strlen(prefix_str));
+  memcpy(prefixed_msg + strlen(prefix_str), msg, len);
+
+  retval = ed25519_checksig(signature,
+                            prefixed_msg, prefixed_msg_len,
+                            pubkey);
+  tor_free(prefixed_msg);
+
+  return retval;
 }
 
 /** Validate every signature among those in <b>checkable</b>, which contains
