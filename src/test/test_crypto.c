@@ -1831,6 +1831,30 @@ test_crypto_ed25519_simple(void *arg)
     tt_int_op(0, OP_EQ, ed25519_checksig_batch(NULL, ch, 2));
   }
 
+  /* Test the string-prefixed sign/checksig functions */
+  {
+    /* Generate a signature with a prefixed msg. */
+    tt_int_op(0, OP_EQ, ed25519_sign_prefixed(&sig1, msg, msg_len,
+                                              "always in the mood",
+                                              &kp1));
+
+    /* Test that prefixed checksig verifies it properly. */
+    tt_int_op(0, OP_EQ, ed25519_checksig_prefixed(&sig1, msg, msg_len,
+                                                  "always in the mood",
+                                                  &pub1));
+
+    /* Test that checksig with wrong prefix fails. */
+    tt_int_op(-1, OP_EQ, ed25519_checksig_prefixed(&sig1, msg, msg_len,
+                                                   "always in the moo",
+                                                   &pub1));
+    tt_int_op(-1, OP_EQ, ed25519_checksig_prefixed(&sig1, msg, msg_len,
+                                                   "always in the moon",
+                                                   &pub1));
+    tt_int_op(-1, OP_EQ, ed25519_checksig_prefixed(&sig1, msg, msg_len,
+                                                   "always in the mood!",
+                                                   &pub1));
+  }
+
  done:
   ;
 }
