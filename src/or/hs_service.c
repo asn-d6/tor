@@ -18,22 +18,19 @@
 #include "hs_service.h"
 #include "hs_establish_intro.h"
 
-/** XXX call chain:
-    hs_service_intro_circ_has_opened ->
-    send_establish_intro_cell ->
-    generate_establish_intro_cell / get_establish_intro_payload
-*/
-
-/* XXX DOCDOC */
+/** Given an ESTABLISH_INTRO <b>cell</b>, encode it and place its payload in
+ *  <b>buf_out</b> of size <b>buf_out_len</b>. If <b>buf_out</b> is too small,
+ *  return -1. Otherwise, return 0 if everything went well. */
 STATIC int
-get_establish_intro_payload(uint8_t *buf, size_t buf_len,
+get_establish_intro_payload(uint8_t *buf_out, size_t buf_out_len,
                             const hs_establish_intro_cell_t *cell)
 {
-  if (buf_len < RELAY_PAYLOAD_SIZE) {
+  if (buf_out_len < RELAY_PAYLOAD_SIZE) {
     return -1;
   }
 
-  ssize_t bytes_used = hs_establish_intro_cell_encode(buf, buf_len, cell);
+  ssize_t bytes_used = hs_establish_intro_cell_encode(buf_out, buf_out_len,
+                                                      cell);
   if (bytes_used < 0) { /* XXX hiding -2 retval */
     return -1;
   }
@@ -41,7 +38,10 @@ get_establish_intro_payload(uint8_t *buf, size_t buf_len,
   return 0;
 }
 
-/** XXX DOCDOCDOC cell is allocated on heap */
+/** Given circuit handshake info in <b>circuit_key_material</b>, create and
+ *  return an ESTABLISH_INTRO cell. Return NULL if something went wrong.  The
+ *  returned cell is allocated on the heap and it's the responsibility of the
+ *  caller to free it. */
 STATIC hs_establish_intro_cell_t *
 generate_establish_intro_cell(const char *circuit_key_material,
                               size_t circuit_key_material_len)
@@ -49,7 +49,7 @@ generate_establish_intro_cell(const char *circuit_key_material,
   log_warn(LD_GENERAL,"Generating ESTABLISH_INTRO cell (key_material_len: %u)",
            (unsigned) circuit_key_material_len);
 
-  // Generate short-term keypair for use in ESTABLISH_INTRO
+  /* Generate short-term keypair for use in ESTABLISH_INTRO */
   ed25519_keypair_t key_struct;
   if(ed25519_keypair_generate(&key_struct, 0) < 0) {
     return NULL;
@@ -57,16 +57,16 @@ generate_establish_intro_cell(const char *circuit_key_material,
 
   hs_establish_intro_cell_t *cell = hs_establish_intro_cell_new();
 
-  // Set AUTH_KEY_TYPE: 2 means ed25519
+  /* Set AUTH_KEY_TYPE: 2 means ed25519 */
   hs_establish_intro_cell_set_auth_key_type(cell, 2); /* XXX make definition */
 
-  // Set AUTH_KEY_LEN field
-  // Must also set byte-length of AUTH_KEY to match
+  /* Set AUTH_KEY_LEN field */
+  /* Must also set byte-length of AUTH_KEY to match */
   int auth_key_len = ED25519_PUBKEY_LEN;
   hs_establish_intro_cell_set_auth_key_len(cell, auth_key_len);
   hs_establish_intro_cell_setlen_auth_key(cell, auth_key_len);
 
-  // Set AUTH_KEY field
+  /* Set AUTH_KEY field */
   uint8_t *auth_key_ptr = hs_establish_intro_cell_getarray_auth_key(cell);
   memcpy(auth_key_ptr, key_struct.pubkey.pubkey, auth_key_len);
 
@@ -79,15 +79,16 @@ generate_establish_intro_cell(const char *circuit_key_material,
   hs_establish_intro_cell_set_siglen(cell, sig_len);
   hs_establish_intro_cell_setlen_sig(cell, sig_len);
 
-  /* Calculate the cell MAC (HANDSHAKE_AUTH). */
+  /* Calculate the cell MAC (aka HANDSHAKE_AUTH). */
   {
     /* This is used temporarily to calculate MACs and signatures */
     uint8_t cell_bytes_tmp[RELAY_PAYLOAD_SIZE] = {0};
     ssize_t encoded_len;
     char mac[SHA3_256_MAC_LEN];
 
-    encoded_len = hs_establish_intro_cell_encode(cell_bytes_tmp,sizeof(cell_bytes_tmp),
-                                         cell);
+    encoded_len = hs_establish_intro_cell_encode(cell_bytes_tmp,
+                                                 sizeof(cell_bytes_tmp),
+                                                 cell);
     if (encoded_len < 0) {
       log_warn(LD_OR, "Unable to pre-encode ESTABLISH_INTRO cell.");
       return NULL; /* XXX nicer error handling! */
@@ -133,7 +134,7 @@ generate_establish_intro_cell(const char *circuit_key_material,
       return NULL;
     }
 
-    // And write the signature to the cell
+    /* And write the signature to the cell */
     uint8_t *sig_ptr = hs_establish_intro_cell_getarray_sig(cell);
     memcpy(sig_ptr, sig.sig, sig_len);
   }
@@ -141,6 +142,7 @@ generate_establish_intro_cell(const char *circuit_key_material,
   return cell;
 }
 
+/** Send an ESTABLISH_INTRO cell in <b>circuit</b>. */
 static int
 send_establish_intro_cell(origin_circuit_t *circuit)
 {
@@ -167,7 +169,7 @@ send_establish_intro_cell(origin_circuit_t *circuit)
     return -1;
   }
 
-  // Free the cell object
+  /* Free the cell object */
   hs_establish_intro_cell_free(cell); /* XXX don't free here */
 
   /* Send the cell out there! */

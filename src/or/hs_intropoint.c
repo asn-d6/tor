@@ -18,7 +18,7 @@
 #include "hs_establish_intro.h"
 #include "hs_intropoint.h"
 
-
+/** XXX remove */
 static int
 throw_circuit_error(or_circuit_t *circ, int reason)
 {
@@ -26,34 +26,37 @@ throw_circuit_error(or_circuit_t *circ, int reason)
   return -1;
 }
 
+/** Extract the AUTH_KEY from an ESTABLISH_INTRO <b>cell</b> and place it in
+ *  <b>auth_key_out</b>. */
 static void
-get_auth_key_from_establish_intro_cell(ed25519_public_key_t *auth_key,
+get_auth_key_from_establish_intro_cell(ed25519_public_key_t *auth_key_out,
                                        hs_establish_intro_cell_t *cell)
 {
-  tor_assert(auth_key);
+  tor_assert(auth_key_out);
 
   uint8_t *key_array = hs_establish_intro_cell_getarray_auth_key(cell);
   tor_assert(key_array);
 
-  memcpy(auth_key->pubkey, key_array, cell->auth_key_len);
+  memcpy(auth_key_out->pubkey, key_array, cell->auth_key_len);
 }
 
-/* XXX rename out to cell */
+/** We received an ESTABLISH_INTRO cell in <b>cell</b>. Make sure its signature
+ *  and MAC are correct given the <b>circuit_key_material</b>. */
 STATIC int
-verify_establish_intro_cell(hs_establish_intro_cell_t *out,
+verify_establish_intro_cell(hs_establish_intro_cell_t *cell,
                             const char *circuit_key_material,
                             size_t circuit_key_material_len)
 {
   /* Make sure we understand the authentication version */
-  if (out->auth_key_type != 2) {
+  if (cell->auth_key_type != 2) {
     log_warn(LD_PROTOCOL,
              "Invalid ESTABLSH_INTRO AUTH_KEY_TYPE: must be in {0, 1, 2}");
     return -1;
   }
 
   /* Verify the MAC */
-  const char *msg = (char*) out->start_cell;
-  const size_t auth_msg_len = (char*) (out->end_mac_fields) - msg;
+  const char *msg = (char*) cell->start_cell;
+  const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
   char mac[SHA3_256_MAC_LEN];
   int mac_errors = crypto_hmac_sha3_256(mac,
                                         circuit_key_material,
@@ -63,7 +66,7 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *out,
     log_warn(LD_BUG, "Error computing ESTABLISH_INTRO handshake_auth");
     return -1;
   }
-  if (tor_memneq(mac, out->handshake_sha3_256, SHA3_256_MAC_LEN)) {
+  if (tor_memneq(mac, cell->handshake_sha3_256, SHA3_256_MAC_LEN)) {
     log_warn(LD_PROTOCOL, "ESTABLISH_INTRO handshake_auth not as expected");
     return -1;
   }
@@ -71,14 +74,14 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *out,
   /* Verify the sig */
   {
     ed25519_signature_t sig_struct;
-    uint8_t *sig_array = hs_establish_intro_cell_getarray_sig(out);
-    memcpy(sig_struct.sig, sig_array, out->siglen);
+    uint8_t *sig_array = hs_establish_intro_cell_getarray_sig(cell);
+    memcpy(sig_struct.sig, sig_array, cell->siglen);
 
     ed25519_public_key_t auth_key;
-    get_auth_key_from_establish_intro_cell(&auth_key, out);
+    get_auth_key_from_establish_intro_cell(&auth_key, cell);
 
-    // TODO figure out how to incorporate the prefix: ask Nick!
-    const size_t sig_msg_len = (char*) (out->end_sig_fields) - msg;
+    /* XXX figure out how to incorporate the prefix: ask Nick! */
+    const size_t sig_msg_len = (char*) (cell->end_sig_fields) - msg;
     int sig_mismatch = ed25519_checksig(&sig_struct,
                                         (uint8_t*) msg, sig_msg_len,
                                         &auth_key);
@@ -91,7 +94,8 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *out,
   return 0;
 }
 
-/** We just received an ESTABLISH_INTRO cel in 'circ'. Handle it. */
+/** We just received an ESTABLISH_INTRO cell in circuit <b>circ</b>. Its
+ *  payload is in <b>request</b>. Handle it. */
 static int
 handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
                    size_t request_len)
@@ -141,7 +145,7 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
       return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
     }
 
-    // Make sure the key is not in use by another circuit; reject if so.
+    /* Make sure the key is not in use by another circuit; reject if so. */
     or_circuit_t *c = circuit_get_intro_point((const uint8_t *)pk_digest);
     if (c != NULL) {
       tor_free(out);
@@ -149,7 +153,7 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
       return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
     }
 
-    // Associate key with circuit and set circuit purpose
+    /* Associate key with circuit and set circuit purpose */
     circuit_set_intro_point_digest(circ, (uint8_t *)pk_digest);
     circuit_change_purpose(TO_CIRCUIT(circ), CIRCUIT_PURPOSE_INTRO_POINT);
   }
@@ -165,12 +169,12 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
     return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
   }
 
-  // We are done!
+  /* We are done! */
   return 0;
 }
 
-/* We just received an ESTABLISH_INTRO cell. Figure out of it's a legacy or a
-   next generation cell, and pass it to the appropriate handler. */
+/* We just received an ESTABLISH_INTRO cell in <b>circ</b>. Figure out of it's
+ * a legacy or a next gen cell, and pass it to the appropriate handler. */
 int
 hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
                             size_t request_len)

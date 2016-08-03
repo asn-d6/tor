@@ -15,8 +15,6 @@
 int hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
                              size_t request_len);
 
-void rend_service_intro_has_opened_p224(origin_circuit_t *circuit);
-
 #ifdef HS_INTROPOINT_PRIVATE
 
 STATIC int
