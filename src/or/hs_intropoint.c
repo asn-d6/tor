@@ -18,6 +18,9 @@
 #include "hs_establish_intro.h"
 #include "hs_intropoint.h"
 
+/* XXX also exists in hs_service.c . move to hs_common.c or sth */
+#define ESTABLISH_INTRO_SIG_PREFIX "Tor establish-intro cell v1"
+
 /** XXX remove */
 static int
 throw_circuit_error(or_circuit_t *circ, int reason)
@@ -82,9 +85,10 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *cell,
 
     /* XXX figure out how to incorporate the prefix: ask Nick! */
     const size_t sig_msg_len = (char*) (cell->end_sig_fields) - msg;
-    int sig_mismatch = ed25519_checksig(&sig_struct,
-                                        (uint8_t*) msg, sig_msg_len,
-                                        &auth_key);
+    int sig_mismatch = ed25519_checksig_prefixed(&sig_struct,
+                                                 (uint8_t*) msg, sig_msg_len,
+                                                 ESTABLISH_INTRO_SIG_PREFIX,
+                                                 &auth_key);
     if (sig_mismatch) {
       log_warn(LD_PROTOCOL, "ESTABLISH_INTRO signature not as expected");
       return -1;

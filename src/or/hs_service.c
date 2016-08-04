@@ -19,6 +19,7 @@
 #include "hs_establish_intro.h"
 
 #define AUTH_KEY_ED25519 2
+#define ESTABLISH_INTRO_SIG_PREFIX "Tor establish-intro cell v1"
 
 /** Given an ESTABLISH_INTRO <b>cell</b>, encode it and place its payload in
  *  <b>buf_out</b> which has size <b>buf_out_len</b>. If <b>buf_out</b> is too
@@ -137,10 +138,13 @@ generate_establish_intro_cell(const char *circuit_key_material,
       goto err;
     }
 
-    /* XXX These contents are prefixed with the string "Tor establish-intro cell v1". */
-    if (ed25519_sign(&sig,
-                     (uint8_t*) cell_bytes_tmp, encoded_len - ED25519_SIG_LEN,
-                     &key_struct)) {
+    tor_assert(encoded_len > ED25519_SIG_LEN);
+
+    if (ed25519_sign_prefixed(&sig,
+                              (uint8_t*) cell_bytes_tmp,
+                              encoded_len - ED25519_SIG_LEN,
+                              ESTABLISH_INTRO_SIG_PREFIX,
+                              &key_struct)) {
       log_warn(LD_BUG, "Unable to generate signature for ESTABLISH_INTRO cell.");
       goto err;
     }
