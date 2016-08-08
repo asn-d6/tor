@@ -113,6 +113,56 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *cell,
     }
   }
 
+  /* Note down the public key operation  */
+  /* XXX */
+  // note_crypto_pk_op(REND_MID);
+
+  return 0;
+}
+
+/** We just received an ESTABLISH_INTRO <b>parsed_cell</b> on <b>circ</b>. It's
+ *  well-formed and passed our verifications. Do the appropriate actions to
+ *  establish an intro point. */
+static int
+handle_verified_establish_intro_cell(or_circuit_t *circ,
+                                     hs_establish_intro_cell_t *parsed_cell)
+{
+  /* First, close any other intro circuits with the same pk. */
+  /* XXX */
+  /* c = NULL; */
+  /* while ((c = circuit_get_intro_point((const uint8_t *)pk_digest))) { */
+  /*   log_info(LD_REND, "Replacing old circuit for service %s", */
+  /*            safe_str(serviceid)); */
+  /*   circuit_mark_for_close(TO_CIRCUIT(c), END_CIRC_REASON_FINISHED); */
+  /*   /\* Now it's marked, and it won't be returned next time. *\/ */
+  /* } */
+
+  /* Then notify the hidden service that the intro point is established by
+     sending an empty RELAY_COMMAND_INTRO_ESTABLISHED cell */
+  char ack[1] = {0};
+  if (relay_send_command_from_edge(0, TO_CIRCUIT(circ),
+                                   RELAY_COMMAND_INTRO_ESTABLISHED,
+                                   (const char *)ack, 1, NULL)<0) {
+    log_warn(LD_BUG, "Couldn't send INTRO_ESTABLISHED cell.");
+    return -1;
+  }
+
+  /* Associate intro point auth key with this circuit. Then repurpose this
+     circuit into an intro circuit. */
+  {
+    ed25519_public_key_t auth_key;
+    get_auth_key_from_establish_intro_cell(&auth_key, parsed_cell);
+
+    /* Associate auth key with circ */
+    if (associate_key_with_intro_circuit(circ, &auth_key) < 0) {
+      log_warn(LD_BUG, "Trouble associating intro key with circuit");
+      return -1;
+    }
+
+    /* Turn circ into an intro circ */
+    circuit_change_purpose(TO_CIRCUIT(circ), CIRCUIT_PURPOSE_INTRO_POINT);
+  }
+
   return 0;
 }
 
@@ -121,7 +171,7 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *cell,
  *  if everything went well, or -1 if there were errors. */
 static int
 handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
-                   size_t request_len)
+                       size_t request_len)
 {
   int retval;
   hs_establish_intro_cell_t *parsed_cell = NULL;
@@ -130,18 +180,19 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
            "Received an ESTABLISH_INTRO request on circuit %u",
            (unsigned) circ->p_circ_id);
 
-  /* Basic sanity check on circuit purpose */
-  /* XXX Should we also check circ->base_.n_chan like we do in
-     rend_mid_establish_intro_legacy(). */
+  /* Basic circuit state sanity checks. */
   if (circ->base_.purpose != CIRCUIT_PURPOSE_OR) {
-    log_warn(LD_PROTOCOL,
-             "Rejecting ESTABLISH_INTRO on non-OR or non-edge circuit.");
+    log_warn(LD_PROTOCOL, "Rejecting ESTABLISH_INTRO on non-OR circuit.");
+    goto err;
+  }
+
+  if (circ->base_.n_chan) {
+    log_warn(LD_PROTOCOL, "Rejecting ESTABLISH_INTRO on non-edge circuit.");
     goto err;
   }
 
   /* Parse the cell */
   ssize_t parsing_result = hs_establish_intro_cell_parse(&parsed_cell, request, request_len);
-  /* XXX aren't error retvals negative here??? */
   if (parsing_result < 0) {
     log_warn(LD_PROTOCOL, "Rejecting %s ESTABLISH_INTRO cell.",
              parsing_result == -1 ? "invalid" : "truncated");
@@ -156,30 +207,14 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
     goto err;
   }
 
-  /* Notify the client that their intro point is established by sending an
-     empty RELAY_COMMAND_INTRO_ESTABLISHED cell */
-  char ack[1] = {0};
-  if (relay_send_command_from_edge(0, TO_CIRCUIT(circ),
-                                   RELAY_COMMAND_INTRO_ESTABLISHED,
-                                   (const char *)ack, 1, NULL)<0) {
-    log_warn(LD_BUG, "Couldn't send INTRO_ESTABLISHED cell.");
+  /* This cell is legit. Take the appropriate actions. */
+  retval = handle_verified_establish_intro_cell(circ, parsed_cell);
+  if (retval < 0) {
     goto err;
   }
 
-  /* Associate auth key with circuit, and make it an intro circuit */
-  {
-    ed25519_public_key_t auth_key;
-    get_auth_key_from_establish_intro_cell(&auth_key, parsed_cell);
-
-    /* Associate auth key with circ */
-    if (associate_key_with_intro_circuit(circ, &auth_key) < 0) {
-      log_warn(LD_BUG, "Trouble associating intro key with circuit");
-      goto err;
-    }
-
-    /* Turn circ into an intro circ */
-    circuit_change_purpose(TO_CIRCUIT(circ), CIRCUIT_PURPOSE_INTRO_POINT);
-  }
+  log_warn(LD_GENERAL, "Established prop224 intro point on circuit %u ",
+           (unsigned) circ->p_circ_id);
 
   /* We are done! */
   return 0;
