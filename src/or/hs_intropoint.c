@@ -43,6 +43,33 @@ get_auth_key_from_establish_intro_cell(ed25519_public_key_t *auth_key_out,
   memcpy(auth_key_out->pubkey, key_array, cell->auth_key_len);
 }
 
+/** <b>circ</b> just became an introduction point circuit to a hidden service
+ *  with service auth key <b>auth_key</b>. Associate this circuit with that
+ *  key, so that we can find it later. */
+static int
+associate_key_with_intro_circuit(or_circuit_t *circ,
+                                 const ed25519_public_key_t *auth_key)
+{
+  char pk_digest[DIGEST_LEN];
+
+  if (crypto_digest(pk_digest, (const char *)auth_key->pubkey, ED25519_PUBKEY_LEN)<0) {
+    log_warn(LD_BUG, "Couldn't hash public key");
+    return -1;
+  }
+
+  /* Make sure the key is not in use by another circuit; reject if so. */
+  or_circuit_t *other_circ = circuit_get_intro_point((const uint8_t *)pk_digest);
+  if (other_circ) {
+    log_warn(LD_PROTOCOL, "Authentication key already in use");
+    return -1;
+  }
+
+  /* Associate key with circuit and set circuit purpose */
+  circuit_set_intro_point_digest(circ, (uint8_t *)pk_digest);
+
+  return 0;
+}
+
 /** We received an ESTABLISH_INTRO cell in <b>cell</b>. Make sure its signature
  *  and MAC are correct given the <b>circuit_key_material</b>. */
 STATIC int
@@ -139,28 +166,21 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
   }
 
   /* Associate auth key with circuit, and make it an intro circuit */
-  /* XXX functionify */
+  /* XXX move after the INTRO_ESTABLISHED is sent */
   {
-    char pk_digest[DIGEST_LEN];
     ed25519_public_key_t auth_key;
     get_auth_key_from_establish_intro_cell(&auth_key, parsed_cell);
 
-    if (crypto_digest(pk_digest, (const char *)auth_key.pubkey, ED25519_PUBKEY_LEN)<0) {
-      log_warn(LD_BUG, "Couldn't hash public key");
+    /* Associate auth key with circ */
+    if (associate_key_with_intro_circuit(circ, &auth_key) < 0) {
+      log_warn(LD_BUG, "Trouble associating intro key with circuit");
       goto err;
     }
 
-    /* Make sure the key is not in use by another circuit; reject if so. */
-    or_circuit_t *other_circ = circuit_get_intro_point((const uint8_t *)pk_digest);
-    if (other_circ) {
-      log_warn(LD_PROTOCOL, "Authentication key already in use");
-      goto err;
-    }
-
-    /* Associate key with circuit and set circuit purpose */
-    circuit_set_intro_point_digest(circ, (uint8_t *)pk_digest);
+    /* Turn circ into an intro circ */
     circuit_change_purpose(TO_CIRCUIT(circ), CIRCUIT_PURPOSE_INTRO_POINT);
   }
+
 
   /* Notify the client that their intro point is established by sending an
      empty RELAY_COMMAND_INTRO_ESTABLISHED cell */
