@@ -21,14 +21,6 @@
 /* XXX also exists in hs_service.c . move to hs_common.c or sth */
 #define ESTABLISH_INTRO_SIG_PREFIX "Tor establish-intro cell v1"
 
-/** XXX remove */
-static int
-throw_circuit_error(or_circuit_t *circ, int reason)
-{
-  circuit_mark_for_close(TO_CIRCUIT(circ), reason);
-  return -1;
-}
-
 /** Extract the AUTH_KEY from an ESTABLISH_INTRO <b>cell</b> and place it in
  *  <b>auth_key_out</b>. */
 static void
@@ -110,7 +102,6 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *cell,
     ed25519_public_key_t auth_key;
     get_auth_key_from_establish_intro_cell(&auth_key, cell);
 
-    /* XXX figure out how to incorporate the prefix: ask Nick! */
     const size_t sig_msg_len = (char*) (cell->end_sig_fields) - msg;
     int sig_mismatch = ed25519_checksig_prefixed(&sig_struct,
                                                  (uint8_t*) msg, sig_msg_len,
@@ -165,8 +156,17 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
     goto err;
   }
 
+  /* Notify the client that their intro point is established by sending an
+     empty RELAY_COMMAND_INTRO_ESTABLISHED cell */
+  char ack[1] = {0};
+  if (relay_send_command_from_edge(0, TO_CIRCUIT(circ),
+                                   RELAY_COMMAND_INTRO_ESTABLISHED,
+                                   (const char *)ack, 1, NULL)<0) {
+    log_warn(LD_BUG, "Couldn't send INTRO_ESTABLISHED cell.");
+    goto err;
+  }
+
   /* Associate auth key with circuit, and make it an intro circuit */
-  /* XXX move after the INTRO_ESTABLISHED is sent */
   {
     ed25519_public_key_t auth_key;
     get_auth_key_from_establish_intro_cell(&auth_key, parsed_cell);
@@ -179,17 +179,6 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
 
     /* Turn circ into an intro circ */
     circuit_change_purpose(TO_CIRCUIT(circ), CIRCUIT_PURPOSE_INTRO_POINT);
-  }
-
-
-  /* Notify the client that their intro point is established by sending an
-     empty RELAY_COMMAND_INTRO_ESTABLISHED cell */
-  char ack[1] = {0};
-  if (relay_send_command_from_edge(0, TO_CIRCUIT(circ),
-                                   RELAY_COMMAND_INTRO_ESTABLISHED,
-                                   (const char *)ack, 1, NULL)<0) {
-    log_warn(LD_BUG, "Couldn't send INTRO_ESTABLISHED cell.");
-    goto err;
   }
 
   /* We are done! */
@@ -209,7 +198,7 @@ hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
 {
   if (request_len < 1) { /* Defensive length check */
     log_warn(LD_PROTOCOL, "Incomplete ESTABLISH_INTRO cell.");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+    goto err;
   }
 
   uint8_t first_byte = *request; /* XXX maybe turn into switch */
@@ -219,6 +208,10 @@ hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
     return handle_establish_intro(circ, request, request_len);
   } else {
     log_warn(LD_PROTOCOL, "Invalid AUTH_KEY_TYPE");
-    return throw_circuit_error(circ, END_CIRC_REASON_TORPROTOCOL);
+    goto err;
   }
+
+ err:
+  circuit_mark_for_close(TO_CIRCUIT(circ), END_CIRC_REASON_TORPROTOCOL);
+  return -1;
 }
