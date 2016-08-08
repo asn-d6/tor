@@ -14,6 +14,7 @@
 #include "circuituse.h"
 #include "relay.h"
 #include "rendmid.h"
+#include "rephist.h"
 
 #include "hs_establish_intro.h"
 #include "hs_intropoint.h"
@@ -114,8 +115,8 @@ verify_establish_intro_cell(hs_establish_intro_cell_t *cell,
   }
 
   /* Note down the public key operation  */
-  /* XXX */
-  // note_crypto_pk_op(REND_MID);
+  /* XXX should we introduce a new counter for next gen intro points? */
+  note_crypto_pk_op(REND_MID);
 
   return 0;
 }
@@ -231,19 +232,23 @@ int
 hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
                             size_t request_len)
 {
-  if (request_len < 1) { /* Defensive length check */
+  if (request_len < 1) { /* Overdefensive length check */
     log_warn(LD_PROTOCOL, "Incomplete ESTABLISH_INTRO cell.");
     goto err;
   }
 
-  uint8_t first_byte = *request; /* XXX maybe turn into switch */
-  if (first_byte == 0 || first_byte == 1) {
-    return rend_mid_establish_intro_legacy(circ, request, request_len);
-  } else if (first_byte == 2) {
-    return handle_establish_intro(circ, request, request_len);
-  } else {
-    log_warn(LD_PROTOCOL, "Invalid AUTH_KEY_TYPE");
-    goto err;
+  /* Using the first byte of the cell, figure out the version of
+   * ESTABLISH_INTRO and pass it to the appropriate cell handler */
+  uint8_t first_byte = request[0];
+  switch (first_byte) {
+    case 0x00:
+    case 0x01:
+      return rend_mid_establish_intro_legacy(circ, request, request_len);
+    case 0x02:
+      return handle_establish_intro(circ, request, request_len);
+    default:
+      log_warn(LD_PROTOCOL, "Invalid AUTH_KEY_TYPE");
+      goto err;
   }
 
  err:
