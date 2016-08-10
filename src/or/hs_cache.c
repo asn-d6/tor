@@ -6,6 +6,9 @@
  * \brief Handle hidden service descriptor caches.
  **/
 
+/* For unit tests.*/
+#define HS_CACHE_PRIVATE
+
 #include "hs_cache.h"
 
 #include "or.h"
@@ -205,7 +208,7 @@ err:
  * <b>global_cutoff</b> value. If <b>global_cutoff</b> is 0, the cleaning
  * process will use the lifetime found in the plaintext data section. Return
  * the number of bytes cleaned. */
-static size_t
+STATIC size_t
 cache_clean_v3_as_dir(time_t global_cutoff)
 {
   time_t now = time(NULL);
