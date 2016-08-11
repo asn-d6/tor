@@ -5345,6 +5345,37 @@ test_dir_find_dl_schedule(void* data)
   mock_options = NULL;
 }
 
+static void
+test_dir_post_parsing(void *arg)
+{
+  (void) arg;
+
+  /* Test the version parsing from an HS descriptor publish request. */
+  {
+    const char *prefix = "/tor/hs/";
+    int version = parse_version_from_post("/tor/hs//publish", prefix);
+    tt_int_op(version, OP_EQ, -1);
+    version = parse_version_from_post("/tor/hs/a/publish", prefix);
+    tt_int_op(version, OP_EQ, -1);
+    version = parse_version_from_post("/tor/hs/3/publish", prefix);
+    tt_int_op(version, OP_EQ, 3);
+    version = parse_version_from_post("/tor/hs/42/publish", prefix);
+    tt_int_op(version, OP_EQ, 42);
+    version = parse_version_from_post("/tor/hs/18163/publish", prefix);
+    tt_int_op(version, OP_EQ, 18163);
+    version = parse_version_from_post("JUNKJUNKJUNK", prefix);
+    tt_int_op(version, OP_EQ, -1);
+    version = parse_version_from_post("/tor/hs/3/publish", "blah");
+    tt_int_op(version, OP_EQ, -1);
+    /* Missing the '/' at the end of the prefix. */
+    version = parse_version_from_post("/tor/hs/3/publish", "/tor/hs");
+    tt_int_op(version, OP_EQ, -1);
+  }
+
+ done:
+  ;
+}
+
 #define DIR_LEGACY(name)                             \
   { #name, test_dir_ ## name , TT_FORK, NULL, NULL }
 
@@ -5378,6 +5409,7 @@ struct testcase_t dir_tests[] = {
   DIR(fmt_control_ns, 0),
   DIR(dirserv_set_routerstatus_testing, 0),
   DIR(http_handling, 0),
+  DIR(post_parsing, 0),
   DIR(purpose_needs_anonymity, 0),
   DIR(fetch_type, 0),
   DIR(packages, 0),
