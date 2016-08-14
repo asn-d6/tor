@@ -3369,37 +3369,6 @@ typedef struct or_circuit_rendinfo_s {
 
 } or_circuit_rendinfo_t;
 
-/* DOCDOCDOC */
-typedef enum {
-  HS_TOKEN_INTRO,
-  HS_TOKEN_REND
-} hs_token_type_t;
-
-/** Represents a token used in the HS protocol. Each such token maps to a
- *  specific introduction or rendezvous circuit. */
-typedef struct hs_token_t {
-  /* The HS protocol version that uses this token.
-   *
-   * The version value is 2 for the old HS version, and 3 for next generation
-   * hidden services.
-   *
-   * The size of the hs_token depends on the HS protocol version and the type
-   * of token:
-   *  Old HS protocol uses 128bit tokens for introduction and rendezvous.
-   *  New HS protocol uses 128bit tokens for rendezvous, and 256bit tokens for
-   *  introductions. */
-  int version;
-
-  /* Type of token. Can be a rendezvous or introduction token. */
-  hs_token_type_t type;
-
-  /* The token size */
-  size_t token_len;
-
-  /* The token itself. Memory allocated at runtime depending on the HS version. */
-  uint8_t *hs_token;
-} hs_token_t;
-
 /** Convert a circuit subtype to a circuit_t. */
 #define TO_CIRCUIT(x)  (&((x)->base_))
 
