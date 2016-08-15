@@ -222,8 +222,8 @@ STATIC hs_desc_intro_point_t *decode_introduction_point(
                                 const hs_descriptor_t *desc,
                                 const char *text, const char *end);
 STATIC int validate_encrypted_data_length(size_t len);
-STATIC int validate_certificate(tor_cert_t *cert, uint8_t type,
-                                int sig_included, const char *log_obj_type);
+STATIC int cert_is_valid(tor_cert_t *cert, uint8_t type, int sig_included,
+                         const char *log_obj_type);
 
 #endif /* HS_DESCRIPTOR_PRIVATE */
 
