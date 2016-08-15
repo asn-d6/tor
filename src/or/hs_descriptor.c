@@ -1669,14 +1669,6 @@ hs_desc_decode_plaintext(const char *encoded,
     goto err;
   }
 
-  /* Check if we have at least the minimum amount of required fields. */
-  if (smartlist_len(tokens) < HS_DESC_PLAINTEXT_MIN_FIELDS) {
-    log_warn(LD_REND, "Service descriptor is missing required fields. "
-             "Expected at least %d but have %d",
-             HS_DESC_PLAINTEXT_MIN_FIELDS, smartlist_len(tokens));
-    goto err;
-  }
-
   /* Get the version of the descriptor which is the first mandatory field of
    * the descriptor. From there, we'll decode the right descriptor version. */
   tok = find_by_keyword(tokens, R_HS_DESCRIPTOR);
