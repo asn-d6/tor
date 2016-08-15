@@ -1181,6 +1181,7 @@ decode_introduction_point(const hs_descriptor_t *desc, const char *start,
 
   /* "introduction-point" SP link-specifiers NL */
   tok = find_by_keyword(tokens, R3_INTRODUCTION_POINT);
+  tor_assert(tok->n_args == 1);
   ip->link_specifiers = decode_link_specifiers(tok->args[0]);
   if (!ip->link_specifiers) {
     log_warn(LD_REND, "Introduction point has invalid link specifiers");
