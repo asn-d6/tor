@@ -254,37 +254,18 @@ encode_link_specifiers(const smartlist_t *specs)
   return encoded_b64;
 }
 
-/* Encode an introductin point object and return a newly allocated string
- * with it. On failure, return NULL. */
+/* Encode an introductin point encryption key and return a newly allocated
+ * string with it. On failure, return NULL. */
 static char *
-encode_intro_point(const ed25519_keypair_t *sig_key,
-                   const hs_desc_intro_point_t *ip)
+encode_enc_key(const ed25519_keypair_t *sig_key,
+               const hs_desc_intro_point_t *ip)
 {
+  char *encoded = NULL;
   time_t now = time(NULL);
-  char *encoded_ip = NULL;
-  char *encoded_cert = NULL;
-  smartlist_t *lines = smartlist_new();
 
-  tor_assert(ip);
   tor_assert(sig_key);
+  tor_assert(ip);
 
-  /* Encode link specifier. */
-  {
-    char *ls_str = encode_link_specifiers(ip->link_specifiers);
-    smartlist_add_asprintf(lines, "%s %s", str_intro_point, ls_str);
-    tor_free(ls_str);
-  }
-
-  /* Authentication key encoding. */
-  {
-    if (encode_cert(ip->auth_key_cert, &encoded_cert) < 0) {
-      goto err;
-    }
-    smartlist_add_asprintf(lines, "%s\n%s", str_ip_auth_key, encoded_cert);
-    tor_free(encoded_cert);
-  }
-
-  /* Encryption key encoding. */
   switch (ip->enc_key_type) {
   case HS_DESC_KEY_TYPE_LEGACY:
   {
@@ -292,47 +273,45 @@ encode_intro_point(const ed25519_keypair_t *sig_key,
     ssize_t cert_len;
     size_t key_str_len;
     uint8_t *cert_data;
-    if (crypto_pk_write_public_key_to_string(ip->enc_key.legacy, &key_str,
-                                             &key_str_len) < 0) {
-      goto err;
-    }
-    /* Remove newline at the end of the string. */
-    key_str[key_str_len - 1] = '\0';
-    smartlist_add_asprintf(lines, "%s legacy\n%s", str_ip_enc_key, key_str);
-    tor_free(key_str);
 
-    /* Cross certification cert. */
+    /* Create cross certification cert. */
     cert_len = tor_make_rsa_ed25519_crosscert(&sig_key->pubkey,
                                               ip->enc_key.legacy,
                                               now + HS_DESC_CERT_LIFETIME,
                                               &cert_data);
     if (cert_len < 0) {
+      log_warn(LD_REND, "Unable to create legacy crosscert.");
       goto err;
     }
+    /* Encode cross cert. */
     if (base64_encode(b64_cert, sizeof(b64_cert), (const char *) cert_data,
                       cert_len, BASE64_ENCODE_MULTILINE) < 0) {
-      log_warn(LD_REND, "Unable to encode legacy crosscert");
+      log_warn(LD_REND, "Unable to encode legacy crosscert.");
       goto err;
     }
-    smartlist_add_asprintf(lines,
-                           "%s\n"
-                           "-----BEGIN CROSSCERT-----\n"
-                           "%s"
-                           "-----END CROSSCERT-----",
-                           str_ip_enc_key_cert, b64_cert);
+    /* Convert the encryption key to a string. */
+    if (crypto_pk_write_public_key_to_string(ip->enc_key.legacy, &key_str,
+                                             &key_str_len) < 0) {
+      log_warn(LD_REND, "Unable to encode legacy encryption key.");
+      goto err;
+    }
+    tor_asprintf(&encoded,
+                 "%s legacy\n%s"  /* Newline is added by the call above. */
+                 "%s\n"
+                 "-----BEGIN CROSSCERT-----\n"
+                 "%s"
+                 "-----END CROSSCERT-----",
+                 str_ip_enc_key, key_str,
+                 str_ip_enc_key_cert, b64_cert);
+    tor_free(key_str);
     break;
   }
   case HS_DESC_KEY_TYPE_CURVE25519:
   {
     int signbit;
-    char key_fp_b64[CURVE25519_BASE64_PADDED_LEN + 1];
+    char *encoded_cert, key_fp_b64[CURVE25519_BASE64_PADDED_LEN + 1];
     ed25519_keypair_t curve_kp;
 
-    if (curve25519_public_to_base64(key_fp_b64,
-                                    &ip->enc_key.curve25519.pubkey) < 0) {
-      goto err;
-    }
-    smartlist_add_asprintf(lines, "%s ntor %s", str_ip_enc_key, key_fp_b64);
     if (ed25519_keypair_from_curve25519_keypair(&curve_kp, &signbit,
                                                 &ip->enc_key.curve25519)) {
       goto err;
@@ -348,12 +327,64 @@ encode_intro_point(const ed25519_keypair_t *sig_key,
     if (encode_cert(cross_cert, &encoded_cert)) {
       goto err;
     }
-    smartlist_add_asprintf(lines, "%s\n%s", str_ip_enc_key_cert, encoded_cert);
+    if (curve25519_public_to_base64(key_fp_b64,
+                                    &ip->enc_key.curve25519.pubkey) < 0) {
+      tor_free(encoded_cert);
+      goto err;
+    }
+    tor_asprintf(&encoded,
+                 "%s ntor %s\n"
+                 "%s\n%s",
+                 str_ip_enc_key, key_fp_b64,
+                 str_ip_enc_key_cert, encoded_cert);
     tor_free(encoded_cert);
     break;
   }
   default:
     tor_assert(0);
+  }
+
+ err:
+  return encoded;
+}
+
+/* Encode an introductin point object and return a newly allocated string
+ * with it. On failure, return NULL. */
+static char *
+encode_intro_point(const ed25519_keypair_t *sig_key,
+                   const hs_desc_intro_point_t *ip)
+{
+  char *encoded_ip = NULL;
+  smartlist_t *lines = smartlist_new();
+
+  tor_assert(ip);
+  tor_assert(sig_key);
+
+  /* Encode link specifier. */
+  {
+    char *ls_str = encode_link_specifiers(ip->link_specifiers);
+    smartlist_add_asprintf(lines, "%s %s", str_intro_point, ls_str);
+    tor_free(ls_str);
+  }
+
+  /* Authentication key encoding. */
+  {
+    char *encoded_cert;
+    if (encode_cert(ip->auth_key_cert, &encoded_cert) < 0) {
+      goto err;
+    }
+    smartlist_add_asprintf(lines, "%s\n%s", str_ip_auth_key, encoded_cert);
+    tor_free(encoded_cert);
+  }
+
+  /* Encryption key encoding. */
+  {
+    char *encoded_enc_key = encode_enc_key(sig_key, ip);
+    if (encoded_enc_key == NULL) {
+      goto err;
+    }
+    smartlist_add_asprintf(lines, "%s", encoded_enc_key);
+    tor_free(encoded_enc_key);
   }
 
   /* Join them all in one blob of text. */
