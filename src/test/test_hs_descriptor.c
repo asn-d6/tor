@@ -73,9 +73,10 @@ helper_build_intro_point(const ed25519_keypair_t *blinded_kp, time_t now,
   return intro_point;
 }
 
-/* Return a valid hs_descriptor_t object. */
+/* Return a valid hs_descriptor_t object. If no_ip is set, no introduction
+ * points are added. */
 static hs_descriptor_t *
-helper_build_hs_desc(void)
+helper_build_hs_desc(unsigned int no_ip)
 {
   int ret;
   time_t now = time(NULL);
@@ -102,19 +103,21 @@ helper_build_hs_desc(void)
   desc->encrypted_data.auth_types = smartlist_new();
   smartlist_add(desc->encrypted_data.auth_types, strdup("ed25519"));
   desc->encrypted_data.intro_points = smartlist_new();
-  /* Add four intro points. */
-  smartlist_add(desc->encrypted_data.intro_points,
-                helper_build_intro_point(&desc->plaintext_data.blinded_kp, now,
-                                         "1.2.3.4", 0));
-  smartlist_add(desc->encrypted_data.intro_points,
-                helper_build_intro_point(&desc->plaintext_data.blinded_kp, now,
-                                         "[2600::1]", 0));
-  smartlist_add(desc->encrypted_data.intro_points,
-                helper_build_intro_point(&desc->plaintext_data.blinded_kp, now,
-                                         "3.2.1.4", 1));
-  smartlist_add(desc->encrypted_data.intro_points,
-                helper_build_intro_point(&desc->plaintext_data.blinded_kp, now,
-                                         "", 1));
+  if (!no_ip) {
+    /* Add four intro points. */
+    smartlist_add(desc->encrypted_data.intro_points,
+                  helper_build_intro_point(&desc->plaintext_data.blinded_kp, now,
+                                           "1.2.3.4", 0));
+    smartlist_add(desc->encrypted_data.intro_points,
+                  helper_build_intro_point(&desc->plaintext_data.blinded_kp, now,
+                                           "[2600::1]", 0));
+    smartlist_add(desc->encrypted_data.intro_points,
+                  helper_build_intro_point(&desc->plaintext_data.blinded_kp, now,
+                                           "3.2.1.4", 1));
+    smartlist_add(desc->encrypted_data.intro_points,
+                  helper_build_intro_point(&desc->plaintext_data.blinded_kp, now,
+                                           "", 1));
+  }
 
   descp = desc;
  done:
@@ -474,7 +477,7 @@ test_encode_descriptor(void *arg)
 {
   int ret;
   char *encoded = NULL;
-  hs_descriptor_t *desc = helper_build_hs_desc();
+  hs_descriptor_t *desc = helper_build_hs_desc(0);
 
   (void) arg;
 
@@ -492,7 +495,7 @@ test_decode_descriptor(void *arg)
 {
   int ret;
   char *encoded = NULL;
-  hs_descriptor_t *desc = helper_build_hs_desc();
+  hs_descriptor_t *desc = helper_build_hs_desc(0);
   hs_descriptor_t *decoded = NULL;
 
   (void) arg;
@@ -510,6 +513,21 @@ test_decode_descriptor(void *arg)
   tt_assert(decoded);
 
   helper_compare_hs_desc(desc, decoded);
+
+  /* Decode a descriptor with _no_ introduction points. */
+  {
+    hs_descriptor_t *desc_no_ip = helper_build_hs_desc(1);
+    tt_assert(desc_no_ip);
+    tor_free(encoded);
+    ret = hs_desc_encode_descriptor(desc_no_ip, &encoded);
+    tt_int_op(ret, ==, 0);
+    tt_assert(encoded);
+    hs_descriptor_free(decoded);
+    ret = hs_desc_decode_descriptor(encoded, NULL, &decoded);
+    tt_int_op(ret, ==, 0);
+    tt_assert(decoded);
+  }
+
  done:
   hs_descriptor_free(desc);
   hs_descriptor_free(decoded);
@@ -621,7 +639,7 @@ test_decode_intro_point(void *arg)
 
   /* Try to decode a junk string. */
   {
-    desc = helper_build_hs_desc();
+    desc = helper_build_hs_desc(0);
     const char *junk = "this is not a descriptor";
     ip = decode_introduction_point(desc, junk, junk + strlen(junk));
     tt_assert(!ip);
