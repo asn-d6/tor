@@ -452,6 +452,62 @@ build_kdf_key(const hs_descriptor_t *desc,
   memwipe(secret_input,  0, sizeof(secret_input));
 }
 
+/* Using the given descriptor and salt, run it through our KDF function and
+ * then extract a secret key in key_out, the IV in iv_out and MAC in mac_out.
+ * This function can't fail. */
+static void
+build_secret_key_iv_mac(const hs_descriptor_t *desc,
+                        const uint8_t *salt, size_t salt_len,
+                        uint8_t *key_out, size_t key_len,
+                        uint8_t *iv_out, size_t iv_len,
+                        uint8_t *mac_out, size_t mac_len)
+{
+  size_t offset = 0;
+  uint8_t kdf_key[HS_DESC_ENCRYPTED_KDF_OUTPUT_LEN];
+
+  tor_assert(desc);
+  tor_assert(salt);
+  tor_assert(key_out);
+  tor_assert(iv_out);
+  tor_assert(mac_out);
+
+  build_kdf_key(desc, salt, salt_len, kdf_key, sizeof(kdf_key));
+  /* Copy the bytes we need for both the secret key and IV. */
+  memcpy(key_out, kdf_key, key_len);
+  offset += key_len;
+  memcpy(iv_out, kdf_key + offset, iv_len);
+  offset += iv_len;
+  memcpy(mac_out, kdf_key + offset, mac_len);
+  /* Extra precaution to make sure we are not out of bound. */
+  tor_assert((offset + mac_len) == sizeof(kdf_key));
+  memwipe(kdf_key, 0, sizeof(kdf_key));
+}
+
+/* Using a key, salt and encrypted payload, build a MAC and put it in mac_out.
+ * We use SHA3-256 for the MAC creation. This function can't fail. */
+static void
+build_mac(const uint8_t *mac_key, size_t mac_key_len,
+          const uint8_t *salt, size_t salt_len,
+          const uint8_t *encrypted, size_t encrypted_len,
+          uint8_t *mac_out, size_t mac_len)
+{
+  crypto_digest_t *digest;
+
+  tor_assert(mac_key);
+  tor_assert(salt);
+  tor_assert(encrypted);
+  tor_assert(mac_out);
+
+  digest = crypto_digest256_new(DIGEST_SHA3_256);
+  /* As specified in section 2.5 of proposal 224, first add the mac key
+   * then add the salt first and then the encrypted section. */
+  crypto_digest_add_bytes(digest, (const char *) mac_key, mac_key_len);
+  crypto_digest_add_bytes(digest, (const char *) salt, salt_len);
+  crypto_digest_add_bytes(digest, (const char *) encrypted, encrypted_len);
+  crypto_digest_get_digest(digest, (char *) mac_out, mac_len);
+  crypto_digest_free(digest);
+}
+
 /* Given a source length, return the new size including padding for the
  * plaintext encryption. */
 static size_t
@@ -552,22 +608,12 @@ encrypt_descriptor_data(const hs_descriptor_t *desc, const char *plaintext,
   /* Get our salt. The returned bytes are already hashed. */
   crypto_strongest_rand(salt, sizeof(salt));
 
-  /* KDF construction resulting in a key from which we'll extract what we
-   * need for the encryption. */
-  {
-    uint8_t key[HS_DESC_ENCRYPTED_KDF_OUTPUT_LEN];
-
-    build_kdf_key(desc, salt, sizeof(salt), key, sizeof(key));
-    /* Copy the bytes we need for both the secret key and IV. */
-    memcpy(secret_key, key, sizeof(secret_key));
-    offset += sizeof(secret_key);
-    memcpy(secret_iv, key + offset, sizeof(secret_iv));
-    offset += sizeof(secret_iv);
-    memcpy(mac_key, key + offset, sizeof(mac_key));
-    /* Extra precaution to make sure we are not out of bound. */
-    tor_assert((offset + sizeof(mac_key)) == sizeof(key));
-    memwipe(key, 0, sizeof(key));
-  }
+  /* KDF construction resulting in a key from which the secret key, IV and MAC
+   * key are extracted which is what we need for the encryption. */
+  build_secret_key_iv_mac(desc, salt, sizeof(salt),
+                          secret_key, sizeof(secret_key),
+                          secret_iv, sizeof(secret_iv),
+                          mac_key, sizeof(mac_key));
 
   /* Build the encrypted part that is do the actual encryption. */
   encrypted_len = build_encrypted(secret_key, secret_iv, plaintext,
@@ -579,21 +625,9 @@ encrypt_descriptor_data(const hs_descriptor_t *desc, const char *plaintext,
   final_blob = tor_malloc_zero(final_blob_len);
 
   /* Build the MAC. */
-  {
-    crypto_digest_t *digest;
-
-    digest = crypto_digest256_new(DIGEST_SHA3_256);
-    /* As specified in section 2.5 of proposal 224, first add the mac key
-     * then add the salt first and then the encrypted section. */
-    crypto_digest_add_bytes(digest, (const char *) mac_key,
-                            sizeof(mac_key));
-    crypto_digest_add_bytes(digest, (const char *) salt, sizeof(salt));
-    crypto_digest_add_bytes(digest, (const char *) encrypted,
-                            encrypted_len);
-    crypto_digest_get_digest(digest, (char *) mac, sizeof(mac));
-    crypto_digest_free(digest);
-    memwipe(mac_key, 0, sizeof(mac_key));
-  }
+  build_mac(mac_key, sizeof(mac_key), salt, sizeof(salt),
+            encrypted, encrypted_len, mac, sizeof(mac));
+  memwipe(mac_key, 0, sizeof(mac_key));
 
   /* The salt is the first value. */
   memcpy(final_blob, salt, sizeof(salt));
