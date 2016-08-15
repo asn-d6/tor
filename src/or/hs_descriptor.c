@@ -1504,6 +1504,9 @@ desc_decode_encrypted_v3(const hs_descriptor_t *desc,
       goto err;
     }
   }
+  /* Initialize the descriptor's introduction point list before we start
+   * decoding. Having 0 intro point is valid. */
+  desc_encrypted_out->intro_points = smartlist_new();
 
   /* Introduction point decoding. */
   {
@@ -1514,8 +1517,6 @@ desc_decode_encrypted_v3(const hs_descriptor_t *desc,
     if (ip_start) {
       /* Advance past the newline */
       ip_start++;
-      /* Initialize the descriptor's introduction point list. */
-      desc_encrypted_out->intro_points = smartlist_new();
     }
     /* Having no introduction point is allowed. */
     while (ip_start) {
