@@ -187,6 +187,8 @@ ed25519_keypair_generate(ed25519_keypair_t *keypair_out, int extra_strong)
 /**
  * Set <b>signature_out</b> to a signature of the <b>len</b>-byte message
  * <b>msg</b>, using the secret and public key in <b>keypair</b>.
+ *
+ * Return 0 if we successfuly signed the message, otherwise return -1.
  */
 int
 ed25519_sign(ed25519_signature_t *signature_out,
@@ -213,21 +215,23 @@ ed25519_sign_prefixed(ed25519_signature_t *signature_out,
                       const ed25519_keypair_t *keypair)
 {
   int retval;
-  size_t prefixed_msg_len;
+  size_t prefixed_msg_len, prefix_len;
   uint8_t *prefixed_msg;
 
   tor_assert(prefix_str);
 
+  prefix_len = strlen(prefix_str);
+
   /* len + strlen(prefix_str) must not overflow. */
-  if (len > SIZE_T_CEILING - strlen(prefix_str)) {
+  if (len > SIZE_T_CEILING - prefix_len) {
     return -1;
   }
 
-  prefixed_msg_len = len + strlen(prefix_str);
+  prefixed_msg_len = len + prefix_len;
   prefixed_msg = tor_malloc_zero(prefixed_msg_len);
 
-  memcpy(prefixed_msg, prefix_str, strlen(prefix_str));
-  memcpy(prefixed_msg + strlen(prefix_str), msg, len);
+  memcpy(prefixed_msg, prefix_str, prefix_len);
+  memcpy(prefixed_msg + prefix_len, msg, len);
 
   retval = ed25519_sign(signature_out,
                         prefixed_msg, prefixed_msg_len,
@@ -264,21 +268,23 @@ ed25519_checksig_prefixed(const ed25519_signature_t *signature,
                           const ed25519_public_key_t *pubkey)
 {
   int retval;
-  size_t prefixed_msg_len;
+  size_t prefixed_msg_len, prefix_len;
   uint8_t *prefixed_msg;
 
   tor_assert(prefix_str);
 
+  prefix_len = strlen(prefix_str);
+
   /* len + strlen(prefix_str) must not overflow. */
-  if (len > SIZE_T_CEILING - strlen(prefix_str)) {
+  if (len > SIZE_T_CEILING - prefix_len) {
     return -1;
   }
 
-  prefixed_msg_len = len + strlen(prefix_str);
+  prefixed_msg_len = len + prefix_len;
   prefixed_msg = tor_malloc_zero(prefixed_msg_len);
 
-  memcpy(prefixed_msg, prefix_str, strlen(prefix_str));
-  memcpy(prefixed_msg + strlen(prefix_str), msg, len);
+  memcpy(prefixed_msg, prefix_str, prefix_len);
+  memcpy(prefixed_msg + prefix_len, msg, len);
 
   retval = ed25519_checksig(signature,
                             prefixed_msg, prefixed_msg_len,
