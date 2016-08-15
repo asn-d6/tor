@@ -1030,6 +1030,10 @@ desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
   tor_assert(desc->plaintext_data.encrypted_blob);
 
   /* Construction is as follow: SALT | ENCRYPTED_DATA | MAC */
+  if (!validate_encrypted_data_length(
+                desc->plaintext_data.encrypted_blob_size)) {
+    goto err;
+  }
 
   /* Start of the blob thus the salt. */
   salt = desc->plaintext_data.encrypted_blob;
@@ -1038,11 +1042,7 @@ desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
     HS_DESC_ENCRYPTED_SALT_LEN;
   encrypted_len = desc->plaintext_data.encrypted_blob_size -
     (HS_DESC_ENCRYPTED_SALT_LEN + DIGEST256_LEN);
-  if (encrypted_len % HS_DESC_PLAINTEXT_PADDING_MULTIPLE) {
-    log_warn(LD_REND, "Service descriptor length of encrypted data "
-                      "is invalid (%lu)", encrypted_len);
-    goto err;
-  }
+
   /* At the very end is the MAC. Make sure it's of the right size. */
   {
     desc_mac = encrypted + encrypted_len;
