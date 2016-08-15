@@ -824,7 +824,7 @@ decode_link_specifiers(const char *encoded)
   decoded = tor_malloc(encoded_len);
   decoded_len = base64_decode((char *) decoded, encoded_len, encoded,
                               encoded_len);
-  if (decoded_len < 1) {
+  if (decoded_len < 0) {
     goto err;
   }
 
