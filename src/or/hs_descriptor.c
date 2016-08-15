@@ -257,20 +257,16 @@ encode_link_specifiers(const smartlist_t *specs)
 /* Encode an introductin point object and return a newly allocated string
  * with it. On failure, return NULL. */
 static char *
-encode_intro_point(const hs_descriptor_t *desc,
+encode_intro_point(const ed25519_keypair_t *sig_key,
                    const hs_desc_intro_point_t *ip)
 {
   time_t now = time(NULL);
   char *encoded_ip = NULL;
   char *encoded_cert = NULL;
   smartlist_t *lines = smartlist_new();
-  const ed25519_keypair_t *sig_key;
 
   tor_assert(ip);
-  tor_assert(desc);
-
-  /* Ease our life a bit. */
-  sig_key = &desc->plaintext_data.signing_kp;
+  tor_assert(sig_key);
 
   /* Encode link specifier. */
   {
@@ -625,7 +621,8 @@ encode_encrypted_data(const hs_descriptor_t *desc,
   /* Build the introduction point(s) section. */
   SMARTLIST_FOREACH_BEGIN(desc->encrypted_data.intro_points,
                           const hs_desc_intro_point_t *, ip) {
-    char *encoded_ip = encode_intro_point(desc, ip);
+    char *encoded_ip = encode_intro_point(&desc->plaintext_data.signing_kp,
+                                          ip);
     if (encoded_ip == NULL) {
       log_err(LD_BUG, "HS desc intro point is malformed.");
       goto err;
