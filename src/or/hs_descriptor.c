@@ -1057,7 +1057,6 @@ desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
   uint8_t mac_key[DIGEST256_LEN], our_mac[DIGEST256_LEN];
   const uint8_t *salt, *encrypted, *desc_mac;
   size_t encrypted_len, result_len = 0;
-  size_t offset = 0;
 
   tor_assert(decrypted_out);
   tor_assert(desc);
@@ -1090,38 +1089,24 @@ desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
     }
   }
 
-  {
-    /* Calculate keys */
-    uint8_t key[HS_DESC_ENCRYPTED_KDF_OUTPUT_LEN];
+  /* KDF construction resulting in a key from which the secret key, IV and MAC
+   * key are extracted which is what we need for the decryption. */
+  build_secret_key_iv_mac(desc, salt, HS_DESC_ENCRYPTED_SALT_LEN,
+                          secret_key, sizeof(secret_key),
+                          secret_iv, sizeof(secret_iv),
+                          mac_key, sizeof(mac_key));
 
-    build_kdf_key(desc, salt, HS_DESC_ENCRYPTED_SALT_LEN, key, sizeof(key));
-    memcpy(secret_key, key, sizeof(secret_key));
-    offset = sizeof(secret_key);
-    memcpy(secret_iv, key + offset, sizeof(secret_iv));
-    offset += sizeof(secret_iv);
-    memcpy(mac_key, key + offset, sizeof(mac_key));
-    /* Extra precaution to make sure we are not out of bounds */
-    tor_assert((offset + sizeof(mac_key)) == sizeof(key));
-    memwipe(key, 0, sizeof(key));
-  }
-
-  {
-    /* Verify MAC; MAC is H(mac_key || salt || encrypted) */
-    crypto_digest_t *digest = crypto_digest256_new(DIGEST_SHA3_256);
-    crypto_digest_add_bytes(digest, (const char *) mac_key, sizeof(mac_key));
-    crypto_digest_add_bytes(digest, (const char *) salt,
-                            HS_DESC_ENCRYPTED_SALT_LEN);
-    crypto_digest_add_bytes(digest, (const char *) encrypted, encrypted_len);
-    crypto_digest_get_digest(digest, (char *) our_mac, sizeof(our_mac));
-    crypto_digest_free(digest);
-    memwipe(mac_key, 0, sizeof(mac_key));
-
-    /* Critical check that is making sure the computed MAC matches the one
-     * in the descriptor. */
-    if (!tor_memeq(our_mac, desc_mac, DIGEST256_LEN)) {
-      log_warn(LD_REND, "Encrypted service descriptor MAC check failed");
-      goto err;
-    }
+  /* Build MAC. */
+  build_mac(mac_key, sizeof(mac_key), salt, HS_DESC_ENCRYPTED_SALT_LEN,
+            encrypted, encrypted_len, our_mac, sizeof(our_mac));
+  memwipe(mac_key, 0, sizeof(mac_key));
+  /* Verify MAC; MAC is H(mac_key || salt || encrypted)
+   *
+   * This is a critical check that is making sure the computed MAC matches the
+   * one in the descriptor. */
+  if (!tor_memeq(our_mac, desc_mac, sizeof(our_mac))) {
+    log_warn(LD_REND, "Encrypted service descriptor MAC check failed");
+    goto err;
   }
 
   {
