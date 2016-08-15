@@ -925,7 +925,12 @@ decode_create2_list(hs_desc_encrypted_data_t *desc, const char *list)
   smartlist_split_string(tokens, list, " ", 0, 0);
 
   SMARTLIST_FOREACH_BEGIN(tokens, char *, s) {
-    unsigned long type = tor_parse_ulong(s, 10, 1, ULONG_MAX, NULL, NULL);
+    int ok;
+    unsigned long type = tor_parse_ulong(s, 10, 1, ULONG_MAX, &ok, NULL);
+    if (!ok) {
+      log_warn(LD_REND, "Unparseable value %s in create2 list", escaped(s));
+      continue;
+    }
     switch (type) {
     case ONION_HANDSHAKE_TYPE_NTOR:
       desc->create2_ntor = 1;
