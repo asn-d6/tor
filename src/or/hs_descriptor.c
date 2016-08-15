@@ -1672,9 +1672,6 @@ hs_desc_decode_plaintext(const char *encoded,
   /* Get the version of the descriptor which is the first mandatory field of
    * the descriptor. From there, we'll decode the right descriptor version. */
   tok = find_by_keyword(tokens, R_HS_DESCRIPTOR);
-  /* Both asserts are hard requirement of the ruleset so if one of them
-   * trigger, we have a big issue with token parsing in the first place. */
-  tor_assert(tok == smartlist_get(tokens, 0));
   tor_assert(tok->n_args == 1);
   plaintext->version = (uint32_t) tor_parse_long(tok->args[0], 10, 0,
                                                  UINT32_MAX, &ok, NULL);
