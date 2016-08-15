@@ -1675,7 +1675,7 @@ hs_desc_decode_plaintext(const char *encoded,
   tor_assert(tok->n_args == 1);
   plaintext->version = (uint32_t) tor_parse_long(tok->args[0], 10, 0,
                                                  UINT32_MAX, &ok, NULL);
-  if (!hs_desc_is_supported_version(plaintext->version)) {
+  if (!ok || !hs_desc_is_supported_version(plaintext->version)) {
     log_warn(LD_REND, "Service descriptor has unsupported version %" PRIu32,
              plaintext->version);
     goto err;
