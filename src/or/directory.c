@@ -3511,7 +3511,7 @@ handle_post_hs_descriptor(const char *url, const char *body)
   }
 
   switch (version) {
-  case 3:
+  case HS_VERSION_THREE:
     if (hs_cache_store_as_dir(body) < 0) {
       goto err;
     }
