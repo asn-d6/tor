@@ -236,9 +236,57 @@ test_directory(void *arg)
   ;
 }
 
+static void
+test_clean_as_dir(void *arg)
+{
+  size_t ret;
+  char *desc1_str = NULL;
+  time_t now = time(NULL);
+  hs_descriptor_t *desc1 = NULL;
+
+  (void) arg;
+
+  init_test();
+
+  /* Generate a valid descriptor with values. */
+  desc1 = helper_build_hs_desc(42, 3 * 60 * 60, NULL);
+  tt_assert(desc1);
+  ret = hs_desc_encode_descriptor(desc1, &desc1_str);
+  tt_int_op(ret, OP_EQ, 0);
+	ret = hs_cache_store_as_dir(desc1_str);
+	tt_int_op(ret, OP_EQ, 0);
+
+  /* With the lifetime being 3 hours, a cleanup shouldn't remove it. */
+  ret = cache_clean_v3_as_dir(0);
+  tt_int_op(ret, ==, 0);
+  /* Should be present after clean up. */
+  ret = hs_cache_lookup_as_dir(3, helper_get_hsdir_query(desc1), NULL);
+  tt_int_op(ret, OP_EQ, 1);
+  /* Set a cutoff 100 seconds in the past. It should not remove the entry
+   * since the entry is still recent enough. */
+  ret = cache_clean_v3_as_dir(now - 100);
+  tt_int_op(ret, ==, 0);
+  /* Should be present after clean up. */
+  ret = hs_cache_lookup_as_dir(3, helper_get_hsdir_query(desc1), NULL);
+  tt_int_op(ret, OP_EQ, 1);
+  /* Set a cutoff of 100 seconds in the future. It should remove the entry
+   * that we've just added since it's not too old for the cutoff. */
+  ret = cache_clean_v3_as_dir(now + 100);
+  tt_int_op(ret, >, 0);
+  /* Shouldn't be present after clean up. */
+  ret = hs_cache_lookup_as_dir(3, helper_get_hsdir_query(desc1), NULL);
+  tt_int_op(ret, OP_EQ, 0);
+
+ done:
+  hs_descriptor_free(desc1);
+  tor_free(desc1_str);
+}
+
 struct testcase_t hs_cache[] = {
   /* Encoding tests. */
   { "directory", test_directory, TT_FORK,
+    NULL, NULL },
+  { "clean_as_dir", test_clean_as_dir, TT_FORK,
     NULL, NULL },
 
   END_OF_TESTCASES

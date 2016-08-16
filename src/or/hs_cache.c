@@ -6,6 +6,9 @@
  * \brief Handle hidden service caches.
  **/
 
+/* For unit tests.*/
+#define HS_CACHE_PRIVATE
+
 #include "hs_cache.h"
 
 #include "or.h"
@@ -206,7 +209,7 @@ err:
 /* Clean the v3 cache that is remove any entry that have expired using the
  * cutoff value. If cutoff is 0, the cleaning process will use the lifetime
  * found in the plaintext data section. Return the number of bytes removed. */
-static size_t
+STATIC size_t
 cache_clean_v3_as_dir(time_t global_cutoff)
 {
   time_t now = time(NULL);
