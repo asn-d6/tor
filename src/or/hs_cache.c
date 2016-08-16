@@ -87,7 +87,7 @@ cache_dir_desc_new(const char *desc)
 
   tor_assert(desc);
 
-  dir_desc = tor_malloc_zero(sizeof(*dir_desc));
+  dir_desc = tor_malloc_zero(sizeof(hs_cache_dir_descriptor_t));
   dir_desc->plaintext_data =
     tor_malloc_zero(sizeof(hs_desc_plaintext_data_t));
   dir_desc->encoded_desc = tor_strdup(desc);
