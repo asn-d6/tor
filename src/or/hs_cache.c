@@ -96,6 +96,11 @@ cache_dir_desc_new(const char *desc)
     log_debug(LD_DIR, "Unable to decode descriptor. Rejecting.");
     goto err;
   }
+  /* Compute our cache key from the blinded key in the descriptor just
+   * extracted in the decoding phase. We need this key to do all sorts of
+   * operation to our cache so compute it only once. */
+  build_v3_desc_key_as_dir(&dir_desc->plaintext_data->blinded_kp.pubkey,
+                           dir_desc->key, sizeof(dir_desc->key));
 
   dir_desc->created_ts = time(NULL);
   return dir_desc;
@@ -268,11 +273,6 @@ hs_cache_store_as_dir(const char *desc)
   switch (dir_desc->plaintext_data->version) {
   case 3:
   default:
-    /* Compute our cache key from the blinded key in the descriptor just
-     * extracted in the decoding phase. We need this key to do all sorts of
-     * operation to our cache so compute it only once. */
-    build_v3_desc_key_as_dir(&dir_desc->plaintext_data->blinded_kp.pubkey,
-                             dir_desc->key, sizeof(dir_desc->key));
     if (cache_store_v3_as_dir(dir_desc) < 0) {
       goto err;
     }
