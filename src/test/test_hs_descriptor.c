@@ -908,20 +908,17 @@ test_validate_cert(void *arg)
                                      CERT_FLAG_INCLUDE_SIGNING_KEY);
   tt_assert(cert);
   /* Test with empty certificate. */
-  ret = cert_is_valid(NULL, CERT_TYPE_HS_IP_AUTH, 1, "unicorn");
+  ret = cert_is_valid(NULL, CERT_TYPE_HS_IP_AUTH, "unicorn");
   tt_int_op(ret, OP_EQ, 0);
   /* Test with a bad type. */
-  ret = cert_is_valid(cert, CERT_TYPE_HS_DESC_SIGN, 1, "unicorn");
+  ret = cert_is_valid(cert, CERT_TYPE_HS_DESC_SIGN, "unicorn");
   tt_int_op(ret, OP_EQ, 0);
-  /* Tell validation to ignore the check on the signing key included. */
-  ret = cert_is_valid(cert, CERT_TYPE_HS_IP_AUTH, 0, "unicorn");
-  tt_int_op(ret, OP_EQ, 1);
   /* Normal validation. */
-  ret = cert_is_valid(cert, CERT_TYPE_HS_IP_AUTH, 1, "unicorn");
+  ret = cert_is_valid(cert, CERT_TYPE_HS_IP_AUTH, "unicorn");
   tt_int_op(ret, OP_EQ, 1);
   /* Break signing key so signature verification will fails. */
   memset(&cert->signing_key, 0, sizeof(cert->signing_key));
-  ret = cert_is_valid(cert, CERT_TYPE_HS_IP_AUTH, 1, "unicorn");
+  ret = cert_is_valid(cert, CERT_TYPE_HS_IP_AUTH, "unicorn");
   tt_int_op(ret, OP_EQ, 0);
   tor_cert_free(cert);
 
@@ -929,7 +926,7 @@ test_validate_cert(void *arg)
   cert = tor_cert_create(&kp, CERT_TYPE_HS_IP_AUTH, &kp.pubkey, now, 3600, 0);
   tt_assert(cert);
   /* Test with a bad type. */
-  ret = cert_is_valid(cert, CERT_TYPE_HS_IP_AUTH, 1, "unicorn");
+  ret = cert_is_valid(cert, CERT_TYPE_HS_IP_AUTH, "unicorn");
   tt_int_op(ret, OP_EQ, 0);
 
  done:

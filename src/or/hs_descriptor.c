@@ -981,8 +981,7 @@ decode_create2_list(hs_desc_encrypted_data_t *desc, const char *list)
 /* Given a certificate, validate the certificate for certain conditions.
  * Return 1 iff if all conditions pass or 0 if one of them fails. */
 STATIC int
-cert_is_valid(tor_cert_t *cert, uint8_t type, int sig_included,
-              const char *log_obj_type)
+cert_is_valid(tor_cert_t *cert, uint8_t type, const char *log_obj_type)
 {
   tor_assert(log_obj_type);
 
@@ -995,7 +994,8 @@ cert_is_valid(tor_cert_t *cert, uint8_t type, int sig_included,
              log_obj_type);
     goto err;
   }
-  if (sig_included && !cert->signing_key_included) {
+  /* All certificate must have its signing key included. */
+  if (!cert->signing_key_included) {
     log_warn(LD_REND, "Signing key is NOT included for %s.", log_obj_type);
     goto err;
   }
@@ -1199,7 +1199,7 @@ decode_introduction_point(const hs_descriptor_t *desc, const char *start,
   /* Parse cert and do some validation. */
   ip->auth_key_cert = tor_cert_parse((const uint8_t *) tok->object_body,
                                      tok->object_size);
-  if (!cert_is_valid(ip->auth_key_cert, CERT_TYPE_HS_IP_AUTH, 1,
+  if (!cert_is_valid(ip->auth_key_cert, CERT_TYPE_HS_IP_AUTH,
                      "introduction point auth-key")) {
     goto err;
   }
@@ -1248,7 +1248,7 @@ decode_introduction_point(const hs_descriptor_t *desc, const char *start,
     }
     cross_cert = tor_cert_parse((const uint8_t *) tok->object_body,
                                 tok->object_size);
-    if (!cert_is_valid(cross_cert, CERT_TYPE_HS_IP_ENC, 1,
+    if (!cert_is_valid(cross_cert, CERT_TYPE_HS_IP_ENC,
                        "introduction point enc-key-certification")) {
       goto err;
     }
@@ -1400,7 +1400,7 @@ desc_decode_plaintext_v3(smartlist_t *tokens,
   }
   desc->signing_key_cert = tor_cert_parse((const uint8_t *) tok->object_body,
                                           tok->object_size);
-  if (!cert_is_valid(desc->signing_key_cert, CERT_TYPE_HS_DESC_SIGN, 1,
+  if (!cert_is_valid(desc->signing_key_cert, CERT_TYPE_HS_DESC_SIGN,
                      "service descriptor signing key")) {
     goto err;
   }
