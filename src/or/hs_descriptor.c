@@ -1331,6 +1331,68 @@ decode_introduction_point(const hs_descriptor_t *desc, const char *start,
   return ip;
 }
 
+/* Given a data section with its size, decode all possible introduction points
+ * that we can find. Add the introduction point object to desc_enc as we find
+ * them. Return 0 on success.
+ *
+ * On error, a negative value is returned. It is possible that some intro
+ * point object have been added to the desc_enc, they should be considered
+ * invalid. One single bad encoded introduction point will make this function
+ * return an error. */
+static int
+decode_intro_points(const hs_descriptor_t *desc,
+                    hs_desc_encrypted_data_t *desc_enc,
+                    const char *data, size_t data_len)
+{
+  const char *ip_start;
+
+  tor_assert(desc);
+  tor_assert(desc_enc);
+  tor_assert(data);
+  /* This must be set because we are about to add introduction point object to
+   * that list. If none are found, a size of 0 is still valid. */
+  tor_assert(desc_enc->intro_points);
+
+  /* We'll go over all introduction point that we can find. Start by
+   * finding the first token. */
+  ip_start = tor_memstr(data, data_len, str_intro_point_start);
+  if (ip_start) {
+    /* Advance past the newline */
+    ip_start++;
+  }
+  /* Having no introduction point is allowed. */
+  while (ip_start) {
+    hs_desc_intro_point_t *ip = NULL;
+    const char *ip_end;
+    const char *end_of_ip_section =
+      tor_memstr(ip_start, (data + data_len) - ip_start,
+                 str_intro_point_start);
+    if (end_of_ip_section) {
+      /* Skip the newline at the start of the IP token. */
+      ip_end = ++end_of_ip_section;
+    } else {
+      /* We couldn't find a new IP so the end of the encrypted section is
+       * the end of our IP section that we want to decode. */
+      ip_end = data + data_len;
+    }
+    /* Decode the actual section with the start and end pointer. */
+    ip = decode_introduction_point(desc, ip_start, ip_end);
+    if (!ip) {
+      /* Malformed introduction point section. Stop right away, this
+       * descriptor shouldn't be used. */
+      goto err;
+    }
+    smartlist_add(desc_enc->intro_points, ip);
+    /* Advance pointer so we can process the next one. If there is no
+     * other, we stop the loop. */
+    ip_start = end_of_ip_section;
+  }
+
+  return 0;
+ err:
+  return -1;
+}
+
 /* Return 1 iff the given base64 encoded signature in b64_sig from the encoded
  * descriptor in encoded_desc validates the descriptor content. */
 static int
@@ -1543,46 +1605,11 @@ desc_decode_encrypted_v3(const hs_descriptor_t *desc,
     }
   }
   /* Initialize the descriptor's introduction point list before we start
-   * decoding. Having 0 intro point is valid. */
+   * decoding. Having 0 intro point is valid. Then decode them all. */
   desc_encrypted_out->intro_points = smartlist_new();
-
-  /* Introduction point decoding. */
-  {
-    /* We'll go over all introduction point that we can find. Start by
-     * finding the first token. */
-    const char *ip_start = tor_memstr(message, message_len,
-                                      str_intro_point_start);
-    if (ip_start) {
-      /* Advance past the newline */
-      ip_start++;
-    }
-    /* Having no introduction point is allowed. */
-    while (ip_start) {
-      hs_desc_intro_point_t *ip = NULL;
-      const char *ip_end;
-      const char *end_of_ip_section =
-        tor_memstr(ip_start, (message + message_len) - ip_start,
-                   str_intro_point_start);
-      if (end_of_ip_section) {
-        /* Skip the newline at the start of the IP token. */
-        ip_end = ++end_of_ip_section;
-      } else {
-        /* We couldn't find a new IP so the end of the encrypted section is
-         * the end of our IP section that we want to decode. */
-        ip_end = message + message_len;
-      }
-      /* Decode the actual section with the start and end pointer. */
-      ip = decode_introduction_point(desc, ip_start, ip_end);
-      if (!ip) {
-        /* Malformed introduction point section. Stop right away, this
-         * descriptor shouldn't be used. */
-        goto err;
-      }
-      smartlist_add(desc_encrypted_out->intro_points, ip);
-      /* Advance pointer so we can process the next one. If there is no
-       * other, we stop the loop. */
-      ip_start = end_of_ip_section;
-    }
+  if (decode_intro_points(desc, desc_encrypted_out,
+                          message, message_len) < 0) {
+    goto err;
   }
   /* Validation of maximum introduction points allowed. */
   if (smartlist_len(desc_encrypted_out->intro_points) > MAX_INTRO_POINTS) {
