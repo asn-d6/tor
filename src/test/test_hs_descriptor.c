@@ -567,17 +567,17 @@ test_encrypted_data_len(void *arg)
   (void) arg;
 
   /* No length, error. */
-  ret = validate_encrypted_data_length(0);
+  ret = encrypted_data_length_is_valid(0);
   tt_int_op(ret, OP_EQ, 0);
   /* Not a multiple of our encryption algorithm (thus no padding). It's
    * suppose to be aligned on HS_DESC_PLAINTEXT_PADDING_MULTIPLE. */
   value = HS_DESC_PLAINTEXT_PADDING_MULTIPLE * 10 - 1;
-  ret = validate_encrypted_data_length(value);
+  ret = encrypted_data_length_is_valid(value);
   tt_int_op(ret, OP_EQ, 0);
   /* Valid value. */
   value = HS_DESC_PADDED_PLAINTEXT_MAX_LEN + HS_DESC_ENCRYPTED_SALT_LEN +
           DIGEST256_LEN;
-  ret = validate_encrypted_data_length(value);
+  ret = encrypted_data_length_is_valid(value);
   tt_int_op(ret, OP_EQ, 1);
 
   /* XXX: Test maximum possible size. */
