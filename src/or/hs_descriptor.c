@@ -1011,6 +1011,43 @@ cert_is_valid(tor_cert_t *cert, uint8_t type, const char *log_obj_type)
   return 0;
 }
 
+/* Given some binary data, try to parse it to get a certificate object. If we
+ * have a valid cert, validate it using the given wanted type. On error, print
+ * a log using the err_msg has the certificate identifier adding semantic to
+ * the log and cert_out is set to NULL. On success, 0 is returned and cert_out
+ * points to a newly allocated certificate object. */
+static int
+cert_parse_and_validate(tor_cert_t **cert_out, const char *data,
+                        size_t data_len, unsigned int cert_type_wanted,
+                        const char *err_msg)
+{
+  tor_cert_t *cert;
+
+  tor_assert(cert_out);
+  tor_assert(data);
+  tor_assert(err_msg);
+
+  /* Parse certificate. */
+  cert = tor_cert_parse((const uint8_t *) data, data_len);
+  if (!cert) {
+    log_warn(LD_REND, "Certificate for %s couldn't be parsed.", err_msg);
+    goto err;
+  }
+
+  /* Validate certificate. */
+  if (!cert_is_valid(cert, cert_type_wanted, err_msg)) {
+    goto err;
+  }
+
+  *cert_out = cert;
+  return 0;
+
+ err:
+  tor_cert_free(cert);
+  *cert_out = NULL;
+  return -1;
+}
+
 /* Return true iff the given length of the encrypted data of a descriptor
  * passes validation. */
 STATIC int
@@ -1197,10 +1234,9 @@ decode_introduction_point(const hs_descriptor_t *desc, const char *start,
   }
 
   /* Parse cert and do some validation. */
-  ip->auth_key_cert = tor_cert_parse((const uint8_t *) tok->object_body,
-                                     tok->object_size);
-  if (!cert_is_valid(ip->auth_key_cert, CERT_TYPE_HS_IP_AUTH,
-                     "introduction point auth-key")) {
+  if (cert_parse_and_validate(&ip->auth_key_cert, tok->object_body,
+                              tok->object_size, CERT_TYPE_HS_IP_AUTH,
+                              "introduction point auth-key") < 0) {
     goto err;
   }
 
@@ -1246,10 +1282,9 @@ decode_introduction_point(const hs_descriptor_t *desc, const char *start,
                         "cross-certification has an unknown format.");
       goto err;
     }
-    cross_cert = tor_cert_parse((const uint8_t *) tok->object_body,
-                                tok->object_size);
-    if (!cert_is_valid(cross_cert, CERT_TYPE_HS_IP_ENC,
-                       "introduction point enc-key-certification")) {
+    if (cert_parse_and_validate(&cross_cert, tok->object_body,
+                       tok->object_size, CERT_TYPE_HS_IP_ENC,
+                       "introduction point enc-key-certification") < 0) {
       goto err;
     }
     /* No need to pass the pubkey, the certificate includes the signing key
@@ -1398,10 +1433,9 @@ desc_decode_plaintext_v3(smartlist_t *tokens,
              escaped(tok->object_type));
     goto err;
   }
-  desc->signing_key_cert = tor_cert_parse((const uint8_t *) tok->object_body,
-                                          tok->object_size);
-  if (!cert_is_valid(desc->signing_key_cert, CERT_TYPE_HS_DESC_SIGN,
-                     "service descriptor signing key")) {
+  if (cert_parse_and_validate(&desc->signing_key_cert, tok->object_body,
+                              tok->object_size, CERT_TYPE_HS_DESC_SIGN,
+                              "service descriptor signing key") < 0) {
     goto err;
   }
 
