@@ -67,7 +67,7 @@ lookup_v3_desc_as_dir(const uint8_t *key)
 
 /* Free a directory descriptor object. */
 static void
-free_cache_dir_desc(hs_cache_dir_descriptor_t *desc)
+cache_dir_desc_free(hs_cache_dir_descriptor_t *desc)
 {
   if (desc == NULL) {
     return;
@@ -81,7 +81,7 @@ free_cache_dir_desc(hs_cache_dir_descriptor_t *desc)
  * Return NULL on error that is if we can't decode the descriptor else an
  * allocated cache object. */
 static hs_cache_dir_descriptor_t *
-new_cache_dir_desc(const char *desc)
+cache_dir_desc_new(const char *desc)
 {
   hs_cache_dir_descriptor_t *dir_desc;
 
@@ -101,7 +101,7 @@ new_cache_dir_desc(const char *desc)
   return dir_desc;
 
 err:
-  free_cache_dir_desc(dir_desc);
+  cache_dir_desc_free(dir_desc);
   return NULL;
 }
 
@@ -140,7 +140,7 @@ cache_store_v3_as_dir(hs_cache_dir_descriptor_t *desc)
      * remove the entry we currently have from our cache so we can then
      * store the new one. */
     remove_v3_desc_as_dir(cache_entry);
-    free_cache_dir_desc(cache_entry);
+    cache_dir_desc_free(cache_entry);
   }
   /* Store the descriptor we just got. We are sure here that either we
    * don't have the entry or we have a newer descriptor and the old one
@@ -229,7 +229,7 @@ cache_clean_v3_as_dir(time_t global_cutoff)
     entry_size = cache_get_entry_size(entry);
     bytes_removed += entry_size;
     /* Entry is not in the cache anymore, destroy it. */
-    free_cache_dir_desc(entry);
+    cache_dir_desc_free(entry);
     /* Update our cache entry allocation size for the OOM. */
     rend_cache_decrement_allocation(entry_size);
     /* Logging. */
@@ -257,7 +257,7 @@ hs_cache_store_as_dir(const char *desc)
 
   /* Create a new cache object. This can fail if the descriptor plaintext data
    * is unparseable which in this case a log message will be triggered. */
-  dir_desc = new_cache_dir_desc(desc);
+  dir_desc = cache_dir_desc_new(desc);
   if (dir_desc == NULL) {
     goto err;
   }
@@ -281,7 +281,7 @@ hs_cache_store_as_dir(const char *desc)
   return 0;
 
  err:
-  free_cache_dir_desc(dir_desc);
+  cache_dir_desc_free(dir_desc);
   return -1;
 }
 
