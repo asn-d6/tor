@@ -1051,7 +1051,7 @@ cert_parse_and_validate(tor_cert_t **cert_out, const char *data,
 /* Return true iff the given length of the encrypted data of a descriptor
  * passes validation. */
 STATIC int
-validate_encrypted_data_length(size_t len)
+encrypted_data_length_is_valid(size_t len)
 {
   /* Check for the minimum length possible. */
   if (len < HS_DESC_ENCRYPTED_MIN_LEN) {
@@ -1100,7 +1100,7 @@ desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
   tor_assert(desc->plaintext_data.encrypted_blob);
 
   /* Construction is as follow: SALT | ENCRYPTED_DATA | MAC */
-  if (!validate_encrypted_data_length(
+  if (!encrypted_data_length_is_valid(
                 desc->plaintext_data.encrypted_blob_size)) {
     goto err;
   }
@@ -1467,7 +1467,7 @@ desc_decode_plaintext_v3(smartlist_t *tokens,
     goto err;
   }
   /* Make sure the length of the encrypted blob is valid. */
-  if (!validate_encrypted_data_length(tok->object_size)) {
+  if (!encrypted_data_length_is_valid(tok->object_size)) {
     goto err;
   }
 
