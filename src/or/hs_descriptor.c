@@ -1360,6 +1360,10 @@ check_desc_signature(const char *b64_sig,
    * Having data trailing behind is not suppose to happen and it could
    * indicate a side channel attack. */
   sig_end = memchr(sig_start, '\n', encoded_len - (sig_start - encoded_desc));
+  if (!sig_end) {
+    /* Unable to find the last newline, invalid signature encoding. */
+    goto err;
+  }
   /* Are we really at the end of the descriptor? */
   if (sig_end != (encoded_desc + encoded_len - 1)) {
     size_t extra_data_len = encoded_len - (sig_end - encoded_desc);
