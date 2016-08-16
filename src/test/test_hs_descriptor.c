@@ -589,10 +589,11 @@ test_encrypted_data_len(void *arg)
 static void
 test_decode_intro_point(void *arg)
 {
+  int ret;
   char *encoded_ip = NULL;
   size_t len_out;
   hs_desc_intro_point_t *ip;
-  hs_descriptor_t *desc;
+  hs_descriptor_t *desc = NULL;
 
   (void) arg;
 
@@ -637,8 +638,40 @@ test_decode_intro_point(void *arg)
   (void) enc_key_legacy;
   (void) enc_key_cert_legacy;
 
+  /* Start by testing the "decode all intro points" function. */
+  {
+    char *line;
+    desc = helper_build_hs_desc(0);
+    tt_assert(desc);
+    /* Only try to decode an incomplete introduction point section. */
+    tor_asprintf(&line, "\n%s", intro_point);
+    ret = decode_intro_points(desc, &desc->encrypted_data, line, strlen(line));
+    tor_free(line);
+    tt_int_op(ret, ==, -1);
+
+    /* Decode one complete intro point. */
+    smartlist_t *lines = smartlist_new();
+    smartlist_add(lines, (char *) intro_point);
+    smartlist_add(lines, (char *) auth_key);
+    smartlist_add(lines, (char *) enc_key);
+    smartlist_add(lines, (char *) enc_key_cert);
+    encoded_ip = smartlist_join_strings(lines, "\n", 0, &len_out);
+    tt_assert(encoded_ip);
+    tor_asprintf(&line, "\n%s", encoded_ip);
+    tor_free(encoded_ip);
+    ret = decode_intro_points(desc, &desc->encrypted_data, line, strlen(line));
+    tor_free(line);
+    smartlist_free(lines);
+    tt_int_op(ret, ==, 0);
+
+    /* Throw junk at it. */
+    ret = decode_intro_points(desc, &desc->encrypted_data, "JUNK", 761514);
+    tt_int_op(ret, ==, -1);
+  }
+
   /* Try to decode a junk string. */
   {
+    hs_descriptor_free(desc);
     desc = helper_build_hs_desc(0);
     const char *junk = "this is not a descriptor";
     ip = decode_introduction_point(desc, junk, junk + strlen(junk));
@@ -772,7 +805,7 @@ test_decode_intro_point(void *arg)
   }
 
  done:
-  ;
+  hs_descriptor_free(desc);
 }
 
 static void

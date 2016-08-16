@@ -1339,7 +1339,7 @@ decode_introduction_point(const hs_descriptor_t *desc, const char *start,
  * point object have been added to the desc_enc, they should be considered
  * invalid. One single bad encoded introduction point will make this function
  * return an error. */
-static int
+STATIC int
 decode_intro_points(const hs_descriptor_t *desc,
                     hs_desc_encrypted_data_t *desc_enc,
                     const char *data, size_t data_len)
