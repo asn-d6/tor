@@ -21,15 +21,15 @@ static digest256map_t *hs_cache_v3_dir;
  * index it in the directory cache. */
 static void
 build_v3_desc_key_as_dir(const ed25519_public_key_t *pubkey,
-                         uint8_t *key, size_t key_len)
+                         uint8_t *key_out, size_t key_out_len)
 {
   static const char *prefix = "hsdir-blinded-key";
   crypto_digest_t *d;
 
   tor_assert(pubkey);
-  tor_assert(key);
+  tor_assert(key_out);
   /* This length is specific to version 3. */
-  tor_assert(key_len == DIGEST256_LEN);
+  tor_assert(key_out_len == DIGEST256_LEN);
 
   /* Create the cache key that is the hash of the blinded key found in the
    * received descriptor. */
@@ -37,7 +37,7 @@ build_v3_desc_key_as_dir(const ed25519_public_key_t *pubkey,
   crypto_digest_add_bytes(d, prefix, strlen(prefix));
   crypto_digest_add_bytes(d, (const char *) pubkey->pubkey,
                           sizeof(pubkey->pubkey));
-  crypto_digest_get_digest(d, (char *) key, key_len);
+  crypto_digest_get_digest(d, (char *) key_out, key_out_len);
   crypto_digest_free(d);
 }
 
