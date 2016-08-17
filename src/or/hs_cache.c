@@ -386,5 +386,7 @@ hs_cache_handle_oom(time_t now, size_t min_remove_bytes)
 void
 hs_cache_init(void)
 {
+  /* Calling this twice is very wrong code flow. */
+  tor_assert(!hs_cache_v3_dir);
   hs_cache_v3_dir = digest256map_new();
 }
