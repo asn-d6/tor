@@ -1395,14 +1395,13 @@ decode_intro_points(const hs_descriptor_t *desc,
 
 /* Return 1 iff the given base64 encoded signature in b64_sig from the encoded
  * descriptor in encoded_desc validates the descriptor content. */
-static int
+STATIC int
 desc_sig_is_valid(const char *b64_sig, const ed25519_keypair_t *signing_kp,
                   const char *encoded_desc, size_t encoded_len)
 {
   int ret = 0;
   ed25519_signature_t sig;
   const char *sig_start;
-  smartlist_t *lines = NULL;
 
   tor_assert(b64_sig);
   tor_assert(signing_kp);
@@ -1410,10 +1409,18 @@ desc_sig_is_valid(const char *b64_sig, const ed25519_keypair_t *signing_kp,
   /* Verifying nothing won't end well :). */
   tor_assert(encoded_len > 0);
 
+  /* Signature length check. */
+  if (strlen(b64_sig) != ED25519_SIG_BASE64_LEN) {
+    log_warn(LD_REND, "Service descriptor has an invalid signature length."
+                      "Exptected %d but got %lu",
+             ED25519_SIG_BASE64_LEN, strlen(b64_sig));
+    goto err;
+  }
+
   /* First, convert base64 blob to an ed25519 signature. */
   if (ed25519_signature_from_base64(&sig, b64_sig) != 0) {
     log_warn(LD_REND, "Service descriptor does not contain a valid "
-             "signature");
+                      "signature");
     goto err;
   }
 
@@ -1422,20 +1429,8 @@ desc_sig_is_valid(const char *b64_sig, const ed25519_keypair_t *signing_kp,
   /* Getting here means the token parsing worked for the signature so if we
    * can't find the start of the signature, we have a code flow issue. */
   tor_assert(sig_start);
-  /* Skip the newline so we start at the "signature" token. */
+  /* Skip newline, it has to go in the signature check. */
   sig_start++;
-
-  /* The signature MUST be the end of the descriptor. Having data trailing
-   * behind is not suppose to happen and it could indicate a side channel
-   * attack. In this case, we expect the signature and then a trailing blank
-   * character because of the newline at the end of it. Thus anything above 2
-   * split elements, we have trailing data. */
-  lines = smartlist_new();
-  if (smartlist_split_string(lines, sig_start, "\n", 0, 0) > 2) {
-    log_warn(LD_REND, "Trailing data after signature in service "
-                      "descriptor: %s", escaped(sig_start));
-    goto err;
-  }
 
   /* Validate signature with the full body of the descriptor. */
   if (ed25519_checksig(&sig, (const uint8_t *) encoded_desc,
@@ -1447,10 +1442,6 @@ desc_sig_is_valid(const char *b64_sig, const ed25519_keypair_t *signing_kp,
   ret = 1;
 
 err:
-  if (lines) {
-    SMARTLIST_FOREACH(lines, char *, l, tor_free(l));
-    smartlist_free(lines);
-  }
   return ret;
 }
 
