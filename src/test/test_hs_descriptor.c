@@ -966,6 +966,38 @@ test_validate_cert(void *arg)
   ;
 }
 
+static void
+test_desc_signature(void *arg)
+{
+  int ret;
+  char *data, *desc;
+  char sig_b64[ED25519_SIG_BASE64_LEN + 1];
+  ed25519_keypair_t kp;
+  ed25519_signature_t sig;
+
+  (void) arg;
+
+  ed25519_keypair_generate(&kp, 0);
+  /* Setup a phoony descriptor but with a valid signature token that is the
+   * signature is verifiable. */
+  tor_asprintf(&data, "This is a signed descriptor\n");
+  ret = ed25519_sign(&sig, (const uint8_t *) data, strlen(data), &kp);
+  tt_int_op(ret, ==, 0);
+  ret = ed25519_signature_to_base64(sig_b64, &sig);
+  tt_int_op(ret, ==, 0);
+  /* Build the descriptor that should be valid. */
+  tor_asprintf(&desc, "%ssignature %s\n", data, sig_b64);
+  ret = desc_sig_is_valid(sig_b64, &kp, desc, strlen(desc));
+  tt_int_op(ret, ==, 1);
+  /* Junk signature. */
+  ret = desc_sig_is_valid("JUNK", &kp, desc, strlen(desc));
+  tt_int_op(ret, ==, 0);
+
+ done:
+  tor_free(desc);
+  tor_free(data);
+}
+
 struct testcase_t hs_descriptor[] = {
   /* Encoding tests. */
   { "cert_encoding", test_cert_encoding, TT_FORK,
@@ -993,6 +1025,8 @@ struct testcase_t hs_descriptor[] = {
   { "free_objects", test_free_objects, TT_FORK,
     NULL, NULL },
   { "validate_cert", test_validate_cert, TT_FORK,
+    NULL, NULL },
+  { "desc_signature", test_desc_signature, TT_FORK,
     NULL, NULL },
 
   END_OF_TESTCASES
