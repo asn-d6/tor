@@ -1396,12 +1396,19 @@ decode_intro_points(const hs_descriptor_t *desc,
 /* Return 1 iff the given base64 encoded signature in b64_sig from the encoded
  * descriptor in encoded_desc validates the descriptor content. */
 static int
-check_desc_signature(const char *b64_sig,
-                     hs_desc_plaintext_data_t *desc,
-                     const char *encoded_desc, size_t encoded_len)
+desc_sig_is_valid(const char *b64_sig, const ed25519_keypair_t *signing_kp,
+                  const char *encoded_desc, size_t encoded_len)
 {
+  int ret = 0;
   ed25519_signature_t sig;
-  const char *sig_start, *sig_end;
+  const char *sig_start;
+  smartlist_t *lines = NULL;
+
+  tor_assert(b64_sig);
+  tor_assert(signing_kp);
+  tor_assert(encoded_desc);
+  /* Verifying nothing won't end well :). */
+  tor_assert(encoded_len > 0);
 
   /* First, convert base64 blob to an ed25519 signature. */
   if (ed25519_signature_from_base64(&sig, b64_sig) != 0) {
@@ -1415,39 +1422,36 @@ check_desc_signature(const char *b64_sig,
   /* Getting here means the token parsing worked for the signature so if we
    * can't find the start of the signature, we have a code flow issue. */
   tor_assert(sig_start);
-  /* Skip the newline so we can find the end of the signature with the
-   * trailing newline. */
+  /* Skip the newline so we start at the "signature" token. */
   sig_start++;
-  /* Next newline after the signature MUST be the end of the descriptor.
-   * Having data trailing behind is not suppose to happen and it could
-   * indicate a side channel attack. */
-  sig_end = memchr(sig_start, '\n', encoded_len - (sig_start - encoded_desc));
-  if (!sig_end) {
-    /* Unable to find the last newline, invalid signature encoding. */
-    goto err;
-  }
-  /* Are we really at the end of the descriptor? */
-  if (sig_end != (encoded_desc + encoded_len - 1)) {
-    size_t extra_data_len = encoded_len - (sig_end - encoded_desc);
-    log_warn(LD_REND, "Trailing data of length %lu (expected %lu) after "
-                      "signature in service descriptor.",
-             extra_data_len, encoded_len);
-    /* XXX: We should also print the .onion address (safely). */
+
+  /* The signature MUST be the end of the descriptor. Having data trailing
+   * behind is not suppose to happen and it could indicate a side channel
+   * attack. In this case, we expect the signature and then a trailing blank
+   * character because of the newline at the end of it. Thus anything above 2
+   * split elements, we have trailing data. */
+  lines = smartlist_new();
+  if (smartlist_split_string(lines, sig_start, "\n", 0, 0) > 2) {
+    log_warn(LD_REND, "Trailing data after signature in service "
+                      "descriptor: %s", escaped(sig_start));
     goto err;
   }
 
   /* Validate signature with the full body of the descriptor. */
   if (ed25519_checksig(&sig, (const uint8_t *) encoded_desc,
-                       sig_start - encoded_desc,
-                       &desc->signing_kp.pubkey) != 0) {
-    /* XXX: There is maybe an extra \n being checked... to confirm. */
+                       sig_start - encoded_desc, &signing_kp->pubkey) != 0) {
     log_warn(LD_REND, "Invalid signature on service descriptor");
     goto err;
   }
+  /* Valid signature! All is good. */
+  ret = 1;
 
-  return 1;
 err:
-  return 0;
+  if (lines) {
+    SMARTLIST_FOREACH(lines, char *, l, tor_free(l));
+    smartlist_free(lines);
+  }
+  return ret;
 }
 
 /* Decode descriptor plaintext data for version 3. Given a list of tokens, an
@@ -1541,7 +1545,9 @@ desc_decode_plaintext_v3(smartlist_t *tokens,
   /* Extract signature and verify it. */
   tok = find_by_keyword(tokens, R3_SIGNATURE);
   tor_assert(tok->n_args == 1);
-  if (!check_desc_signature(tok->args[0], desc, encoded_desc, encoded_len)) {
+  /* First arg here is the actual encoded signature. */
+  if (!desc_sig_is_valid(tok->args[0], &desc->signing_kp,
+                         encoded_desc, encoded_len)) {
     goto err;
   }
 
