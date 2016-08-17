@@ -462,7 +462,9 @@ rend_cache_intro_failure_note(rend_intro_point_failure_t failure,
 }
 
 /** Remove all old v2 descriptors and those for which this hidden service
- * directory is not responsible for any more. */
+ * directory is not responsible for any more. The cutoff is the time limit for
+ * which we want to keep the cache entry. In other words, any entry created
+ * before will be removed. */
 size_t
 rend_cache_clean_v2_descs_as_dir(time_t cutoff)
 {
