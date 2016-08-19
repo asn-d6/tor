@@ -663,10 +663,6 @@ test_decode_intro_point(void *arg)
     tor_free(line);
     smartlist_free(lines);
     tt_int_op(ret, ==, 0);
-
-    /* Throw junk at it. */
-    ret = decode_intro_points(desc, &desc->encrypted_data, "JUNK", 761514);
-    tt_int_op(ret, ==, -1);
   }
 
   /* Try to decode a junk string. */
