@@ -645,7 +645,7 @@ test_decode_intro_point(void *arg)
     tt_assert(desc);
     /* Only try to decode an incomplete introduction point section. */
     tor_asprintf(&line, "\n%s", intro_point);
-    ret = decode_intro_points(desc, &desc->encrypted_data, line, strlen(line));
+    ret = decode_intro_points(desc, &desc->encrypted_data, line);
     tor_free(line);
     tt_int_op(ret, ==, -1);
 
@@ -659,7 +659,7 @@ test_decode_intro_point(void *arg)
     tt_assert(encoded_ip);
     tor_asprintf(&line, "\n%s", encoded_ip);
     tor_free(encoded_ip);
-    ret = decode_intro_points(desc, &desc->encrypted_data, line, strlen(line));
+    ret = decode_intro_points(desc, &desc->encrypted_data, line);
     tor_free(line);
     smartlist_free(lines);
     tt_int_op(ret, ==, 0);
@@ -674,7 +674,7 @@ test_decode_intro_point(void *arg)
     hs_descriptor_free(desc);
     desc = helper_build_hs_desc(0);
     const char *junk = "this is not a descriptor";
-    ip = decode_introduction_point(desc, junk, junk + strlen(junk));
+    ip = decode_introduction_point(desc, junk);
     tt_assert(!ip);
   }
 
@@ -688,7 +688,7 @@ test_decode_intro_point(void *arg)
     smartlist_add(lines, (char *) enc_key_cert);
     encoded_ip = smartlist_join_strings(lines, "\n", 0, &len_out);
     tt_assert(encoded_ip);
-    ip = decode_introduction_point(desc, encoded_ip, encoded_ip + len_out);
+    ip = decode_introduction_point(desc, encoded_ip);
     tt_assert(!ip);
     tor_free(encoded_ip);
     smartlist_free(lines);
@@ -713,7 +713,7 @@ test_decode_intro_point(void *arg)
     smartlist_add(lines, (char *) enc_key_cert);
     encoded_ip = smartlist_join_strings(lines, "\n", 0, &len_out);
     tt_assert(encoded_ip);
-    ip = decode_introduction_point(desc, encoded_ip, encoded_ip + len_out);
+    ip = decode_introduction_point(desc, encoded_ip);
     tt_assert(!ip);
     tor_free(encoded_ip);
     smartlist_free(lines);
@@ -731,7 +731,7 @@ test_decode_intro_point(void *arg)
     smartlist_add(lines, (char *) enc_key_cert);
     encoded_ip = smartlist_join_strings(lines, "\n", 0, &len_out);
     tt_assert(encoded_ip);
-    ip = decode_introduction_point(desc, encoded_ip, encoded_ip + len_out);
+    ip = decode_introduction_point(desc, encoded_ip);
     tt_assert(!ip);
     tor_free(encoded_ip);
     smartlist_free(lines);
@@ -748,7 +748,7 @@ test_decode_intro_point(void *arg)
     smartlist_add(lines, (char *) enc_key_cert);
     encoded_ip = smartlist_join_strings(lines, "\n", 0, &len_out);
     tt_assert(encoded_ip);
-    ip = decode_introduction_point(desc, encoded_ip, encoded_ip + len_out);
+    ip = decode_introduction_point(desc, encoded_ip);
     tt_assert(!ip);
     tor_free(encoded_ip);
     smartlist_free(lines);
@@ -765,7 +765,7 @@ test_decode_intro_point(void *arg)
     smartlist_add(lines, (char *) enc_key_cert);
     encoded_ip = smartlist_join_strings(lines, "\n", 0, &len_out);
     tt_assert(encoded_ip);
-    ip = decode_introduction_point(desc, encoded_ip, encoded_ip + len_out);
+    ip = decode_introduction_point(desc, encoded_ip);
     tt_assert(!ip);
     tor_free(encoded_ip);
     smartlist_free(lines);
@@ -782,7 +782,7 @@ test_decode_intro_point(void *arg)
     smartlist_add(lines, (char *) enc_key_cert);
     encoded_ip = smartlist_join_strings(lines, "\n", 0, &len_out);
     tt_assert(encoded_ip);
-    ip = decode_introduction_point(desc, encoded_ip, encoded_ip + len_out);
+    ip = decode_introduction_point(desc, encoded_ip);
     tt_assert(!ip);
     tor_free(encoded_ip);
     smartlist_free(lines);
@@ -798,7 +798,7 @@ test_decode_intro_point(void *arg)
     smartlist_add(lines, (char *) enc_key_cert);
     encoded_ip = smartlist_join_strings(lines, "\n", 0, &len_out);
     tt_assert(encoded_ip);
-    ip = decode_introduction_point(desc, encoded_ip, encoded_ip + len_out);
+    ip = decode_introduction_point(desc, encoded_ip);
     tt_assert(ip);
     tor_free(encoded_ip);
     smartlist_free(lines);
