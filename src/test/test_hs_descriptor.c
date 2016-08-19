@@ -808,6 +808,102 @@ test_decode_intro_point(void *arg)
   hs_descriptor_free(desc);
 }
 
+
+const char encrypted_desc_portion[] = "create2-formats 2\n"
+  "authentication-required ed25519\n"
+  "introduction-point AQAGAQIDBCMp\n"
+  "auth-key\n"
+  "-----BEGIN ED25519 CERT-----\n"
+  "AQkABjzOATyhrWoCGuAVTRZ1oRg2a9na6YLuS/fvWXL9c3hsbsOLAQAgBAAw/xxm\n"
+  "UFoQ+PRtWKCpXcMOpUE1dzhFcReiDPCyNf8PeqNSI4VqO2d/EjB4Nhi24zBrhDoW\n"
+  "CtxHDpGTeOXU9a4P/y85nbSVZs6HYv3qnCGHZyYdltuUq7s3piqkvhswmw8=\n"
+  "-----END ED25519 CERT-----\n"
+  "enc-key ntor ltyB4IPs1Pr3rc4LUfJcthCz1IfZVPDwB7rgARvRy2o=\n"
+  "enc-key-certification\n"
+  "-----BEGIN ED25519 CERT-----\n"
+  "AQsABjzOASwxuJuWWrzlhM99zv1nR2Y6cLkhlNSoS5MBI5+zWlbhAQAgBADwF+gp\n"
+  "Gnt8qZqBbdFG6nOxxlytV5RCqBz20m2YAlUPi2f5fYWV9BH9biD0X1w2XU7+jBAc\n"
+  "P/INlJjxXxRXHBvBfF99NH7g3JvStOs0E2s9uGYeKRutsPPMS3PjT14ukAU=\n"
+  "-----END ED25519 CERT-----\n"
+  "introduction-point AQESJgAAAAAAAAAAAAAAAAAAASMp\n"
+  "auth-key\n"
+  "-----BEGIN ED25519 CERT-----\n"
+  "AQkABjzOAQDAxaMNCq326BBmFRBamuO9f93S/8qddm0xEC6nJbCEAQAgBAAw/xxm\n"
+  "UFoQ+PRtWKCpXcMOpUE1dzhFcReiDPCyNf8PeqEG++/LW+o07p+88l2mCuT6pWSj\n"
+  "lILachkpeOxjx7Cwlj4s5ivLziWNkhBnBHSy7Fb2ScOJCyHb9x/VsywRWg8=\n"
+  "-----END ED25519 CERT-----\n"
+  "enc-key ntor yHnGvgLtcXr+gQf4/c0pNS5SPi+R6DjjM1BZrWfcQE0=\n"
+  "enc-key-certification\n"
+  "-----BEGIN ED25519 CERT-----\n"
+  "AQsABjzOASwxuJuWWrzlhM99zv1nR2Y6cLkhlNSoS5MBI5+zWlbhAQAgBADuCCWS\n"
+  "w4CPS1Lw/NU0nJr7mXLAB6sZskQ+FcS+P5vZBjrFwebGRj6Folo8+MuxPorjLEca\n"
+  "hCGhh928by7H76lR8UsP3DelBzAUBcDJ7KsqAfFULqhs3wdkwB6OALIqDQY=\n"
+  "-----END ED25519 CERT-----\n"
+  "introduction-point AQIUMDI5OUYyNjhGQ0E5RDU1Q0QxNTc=\n"
+  "auth-key\n"
+  "-----BEGIN ED25519 CERT-----\n"
+  "AQkABjzOAb9gacMW0jcPMV/dENDK6BtQKQfYfJH5FVf052R6s5jwAQAgBAAw/xxm\n"
+  "UFoQ+PRtWKCpXcMOpUE1dzhFcReiDPCyNf8PejP5W3WCgtq9boU6RWCA0SFefFkv\n"
+  "CE9B/V4MbUACnHq/I/9qNrRznb0xt15MQPSZyrPqasdrTtspyKH7LBBjRAE=\n"
+  "-----END ED25519 CERT-----\n"
+  "enc-key legacy\n"
+  "-----BEGIN RSA PUBLIC KEY-----\n"
+  "MIGJAoGBALvab29+JRgR4szPHRYbFFD6BTvmgjfiREZzwRDTHz6KygzG7S/wexyi\n"
+  "5a6pMKkESQzZ1k7fAwQUS6hlxH69CPZCnKRIpXJJzhivzSL1bXCvP3iFKiukf+aU\n"
+  "/VICbCGzsRybUd8LXswvMgBLOXDvVA9o5as/mJYt5xp3PYoJpqYjAgMBAAE=\n"
+  "-----END RSA PUBLIC KEY-----\n"
+  "enc-key-certification\n"
+  "-----BEGIN CROSSCERT-----\n"
+  "LDG4m5ZavOWEz33O/WdHZjpwuSGU1KhLkwEjn7NaVuEABjzOgDdqi0ur5ZVaxYKD\n"
+  "pb9530o9Q7a2iIl/tFB23WqIH5YzGHKcucP0nI+FY0vQn/suzliG502OpNIoxjL1\n"
+  "qKsy1jV5kyErngOH8ickDhfc/zu8mjYtZ9cDalpke2ljEftgDBmyQHa0muRSE9jN\n"
+  "IYdqK9bel7AKqqa7Lo8iRRqGuFQw\n"
+  "-----END CROSSCERT-----\n"
+  "introduction-point AQIUMDI5OUYyNjhGQ0E5RDU1Q0QxNTc=\n"
+  "auth-key\n"
+  "-----BEGIN ED25519 CERT-----\n"
+  "AQkABjzOAQQp1dtz8e413kPf8hBda2pR2xIjD/edQ8ECKUrfMFfgAQAgBAAw/xxm\n"
+  "UFoQ+PRtWKCpXcMOpUE1dzhFcReiDPCyNf8PegxmrHz6zSgWsMXcq8bnG9R33f2L\n"
+  "e5FoCcM5oYEx8NjlEcPm2qQhlWMZgt5fQ12Av+Zn8xRfevO7QKHK0WEvkQk=\n"
+  "-----END ED25519 CERT-----\n"
+  "enc-key legacy\n"
+  "-----BEGIN RSA PUBLIC KEY-----\n"
+  "MIGJAoGBAL1wKFCVk1xGbr8CynJvV2X1pYLbhZgb4zgEZyeh1fdsYCCsNyHAJcWt\n"
+  "3/L9nmzQu0MRzAWlo0KpM5/75ZgVrtnl33axuzdCOWCA+ZMGJrv8TsXbb80s2TAx\n"
+  "4CQn0QsdDKM72B7eqQrmGVThhXw2jEKCNeRIK2qce3uqNZKV+oDRAgMBAAE=\n"
+  "-----END RSA PUBLIC KEY-----\n"
+  "enc-key-certification\n"
+  "-----BEGIN CROSSCERT-----\n"
+  "LDG4m5ZavOWEz33O/WdHZjpwuSGU1KhLkwEjn7NaVuEABjzOgDe+yTchYSbqbKDJ\n"
+  "4YopEpwAC38vhdU/HD0dYGhtYcinQ/0kZNWz7hC+oaHCV/CHts9l17dWiQtpB6Tn\n"
+  "keU/ourC8nDITyJ9K4Ia2pfNaMx9OKiMxe4ViVIhh5eOeMdLAt05QgUBWwYPcm9X\n"
+  "20UWFX+LDgZMOM8xO6by5OVddykZ\n"
+  "-----END CROSSCERT-----";
+
+static void
+test_decode_multiple_intro_points(void *arg)
+{
+  int ret;
+  hs_descriptor_t *desc = NULL;
+
+  (void) arg;
+
+  {
+    /* Build a descriptor with no intro points. */
+    desc = helper_build_hs_desc(1);
+    tt_assert(desc);
+  }
+
+  ret = decode_intro_points(desc, &desc->encrypted_data,
+                            encrypted_desc_portion);
+  tt_int_op(ret, ==, 0);
+
+  tt_int_op(smartlist_len(desc->encrypted_data.intro_points), ==, 4);
+
+ done:
+  ;
+}
+
 static void
 test_free_objects(void *arg)
 {
@@ -1015,6 +1111,8 @@ struct testcase_t hs_descriptor[] = {
   { "encrypted_data_len", test_encrypted_data_len, TT_FORK,
     NULL, NULL },
   { "decode_intro_point", test_decode_intro_point, TT_FORK,
+    NULL, NULL },
+  { "decode_multiple_intro_points", test_decode_multiple_intro_points, TT_FORK,
     NULL, NULL },
   { "decode_plaintext", test_decode_plaintext, TT_FORK,
     NULL, NULL },
