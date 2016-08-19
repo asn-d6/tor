@@ -3,7 +3,7 @@
 
 /**
  * \file hs_cache.c
- * \brief Handle hidden service caches.
+ * \brief Handle hidden service descriptor caches.
  **/
 
 /* For unit tests.*/
@@ -81,8 +81,8 @@ cache_dir_desc_free(hs_cache_dir_descriptor_t *desc)
 }
 
 /* Create a new directory cache descriptor object from a encoded descriptor.
- * Return NULL on error that is if we can't decode the descriptor else an
- * allocated cache object. */
+ * On success, return the heap-allocated cache object, otherwise return NULL if
+ * we can't decode the descriptor. */
 static hs_cache_dir_descriptor_t *
 cache_dir_desc_new(const char *desc)
 {
@@ -99,9 +99,7 @@ cache_dir_desc_new(const char *desc)
     log_debug(LD_DIR, "Unable to decode descriptor. Rejecting.");
     goto err;
   }
-  /* Compute our cache key from the blinded key in the descriptor just
-   * extracted in the decoding phase. We need this key to do all sorts of
-   * operation to our cache so compute it only once. */
+  /* Compute our cache key from the blinded key in the descriptor */
   build_v3_desc_key_as_dir(&dir_desc->plaintext_data->blinded_kp.pubkey,
                            dir_desc->key, sizeof(dir_desc->key));
 
@@ -206,9 +204,10 @@ err:
   return -1;
 }
 
-/* Clean the v3 cache that is remove any entry that have expired using the
- * cutoff value. If cutoff is 0, the cleaning process will use the lifetime
- * found in the plaintext data section. Return the number of bytes removed. */
+/* Clean the v3 cache by removing any entry that has expired using the
+ * <b>global_cutoff</b> value. If <b>global_cutoff</b> is 0, the cleaning
+ * process will use the lifetime found in the plaintext data section. Return
+ * the number of bytes cleaned. */
 STATIC size_t
 cache_clean_v3_as_dir(time_t global_cutoff)
 {

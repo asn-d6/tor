@@ -3448,9 +3448,9 @@ handle_get_robots(dir_connection_t *conn, const get_handler_args_t *args)
   return 0;
 }
 
-/* Using an url from a POST request, try to extract the version number using
- * the given prefix that is the version should be after the prefix and ending
- * with the seperator "/". For instance:
+/* Given the <b>url</b> from a POST request, try to extract the version number
+ * using the provided <b>prefix</b>. The version should be after the prefix and
+ * ending with the seperator "/". For instance:
  *      /tor/hs/3/publish
  *
  * Return version on success else negative value. */
@@ -3490,9 +3490,9 @@ parse_version_from_post(const char *url, const char *prefix)
   return -1;
 }
 
-/* Handle the POST request for an hidden service descripror. The request is in
- * url, the body of the request is in body. Return 200 on success else 400
- * indicating a bad request. */
+/* Handle the POST request for a hidden service descripror. The request is in
+ * <b>url</b>, the body of the request is in <b>body</b>. Return 200 on success
+ * else return 400 indicating a bad request. */
 static int
 handle_post_hs_descriptor(const char *url, const char *body)
 {

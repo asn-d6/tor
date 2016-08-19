@@ -94,8 +94,7 @@ desc_intro_point_free(hs_desc_intro_point_t *ip)
   tor_free(ip);
 }
 
-/* Free the content of the plaintext section of a descriptor. The descriptor
- * pointer desc is zeroed once this returns. */
+/* Free the content of the plaintext section of a descriptor. */
 static void
 desc_plaintext_data_free_contents(hs_desc_plaintext_data_t *desc)
 {
@@ -111,8 +110,7 @@ desc_plaintext_data_free_contents(hs_desc_plaintext_data_t *desc)
   memwipe(desc, 0, sizeof(*desc));
 }
 
-/* Free the content of the encrypted section of a descriptor. The descriptor
- * pointer desc is zeroed once this returns. */
+/* Free the content of the encrypted section of a descriptor. */
 static void
 desc_encrypted_data_free_contents(hs_desc_encrypted_data_t *desc)
 {
@@ -134,8 +132,8 @@ desc_encrypted_data_free_contents(hs_desc_encrypted_data_t *desc)
 
 /* === ENCODING === */
 
-/* Encode an ed25519 certificate type and put the newly allocated string in
- * cert_str_out. Return 0 on success else a negative value. */
+/* Encode the ed25519 certificate <b>cert</b> and put the newly allocated
+ * string in <b>cert_str_out</b>. Return 0 on success else a negative value. */
 STATIC int
 encode_cert(const tor_cert_t *cert, char **cert_str_out)
 {
@@ -152,7 +150,6 @@ encode_cert(const tor_cert_t *cert, char **cert_str_out)
   ed_cert_b64 = tor_malloc_zero(ed_cert_b64_len);
 
   /* Base64 encode the encoded certificate. */
-
   if (base64_encode(ed_cert_b64, ed_cert_b64_len,
                     (const char *) cert->encoded, cert->encoded_len,
                     BASE64_ENCODE_MULTILINE) < 0) {
@@ -174,7 +171,7 @@ err:
   return ret;
 }
 
-/* Encode the given link specifier object into a newly allocated string.
+/* Encode the given link specifier objects into a newly allocated string.
  * This can't fail so caller can always assume a valid string being
  * returned. */
 STATIC char *
@@ -407,6 +404,7 @@ build_secret_input(const hs_descriptor_t *desc, uint8_t *dst, size_t dstlen)
   tor_assert(desc);
   tor_assert(dst);
 
+  /* XXX use the destination length as the memcpy length */
   /* Copy blinded public key. */
   memcpy(dst, desc->plaintext_data.blinded_kp.pubkey.pubkey,
          sizeof(desc->plaintext_data.blinded_kp.pubkey.pubkey));
@@ -727,9 +725,9 @@ encode_encrypted_data(const hs_descriptor_t *desc,
   return ret;
 }
 
-/* Encode a descriptor version 3. Return 0 on success and encoded_out points
- * to the newly allocated string of the encoded descriptor. On error, -1 is
- * returned and encoded_out is untouched. */
+/* Encode a v3 HS descriptor. Return 0 on success and set encoded_out to the
+ * newly allocated string of the encoded descriptor. On error, -1 is returned
+ * and encoded_out is untouched. */
 static int
 desc_encode_v3(const hs_descriptor_t *desc, char **encoded_out)
 {
@@ -1900,7 +1898,8 @@ hs_descriptor_free(hs_descriptor_t *desc)
   }
 
   desc_plaintext_data_free_contents(&desc->plaintext_data);
-  desc_encrypted_data_free_contents(&desc->encrypted_data); tor_free(desc);
+  desc_encrypted_data_free_contents(&desc->encrypted_data);
+  tor_free(desc);
 }
 
 /* Return the size in bytes of the given plaintext data object. A sizeof() is

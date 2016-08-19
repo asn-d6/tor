@@ -4,7 +4,7 @@
 /**
  * \file hs_common.c
  * \brief Contains shared code of the HS subsystem as well as useful data
- *        structure and accessors used by other subsytems.
+ *        structures and accessors used by other subsystems.
  **/
 
 #include "or.h"
@@ -12,8 +12,8 @@
 #include "hs_common.h"
 #include "rendcommon.h"
 
-/* Create a new <b>rend_data_t</b> for a specific given <b>version</b>.
- * Return a pointer to a newly allocated data structure. */
+/* Create a new rend_data_t for a specific given <b>version</b>.
+ * Return a pointer to the newly allocated data structure. */
 static rend_data_t *
 rend_data_alloc(uint32_t version)
 {
@@ -61,16 +61,18 @@ rend_data_free(rend_data_t *data)
   }
 }
 
-/* Allocate and return a new rend_data_t with the same contents as
- * <b>data</b>. */
+/* Allocate and return a deep copy of <b>data</b>. */
 rend_data_t *
 rend_data_dup(const rend_data_t *data)
 {
-  tor_assert(data);
   rend_data_t *data_dup = NULL;
   smartlist_t *hsdirs_fp = smartlist_new();
+
+  tor_assert(data);
+
   SMARTLIST_FOREACH(data->hsdirs_fp, char *, fp,
                     smartlist_add(hsdirs_fp, tor_memdup(fp, DIGEST_LEN)));
+
   switch (data->version) {
   case HS_VERSION_TWO:
   {
@@ -88,8 +90,8 @@ rend_data_dup(const rend_data_t *data)
   return data_dup;
 }
 
-/* Compute descriptor ID for each replicas and save them. A valid onion
- * address must be present in the <b>rend_data</b>.
+/* Compute the descriptor ID for each HS descriptor replica and save them. A
+ * valid onion address must be present in the <b>rend_data</b>.
  *
  * Return 0 on success else -1. */
 static int
@@ -126,8 +128,9 @@ end:
   return ret;
 }
 
-/* Allocate and initialize a rend_data_t object for a service using the given
- * arguments. Only the <b>onion_address</b> is not optional.
+/* Allocate and initialize a rend_data_t object for a service using the
+ * provided arguments. All arguments are optional (can be NULL), except from
+ * <b>onion_address</b> which MUST be set.
  *
  * Return a valid rend_data_t pointer. This only returns a version 2 object of
  * rend_data_t. */
@@ -190,7 +193,7 @@ rend_data_client_create(const char *onion_address, const char *desc_id,
 
   return rend_data;
 
-error:
+ error:
   rend_data_free(rend_data);
   return NULL;
 }
@@ -212,8 +215,8 @@ rend_data_get_address(const rend_data_t *rend_data)
 }
 
 /* Return the descriptor ID for a specific replica number from the rend
- * data. Depending on the version, the size can vary. The returned string is
- * not a NUL terminated string. */
+ * data. The returned data is a binary digest and depending on the version its
+ * size can vary.  */
 const char *
 rend_data_get_desc_id(const rend_data_t *rend_data, uint8_t replica)
 {
@@ -230,8 +233,8 @@ rend_data_get_desc_id(const rend_data_t *rend_data, uint8_t replica)
 }
 
 /* Return the public key digest using the given <b>rend_data</b>. The size of
- * the digest is put in <b>len_out</b> which can differ depending on the
- * version. */
+ * the digest is put in <b>len_out</b> (if set) which can differ depending on
+ * the version. */
 const uint8_t *
 rend_data_get_pk_digest(const rend_data_t *rend_data, size_t *len_out)
 {
