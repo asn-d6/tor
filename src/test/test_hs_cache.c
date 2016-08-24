@@ -11,6 +11,7 @@
 #include "ed25519_cert.h"
 #include "hs_cache.h"
 #include "rendcache.h"
+#include "directory.h"
 #include "test.h"
 
 /* Build an intro point using a blinded key and an address. */
@@ -282,11 +283,27 @@ test_clean_as_dir(void *arg)
   tor_free(desc1_str);
 }
 
+static void
+test_upload_and_download_hs_desc(void *arg)
+{
+  int retval;
+
+  (void) arg;
+
+  retval = handle_post_hs_descriptor("/tor/broken/", "hihi");
+  tt_int_op(retval, ==, 400);
+
+ done:
+  ;
+}
+
 struct testcase_t hs_cache[] = {
   /* Encoding tests. */
   { "directory", test_directory, TT_FORK,
     NULL, NULL },
   { "clean_as_dir", test_clean_as_dir, TT_FORK,
+    NULL, NULL },
+  { "upload_and_download_hs_desc", test_upload_and_download_hs_desc, TT_FORK,
     NULL, NULL },
 
   END_OF_TESTCASES
