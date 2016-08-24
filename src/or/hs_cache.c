@@ -217,6 +217,10 @@ cache_clean_v3_as_dir(time_t global_cutoff)
   /* Code flow error if this ever happens. */
   tor_assert(global_cutoff >= 0);
 
+  if (!hs_cache_v3_dir) { /* No cache to clean. Just return. */
+    return 0;
+  }
+
   DIGEST256MAP_FOREACH_MODIFY(hs_cache_v3_dir, key,
                               hs_cache_dir_descriptor_t *, entry) {
     size_t entry_size;
