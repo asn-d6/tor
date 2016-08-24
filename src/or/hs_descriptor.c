@@ -166,7 +166,7 @@ encode_cert(const tor_cert_t *cert, char **cert_str_out)
   /* Success! */
   ret = 0;
 
-err:
+ err:
   tor_free(ed_cert_b64);
   return ret;
 }
@@ -817,7 +817,7 @@ desc_encode_v3(const hs_descriptor_t *desc, char **encoded_out)
   /* Success! */
   ret = 0;
 
-err:
+ err:
   SMARTLIST_FOREACH(lines, char *, l, tor_free(l));
   smartlist_free(lines);
   return ret;
@@ -1171,14 +1171,14 @@ desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
   *decrypted_out = (char *) decrypted;
   goto done;
 
-err:
+ err:
   if (decrypted) {
     tor_free(decrypted);
   }
   *decrypted_out = NULL;
   result_len = 0;
 
-done:
+ done:
   memwipe(secret_key, 0, sizeof(secret_key));
   memwipe(secret_iv, 0, sizeof(secret_iv));
   return result_len;
@@ -1327,9 +1327,9 @@ decode_introduction_point(const hs_descriptor_t *desc, const char *start)
   return ip;
 }
 
-/* Given a descriptor string at <b>data</b>, decode all possible introduction points
- * that we can find. Add the introduction point object to desc_enc as we find
- * them. Return 0 on success.
+/* Given a descriptor string at <b>data</b>, decode all possible introduction
+ * points that we can find. Add the introduction point object to desc_enc as we
+ * find them. Return 0 on success.
  *
  * On error, a negative value is returned. It is possible that some intro
  * point object have been added to the desc_enc, they should be considered
@@ -1451,7 +1451,7 @@ desc_sig_is_valid(const char *b64_sig, const ed25519_keypair_t *signing_kp,
   /* Valid signature! All is good. */
   ret = 1;
 
-err:
+ err:
   return ret;
 }
 
@@ -1553,7 +1553,8 @@ desc_decode_plaintext_v3(smartlist_t *tokens,
   }
 
   return 0;
-err:
+
+ err:
   return -1;
 }
 
@@ -1764,7 +1765,7 @@ hs_desc_decode_plaintext(const char *encoded,
   /* Success. Descriptor has been populated with the data. */
   ret = 0;
 
-err:
+ err:
   if (tokens) {
     SMARTLIST_FOREACH(tokens, directory_token_t *, t, token_clear(t));
     smartlist_free(tokens);
@@ -1868,7 +1869,7 @@ hs_desc_encode_descriptor(const hs_descriptor_t *desc, char **encoded_out)
 
   return 0;
 
-err:
+ err:
   *encoded_out = NULL;
   return ret;
 }
@@ -1913,3 +1914,4 @@ hs_desc_plaintext_obj_size(const hs_desc_plaintext_data_t *data)
   return (sizeof(*data) + sizeof(*data->signing_key_cert) +
           data->encrypted_blob_size);
 }
+

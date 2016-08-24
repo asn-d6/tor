@@ -977,3 +977,4 @@ rend_circuit_matches_digest(const origin_circuit_t *ocirc,
  match:
   return 1;
 }
+

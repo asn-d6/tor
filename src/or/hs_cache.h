@@ -55,3 +55,4 @@ STATIC size_t cache_clean_v3_as_dir(time_t global_cutoff);
 #endif /* HS_CACHE_PRIVATE */
 
 #endif /* TOR_HS_CACHE_H */
+
