@@ -1898,7 +1898,8 @@ hs_descriptor_free(hs_descriptor_t *desc)
   }
 
   desc_plaintext_data_free_contents(&desc->plaintext_data);
-  desc_encrypted_data_free_contents(&desc->encrypted_data); tor_free(desc);
+  desc_encrypted_data_free_contents(&desc->encrypted_data);
+  tor_free(desc);
 }
 
 /* Return the size in bytes of the given plaintext data object. A sizeof() is
