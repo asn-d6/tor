@@ -283,15 +283,56 @@ test_clean_as_dir(void *arg)
   tor_free(desc1_str);
 }
 
+/* DOCDOCDOC */
 static void
 test_upload_and_download_hs_desc(void *arg)
 {
   int retval;
+  hs_descriptor_t *desc_publish;
+  char *desc_publish_str = NULL;
 
   (void) arg;
 
-  retval = handle_post_hs_descriptor("/tor/broken/", "hihi");
-  tt_int_op(retval, ==, 400);
+  /* Initialize HSDir cache subsystem */
+  init_test();
+
+  /* Generate a valid descriptor with normal values. */
+  {
+    desc_publish = helper_build_hs_desc(42, 3 * 60 * 60, NULL);
+    tt_assert(desc_publish);
+    retval = hs_desc_encode_descriptor(desc_publish, &desc_publish_str);
+    tt_int_op(retval, OP_EQ, 0);
+  }
+
+  /* Publish descriptor to the HSDir */
+  {
+    retval = handle_post_hs_descriptor("/tor/hs/3/publish", desc_publish_str);
+    tt_int_op(retval, ==, 200);
+  }
+
+  /* Try publishing again: Should fail because of same revision counter */
+  {
+    retval = handle_post_hs_descriptor("/tor/hs/3/publish", desc_publish_str);
+    tt_int_op(retval, ==, 400);
+  }
+
+
+  /* Pump up the revision counter, and try again. Should work. */
+  {
+    desc_publish->plaintext_data.revision_counter = 43;
+    tor_free(desc_publish_str);
+    retval = hs_desc_encode_descriptor(desc_publish, &desc_publish_str);
+    tt_int_op(retval, OP_EQ, 0);
+
+    retval = handle_post_hs_descriptor("/tor/hs/3/publish", desc_publish_str);
+    tt_int_op(retval, ==, 200);
+  }
+
+  { /* Fetch descriptor */
+    
+  }
+
+
 
  done:
   ;
