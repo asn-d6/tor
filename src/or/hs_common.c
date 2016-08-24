@@ -69,6 +69,7 @@ rend_data_dup(const rend_data_t *data)
   smartlist_t *hsdirs_fp = smartlist_new();
 
   tor_assert(data);
+  tor_assert(data->hsdirs_fp);
 
   SMARTLIST_FOREACH(data->hsdirs_fp, char *, fp,
                     smartlist_add(hsdirs_fp, tor_memdup(fp, DIGEST_LEN)));
