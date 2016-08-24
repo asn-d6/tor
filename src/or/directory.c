@@ -3362,7 +3362,7 @@ handle_get_hs_descriptor_v2(dir_connection_t *conn, const get_handler_args_t *ar
     /* Handle v2 rendezvous descriptor fetch request. */
     const char *descp;
     const char *query = url + strlen("/tor/rendezvous2/");
-    if (rend_valid_descriptor_id(query)) {
+    if (rend_valid_hs_descriptor_id_v2(query)) {
       log_info(LD_REND, "Got a v2 rendezvous descriptor request for ID '%s'",
                safe_str(escaped(query)));
       switch (rend_cache_lookup_v2_desc_as_dir(query, &descp)) {
