@@ -726,7 +726,7 @@ rend_valid_hs_descriptor_id_v2(const char *query)
 int
 rend_valid_hs_descriptor_id_v3(const char *query)
 {
-  if (strlen(query) != 666) {
+  if (strlen(query) != ED25519_BASE64_LEN) {
     goto invalid;
   }
 

@@ -3,6 +3,8 @@
  * Copyright (c) 2007-2016, The Tor Project, Inc. */
 /* See LICENSE for licensing information */
 
+#define DIRECTORY_PRIVATE
+
 #include "or.h"
 #include "backtrace.h"
 #include "buffers.h"
@@ -2772,8 +2774,6 @@ static int handle_get_keys(dir_connection_t *conn,
                                 const get_handler_args_t *args);
 static int handle_get_hs_descriptor_v2(dir_connection_t *conn,
                                        const get_handler_args_t *args);
-static int handle_get_hs_descriptor_v3(dir_connection_t *conn,
-                                       const get_handler_args_t *args);
 static int handle_get_robots(dir_connection_t *conn,
                                 const get_handler_args_t *args);
 static int handle_get_networkstatus_bridges(dir_connection_t *conn,
@@ -3394,10 +3394,14 @@ handle_get_hs_descriptor_v2(dir_connection_t *conn, const get_handler_args_t *ar
 
 /** Helper function for GET /tor/rendezvous2/
  */
-static int
-handle_get_hs_descriptor_v3(dir_connection_t *conn, const get_handler_args_t *args)
+STATIC int
+handle_get_hs_descriptor_v3(dir_connection_t *conn,
+                            const get_handler_args_t *args)
 {
+  const char *pubkey;
+  char *desc_str = NULL;
   const char *url = args->url;
+  int retval;
 
   /* Reject not encrypted dir connections */
   if (!connection_dir_is_encrypted(conn)) {
@@ -3405,15 +3409,23 @@ handle_get_hs_descriptor_v3(dir_connection_t *conn, const get_handler_args_t *ar
     goto done;
   }
 
-  const char *query = url + strlen("/tor/hs/3/");
-  if (!rend_valid_hs_descriptor_id_v3(query)) {
-    write_http_status_line(conn, 400, "Bad request");
+  /* After the prefix follows the blinded pubkey which we use to get the
+     descriptor from the cache */
+  pubkey = url + strlen("/tor/hs/3/");
+  retval = hs_cache_lookup_as_dir(HS_VERSION_THREE,
+                                  pubkey, &desc_str);
+  if (retval < 0) {
+    write_http_status_line(conn, 404, "Not found");
     goto done;
   }
 
-  log_warn(LD_REND, "Received valid %s query for HS desc.", query);
+  /* Found requested descriptor! Pass it to this nice client. */
+  write_http_response_header(conn, strlen(desc_str), 0, 0);
+  connection_write_to_buf(desc_str, strlen(desc_str), TO_CONN(conn));
 
  done:
+  tor_free(desc_str);
+
   return 0;
 }
 
