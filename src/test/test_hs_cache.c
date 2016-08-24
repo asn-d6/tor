@@ -12,6 +12,9 @@
 #include "hs_cache.h"
 #include "rendcache.h"
 #include "directory.h"
+#include "connection.h"
+
+#include "test_helpers.h"
 #include "test.h"
 
 /* Build an intro point using a blinded key and an address. */
@@ -328,8 +331,37 @@ test_upload_and_download_hs_desc(void *arg)
     tt_int_op(retval, ==, 200);
   }
 
-  { /* Fetch descriptor */
-    
+  { /* Fetch published descriptor */
+    tor_addr_t mock_tor_addr;
+    char *header = NULL;
+    char *body = NULL;
+    size_t body_used = 0, body_len = 0;
+    dir_connection_t *conn = NULL;
+    char hsdir_cache_key[ED25519_BASE64_LEN+1];
+    char *hsdir_query_str = NULL;
+    const ed25519_public_key_t *blinded_key;
+
+    /* First extract the blinded public key that we are going to use in our
+       query, and then build the actual query string. */
+    blinded_key = &desc_publish->plaintext_data.blinded_kp.pubkey;
+    retval = ed25519_public_to_base64(hsdir_cache_key,
+                                      blinded_key);
+    tt_int_op(retval, ==, 0);
+    tor_asprintf(&hsdir_query_str, "/tor/hs/3/%s", hsdir_cache_key);
+
+    /* Simulate a GET command to the HSDir */
+    conn = dir_connection_new(tor_addr_family(&mock_tor_addr));
+    retval = directory_handle_command_get(conn, "", hsdir_query_str, 0);
+    tt_int_op(retval, OP_EQ, 0);
+
+    tor_free(hsdir_query_str);
+
+    /* Get the returned string */
+    fetch_from_buf_http(TO_CONN(conn)->outbuf, &header, MAX_HEADERS_SIZE,
+                        &body, &body_used, body_len+1, 0);
+
+    printf("headers: %s\n", header);
+    printf("body: %s\n", body);
   }
 
 

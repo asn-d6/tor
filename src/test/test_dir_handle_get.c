@@ -50,7 +50,6 @@ ENABLE_GCC_WARNING(overlength-strings)
 
 #define NS_MODULE dir_handle_get
 
-#define GET(path) "GET " path " HTTP/1.0\r\n\r\n"
 #define NOT_FOUND "HTTP/1.0 404 Not found\r\n\r\n"
 #define BAD_REQUEST "HTTP/1.0 400 Bad request\r\n\r\n"
 #define SERVER_BUSY "HTTP/1.0 503 Directory busy, try again later\r\n\r\n"
