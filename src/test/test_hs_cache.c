@@ -291,8 +291,8 @@ static void
 test_upload_and_download_hs_desc(void *arg)
 {
   int retval;
-  hs_descriptor_t *desc_publish;
-  char *desc_publish_str = NULL;
+  hs_descriptor_t *published_desc;
+  char *published_desc_str = NULL;
 
   (void) arg;
 
@@ -301,70 +301,80 @@ test_upload_and_download_hs_desc(void *arg)
 
   /* Generate a valid descriptor with normal values. */
   {
-    desc_publish = helper_build_hs_desc(42, 3 * 60 * 60, NULL);
-    tt_assert(desc_publish);
-    retval = hs_desc_encode_descriptor(desc_publish, &desc_publish_str);
+    published_desc = helper_build_hs_desc(42, 3 * 60 * 60, NULL);
+    tt_assert(published_desc);
+    retval = hs_desc_encode_descriptor(published_desc, &published_desc_str);
     tt_int_op(retval, OP_EQ, 0);
   }
 
   /* Publish descriptor to the HSDir */
   {
-    retval = handle_post_hs_descriptor("/tor/hs/3/publish", desc_publish_str);
+    retval = handle_post_hs_descriptor("/tor/hs/3/publish", published_desc_str);
     tt_int_op(retval, ==, 200);
   }
 
   /* Try publishing again: Should fail because of same revision counter */
   {
-    retval = handle_post_hs_descriptor("/tor/hs/3/publish", desc_publish_str);
+    retval = handle_post_hs_descriptor("/tor/hs/3/publish", published_desc_str);
     tt_int_op(retval, ==, 400);
   }
 
 
   /* Pump up the revision counter, and try again. Should work. */
   {
-    desc_publish->plaintext_data.revision_counter = 43;
-    tor_free(desc_publish_str);
-    retval = hs_desc_encode_descriptor(desc_publish, &desc_publish_str);
+    published_desc->plaintext_data.revision_counter = 43;
+    tor_free(published_desc_str);
+    retval = hs_desc_encode_descriptor(published_desc, &published_desc_str);
     tt_int_op(retval, OP_EQ, 0);
 
-    retval = handle_post_hs_descriptor("/tor/hs/3/publish", desc_publish_str);
+    retval = handle_post_hs_descriptor("/tor/hs/3/publish", published_desc_str);
     tt_int_op(retval, ==, 200);
   }
 
-  { /* Fetch published descriptor */
-    tor_addr_t mock_tor_addr;
-    char *header = NULL;
-    char *body = NULL;
-    size_t body_used = 0, body_len = 0;
-    dir_connection_t *conn = NULL;
-    char hsdir_cache_key[ED25519_BASE64_LEN+1];
+  /* Simulate a fetch of the previously published descriptor */
+  {
+    char *received_desc = NULL;
     char *hsdir_query_str = NULL;
-    const ed25519_public_key_t *blinded_key;
+
+    /* The dir conn we are going to simulate */
+    dir_connection_t *conn = NULL;
+    tor_addr_t mock_tor_addr;
 
     /* First extract the blinded public key that we are going to use in our
        query, and then build the actual query string. */
-    blinded_key = &desc_publish->plaintext_data.blinded_kp.pubkey;
-    retval = ed25519_public_to_base64(hsdir_cache_key,
-                                      blinded_key);
-    tt_int_op(retval, ==, 0);
-    tor_asprintf(&hsdir_query_str, "/tor/hs/3/%s", hsdir_cache_key);
+    {
+      char hsdir_cache_key[ED25519_BASE64_LEN+1];
+      const ed25519_public_key_t *blinded_key;
 
-    /* Simulate a GET command to the HSDir */
+      blinded_key = &published_desc->plaintext_data.blinded_kp.pubkey;
+      retval = ed25519_public_to_base64(hsdir_cache_key,
+                                        blinded_key);
+      tt_int_op(retval, ==, 0);
+      tor_asprintf(&hsdir_query_str, GET("/tor/hs/3/%s"), hsdir_cache_key);
+    }
+
+    /* Simulate an HTTP GET request to the HSDir */
     conn = dir_connection_new(tor_addr_family(&mock_tor_addr));
-    retval = directory_handle_command_get(conn, "", hsdir_query_str, 0);
+    TO_CONN(conn)->linked = 1;/* Pretend the conn is encrypted :) */
+    retval = directory_handle_command_get(conn, hsdir_query_str,
+                                          NULL, 0);
     tt_int_op(retval, OP_EQ, 0);
 
     tor_free(hsdir_query_str);
 
-    /* Get the returned string */
-    fetch_from_buf_http(TO_CONN(conn)->outbuf, &header, MAX_HEADERS_SIZE,
-                        &body, &body_used, body_len+1, 0);
+    /* Get the descriptor that the HSDir just sent us */
+    {
+      char *headers = NULL;
+      size_t body_used = 0, body_len = 0;
 
-    printf("headers: %s\n", header);
-    printf("body: %s\n", body);
+      body_len = strlen(published_desc_str)+1;
+      fetch_from_buf_http(TO_CONN(conn)->outbuf, &headers, MAX_HEADERS_SIZE,
+                          &received_desc, &body_used, body_len, 0);
+    }
+
+    /* Verify we just received the exact same descriptor we published earlier */
+    tt_str_op(received_desc, OP_EQ, published_desc_str);
   }
-
-
 
  done:
   ;

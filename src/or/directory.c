@@ -3399,6 +3399,7 @@ handle_get_hs_descriptor_v3(dir_connection_t *conn,
                             const get_handler_args_t *args)
 {
   const char *pubkey;
+
   char *desc_str = NULL;
   const char *url = args->url;
   int retval;
