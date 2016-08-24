@@ -2770,8 +2770,8 @@ static int handle_get_descriptor(dir_connection_t *conn,
                                 const get_handler_args_t *args);
 static int handle_get_keys(dir_connection_t *conn,
                                 const get_handler_args_t *args);
-static int handle_get_rendezvous2(dir_connection_t *conn,
-                                const get_handler_args_t *args);
+static int handle_get_hs_descriptor_v2(dir_connection_t *conn,
+                                       const get_handler_args_t *args);
 static int handle_get_robots(dir_connection_t *conn,
                                 const get_handler_args_t *args);
 static int handle_get_networkstatus_bridges(dir_connection_t *conn,
@@ -2787,7 +2787,7 @@ static const url_table_ent_t url_table[] = {
   { "/tor/server/", 1, handle_get_descriptor },
   { "/tor/extra/", 1, handle_get_descriptor },
   { "/tor/keys/", 1, handle_get_keys },
-  { "/tor/rendezvous2/", 1, handle_get_rendezvous2 },
+  { "/tor/rendezvous2/", 1, handle_get_hs_descriptor_v2 },
   { "/tor/robots.txt", 0, handle_get_robots },
   { "/tor/networkstatus-bridges", 0, handle_get_networkstatus_bridges },
   { NULL, 0, NULL },
@@ -3355,7 +3355,7 @@ handle_get_keys(dir_connection_t *conn, const get_handler_args_t *args)
 /** Helper function for GET /tor/rendezvous2/
  */
 static int
-handle_get_rendezvous2(dir_connection_t *conn, const get_handler_args_t *args)
+handle_get_hs_descriptor_v2(dir_connection_t *conn, const get_handler_args_t *args)
 {
   const char *url = args->url;
   if (connection_dir_is_encrypted(conn)) {
