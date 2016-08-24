@@ -176,7 +176,7 @@ cache_lookup_v3_as_dir(const char *query, char **desc_out)
   int found = 0;
   uint8_t key[DIGEST256_LEN];
   ed25519_public_key_t blinded_key;
-  hs_cache_dir_descriptor_t *entry;
+  const hs_cache_dir_descriptor_t *entry;
 
   tor_assert(query);
 
@@ -194,7 +194,7 @@ cache_lookup_v3_as_dir(const char *query, char **desc_out)
   if (entry != NULL) {
     found = 1;
     if (desc_out) {
-      *desc_out = strdup(entry->encoded_desc);
+      *desc_out = tor_strdup(entry->encoded_desc);
     }
   }
 
@@ -216,6 +216,10 @@ cache_clean_v3_as_dir(time_t global_cutoff)
 
   /* Code flow error if this ever happens. */
   tor_assert(global_cutoff >= 0);
+
+  if (!hs_cache_v3_dir) { /* No cache to clean. Just return. */
+    return 0;
+  }
 
   DIGEST256MAP_FOREACH_MODIFY(hs_cache_v3_dir, key,
                               hs_cache_dir_descriptor_t *, entry) {
