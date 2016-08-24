@@ -2772,6 +2772,8 @@ static int handle_get_keys(dir_connection_t *conn,
                                 const get_handler_args_t *args);
 static int handle_get_hs_descriptor_v2(dir_connection_t *conn,
                                        const get_handler_args_t *args);
+static int handle_get_hs_descriptor_v3(dir_connection_t *conn,
+                                       const get_handler_args_t *args);
 static int handle_get_robots(dir_connection_t *conn,
                                 const get_handler_args_t *args);
 static int handle_get_networkstatus_bridges(dir_connection_t *conn,
@@ -2788,6 +2790,7 @@ static const url_table_ent_t url_table[] = {
   { "/tor/extra/", 1, handle_get_descriptor },
   { "/tor/keys/", 1, handle_get_keys },
   { "/tor/rendezvous2/", 1, handle_get_hs_descriptor_v2 },
+  { "/tor/hs/3/", 1, handle_get_hs_descriptor_v3 },
   { "/tor/robots.txt", 0, handle_get_robots },
   { "/tor/networkstatus-bridges", 0, handle_get_networkstatus_bridges },
   { NULL, 0, NULL },
@@ -3389,6 +3392,31 @@ handle_get_hs_descriptor_v2(dir_connection_t *conn, const get_handler_args_t *ar
   return 0;
 }
 
+/** Helper function for GET /tor/rendezvous2/
+ */
+static int
+handle_get_hs_descriptor_v3(dir_connection_t *conn, const get_handler_args_t *args)
+{
+  const char *url = args->url;
+
+  /* Reject not encrypted dir connections */
+  if (!connection_dir_is_encrypted(conn)) {
+    write_http_status_line(conn, 404, "Not found");
+    goto done;
+  }
+
+  const char *query = url + strlen("/tor/hs/3/");
+  if (!rend_valid_hs_descriptor_id_v3(query)) {
+    write_http_status_line(conn, 400, "Bad request");
+    goto done;
+  }
+
+  log_warn(LD_REND, "Received valid %s query for HS desc.", query);
+
+ done:
+  return 0;
+}
+
 /** Helper function for GET /tor/networkstatus-bridges
  */
 static int
@@ -3489,7 +3517,7 @@ parse_version_from_post(const char *url, const char *prefix)
 /* Handle the POST request for a hidden service descripror. The request is in
  * <b>url</b>, the body of the request is in <b>body</b>. Return 200 on success
  * else return 400 indicating a bad request. */
-static int
+STATIC int
 handle_post_hs_descriptor(const char *url, const char *body)
 {
   int version;
