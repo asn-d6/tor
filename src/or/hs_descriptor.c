@@ -790,11 +790,12 @@ desc_encode_v3(const hs_descriptor_t *desc, char **encoded_out)
 
   /* Sign all fields of the descriptor with our short term signing key. */
   {
-    /* XXX: Add signature prefix. */
     ed25519_signature_t sig;
     char ed_sig_b64[ED25519_SIG_BASE64_LEN + 1];
-    if (ed25519_sign(&sig, (const uint8_t *) encoded_str, encoded_len,
-                     &desc->plaintext_data.signing_kp) < 0) {
+    if (ed25519_sign_prefixed(&sig,
+                              (const uint8_t *) encoded_str, encoded_len,
+                              hs_desc_signature_prefix,
+                              &desc->plaintext_data.signing_kp) < 0) {
       log_warn(LD_BUG, "Can't sign encoded HS descriptor!");
       tor_free(encoded_str);
       goto err;
@@ -1443,8 +1444,10 @@ desc_sig_is_valid(const char *b64_sig, const ed25519_keypair_t *signing_kp,
   sig_start++;
 
   /* Validate signature with the full body of the descriptor. */
-  if (ed25519_checksig(&sig, (const uint8_t *) encoded_desc,
-                       sig_start - encoded_desc, &signing_kp->pubkey) != 0) {
+  if (ed25519_checksig_prefixed(&sig,
+                                (const uint8_t *) encoded_desc, sig_start - encoded_desc,
+                                hs_desc_signature_prefix,
+                                &signing_kp->pubkey) != 0) {
     log_warn(LD_REND, "Invalid signature on service descriptor");
     goto err;
   }

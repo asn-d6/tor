@@ -1072,7 +1072,8 @@ test_desc_signature(void *arg)
   /* Setup a phoony descriptor but with a valid signature token that is the
    * signature is verifiable. */
   tor_asprintf(&data, "This is a signed descriptor\n");
-  ret = ed25519_sign(&sig, (const uint8_t *) data, strlen(data), &kp);
+  ret = ed25519_sign_prefixed(&sig, (const uint8_t *) data, strlen(data),
+                              hs_desc_signature_prefix, &kp);
   tt_int_op(ret, ==, 0);
   ret = ed25519_signature_to_base64(sig_b64, &sig);
   tt_int_op(ret, ==, 0);

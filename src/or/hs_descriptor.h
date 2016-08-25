@@ -22,6 +22,9 @@
 /* The latest descriptor format version we support. */
 #define HS_DESC_SUPPORTED_FORMAT_VERSION_MAX 3
 
+/* Prefix required to compute/verify HS desc signatures */
+#define hs_desc_signature_prefix "Tor onion service descriptor sig v3"
+
 /* Maximum lifetime of a descriptor in seconds. The value is set at 12 hours
  * which is 720 minutes or 43200 seconds. */
 #define HS_DESC_MAX_LIFETIME (12 * 60 * 60)
