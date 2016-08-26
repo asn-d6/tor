@@ -1,3 +1,4 @@
+include src/trunnel/hs/include.am
 
 noinst_LIBRARIES += \
 	src/trunnel/libor-trunnel.a
@@ -29,11 +30,13 @@ TRUNNELHEADERS = \
 	src/trunnel/pwbox.h
 
 src_trunnel_libor_trunnel_a_SOURCES = $(TRUNNELSOURCES)
+src_trunnel_libor_trunnel_a_LIBADD = src/trunnel/hs/libor-trunnel-hs.a
 src_trunnel_libor_trunnel_a_CPPFLAGS = -DTRUNNEL_LOCAL_H $(AM_CPPFLAGS)
 
 src_trunnel_libor_trunnel_testing_a_SOURCES = $(TRUNNELSOURCES)
 src_trunnel_libor_trunnel_testing_a_CPPFLAGS = -DTRUNNEL_LOCAL_H $(AM_CPPFLAGS) $(TEST_CPPFLAGS)
 src_trunnel_libor_trunnel_testing_a_CFLAGS = $(AM_CFLAGS) $(TEST_CFLAGS)
+src_trunnel_libor_trunnel_testing_a_LIBADD = src/trunnel/hs/libor-trunnel-hs-testing.a
 
 noinst_HEADERS+= $(TRUNNELHEADERS)
 
