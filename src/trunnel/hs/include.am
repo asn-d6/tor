@@ -8,12 +8,16 @@ endif
 
 AM_CPPFLAGS += -I$(srcdir)/src/ext/trunnel -I$(srcdir)/src/trunnel
 
-HS_TRUNNELSOURCES =              \
-	src/ext/trunnel/trunnel.c
+HS_TRUNNELSOURCES =                       \
+  src/ext/trunnel/trunnel.c               \
+  src/trunnel/hs/cell_common.c            \
+  src/trunnel/hs/cell_establish_intro.c
 
-HS_TRUNNELHEADERS=               \
-	src/ext/trunnel/trunnel.h       \
-	src/ext/trunnel/trunnel-impl.h
+HS_TRUNNELHEADERS=                        \
+  src/ext/trunnel/trunnel.h               \
+  src/ext/trunnel/trunnel-impl.h          \
+  src/trunnel/hs/cell_common.h            \
+  src/trunnel/hs/cell_establish_intro.h
 
 src_trunnel_hs_libor_trunnel_hs_a_SOURCES = $(HS_TRUNNELSOURCES)
 src_trunnel_hs_libor_trunnel_hs_a_CPPFLAGS = -DTRUNNEL_LOCAL_H $(AM_CPPFLAGS)
