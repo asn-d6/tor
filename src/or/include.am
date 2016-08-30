@@ -51,6 +51,9 @@ LIBTOR_A_SOURCES = \
 	src/or/dnsserv.c				\
 	src/or/fp_pair.c				\
 	src/or/geoip.c					\
+	src/or/hs_intropoint.c          \
+	src/or/hs_circuitmap.c          \
+	src/or/hs_service.c             \
 	src/or/entrynodes.c				\
 	src/or/ext_orport.c				\
 	src/or/hibernate.c				\
@@ -161,6 +164,9 @@ ORHEADERS = \
 	src/or/geoip.h					\
 	src/or/entrynodes.h				\
 	src/or/hibernate.h				\
+	src/or/hs_intropoint.h          \
+	src/or/hs_circuitmap.h          \
+	src/or/hs_service.h             \
 	src/or/keypin.h					\
 	src/or/main.h					\
 	src/or/microdesc.h				\
