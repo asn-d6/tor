@@ -21,13 +21,17 @@ struct hs_cell_establish_intro {
   /* Extension(s). Reserved fields. */
   struct cell_extension extensions;
 
+  @ptr end_mac_data;
+
   /* Handshake MAC. */
   u8 handshake_mac[TRUNNEL_SHA3_256_LEN];
 
   /* Signature */
   u16 sig_len;
+
+  @ptr end_sig_fields;
+
   /* Indicate the end of the handshake authentication data. */
-  @ptr end_mac_data;
   u8 sig[sig_len];
 };
 

@@ -8,6 +8,7 @@
 #include "channel.h"
 #include "circuitbuild.h"
 #include "circuitlist.h"
+#include "hs_circuitmap.h"
 #include "test.h"
 
 static channel_t *
@@ -195,68 +196,68 @@ test_rend_token_maps(void *arg)
   tt_int_op(tok3[REND_TOKEN_LEN-1], OP_EQ, '.');
 
   /* No maps; nothing there. */
-  tt_ptr_op(NULL, OP_EQ, circuit_get_rendezvous(tok1));
-  tt_ptr_op(NULL, OP_EQ, circuit_get_intro_point(tok1));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_rend_circ(tok1));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok1));
 
-  circuit_set_rendezvous_cookie(c1, tok1);
-  circuit_set_intro_point_digest(c2, tok2);
+  hs_circuitmap_register_rend_circ(c1, tok1);
+  hs_circuitmap_register_intro_circ_v2(c2, tok2);
 
-  tt_ptr_op(NULL, OP_EQ, circuit_get_rendezvous(tok3));
-  tt_ptr_op(NULL, OP_EQ, circuit_get_intro_point(tok3));
-  tt_ptr_op(NULL, OP_EQ, circuit_get_rendezvous(tok2));
-  tt_ptr_op(NULL, OP_EQ, circuit_get_intro_point(tok1));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_rend_circ(tok3));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok3));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_rend_circ(tok2));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok1));
 
   /* Without purpose set, we don't get the circuits */
-  tt_ptr_op(NULL, OP_EQ, circuit_get_rendezvous(tok1));
-  tt_ptr_op(NULL, OP_EQ, circuit_get_intro_point(tok2));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_rend_circ(tok1));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok2));
 
   c1->base_.purpose = CIRCUIT_PURPOSE_REND_POINT_WAITING;
   c2->base_.purpose = CIRCUIT_PURPOSE_INTRO_POINT;
 
   /* Okay, make sure they show up now. */
-  tt_ptr_op(c1, OP_EQ, circuit_get_rendezvous(tok1));
-  tt_ptr_op(c2, OP_EQ, circuit_get_intro_point(tok2));
+  tt_ptr_op(c1, OP_EQ, hs_circuitmap_get_rend_circ(tok1));
+  tt_ptr_op(c2, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok2));
 
   /* Two items at the same place with the same token. */
   c3->base_.purpose = CIRCUIT_PURPOSE_REND_POINT_WAITING;
-  circuit_set_rendezvous_cookie(c3, tok2);
-  tt_ptr_op(c2, OP_EQ, circuit_get_intro_point(tok2));
-  tt_ptr_op(c3, OP_EQ, circuit_get_rendezvous(tok2));
+  hs_circuitmap_register_rend_circ(c3, tok2);
+  tt_ptr_op(c2, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok2));
+  tt_ptr_op(c3, OP_EQ, hs_circuitmap_get_rend_circ(tok2));
 
   /* Marking a circuit makes it not get returned any more */
   circuit_mark_for_close(TO_CIRCUIT(c1), END_CIRC_REASON_FINISHED);
-  tt_ptr_op(NULL, OP_EQ, circuit_get_rendezvous(tok1));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_rend_circ(tok1));
   circuit_free(TO_CIRCUIT(c1));
   c1 = NULL;
 
   /* Freeing a circuit makes it not get returned any more. */
   circuit_free(TO_CIRCUIT(c2));
   c2 = NULL;
-  tt_ptr_op(NULL, OP_EQ, circuit_get_intro_point(tok2));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok2));
 
   /* c3 -- are you still there? */
-  tt_ptr_op(c3, OP_EQ, circuit_get_rendezvous(tok2));
+  tt_ptr_op(c3, OP_EQ, hs_circuitmap_get_rend_circ(tok2));
   /* Change its cookie.  This never happens in Tor per se, but hey. */
   c3->base_.purpose = CIRCUIT_PURPOSE_INTRO_POINT;
-  circuit_set_intro_point_digest(c3, tok3);
+  hs_circuitmap_register_intro_circ_v2(c3, tok3);
 
-  tt_ptr_op(NULL, OP_EQ, circuit_get_rendezvous(tok2));
-  tt_ptr_op(c3, OP_EQ, circuit_get_intro_point(tok3));
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_rend_circ(tok2));
+  tt_ptr_op(c3, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok3));
 
   /* Now replace c3 with c4. */
   c4->base_.purpose = CIRCUIT_PURPOSE_INTRO_POINT;
-  circuit_set_intro_point_digest(c4, tok3);
+  hs_circuitmap_register_intro_circ_v2(c4, tok3);
 
-  tt_ptr_op(c4, OP_EQ, circuit_get_intro_point(tok3));
+  tt_ptr_op(c4, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok3));
 
-  tt_ptr_op(c3->rendinfo, OP_EQ, NULL);
-  tt_ptr_op(c4->rendinfo, OP_NE, NULL);
-  tt_mem_op(c4->rendinfo, OP_EQ, tok3, REND_TOKEN_LEN);
+  tt_ptr_op(c3->hs_token, OP_EQ, NULL);
+  tt_ptr_op(c4->hs_token, OP_NE, NULL);
+  tt_mem_op(c4->hs_token->token, OP_EQ, tok3, REND_TOKEN_LEN);
 
   /* Now clear c4's cookie. */
-  circuit_set_intro_point_digest(c4, NULL);
-  tt_ptr_op(c4->rendinfo, OP_EQ, NULL);
-  tt_ptr_op(NULL, OP_EQ, circuit_get_intro_point(tok3));
+  hs_circuitmap_register_intro_circ_v2(c4, NULL);
+  tt_ptr_op(c4->hs_token, OP_EQ, NULL);
+  tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok3));
 
  done:
   if (c1)

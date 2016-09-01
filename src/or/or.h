@@ -3214,6 +3214,34 @@ typedef struct origin_circuit_t {
   smartlist_t *prepend_policy;
 } origin_circuit_t;
 
+/** Represents the type of HS token. */
+typedef enum {
+  /** A rendezvous cookie (128bit)*/
+  HS_TOKEN_REND,
+  /** A v2 introduction point pubkey (128bit) */
+  HS_TOKEN_INTRO_V2,
+  /** A v3 introduction point pubkey (256bit) */
+  HS_TOKEN_INTRO_V3,
+} hs_token_type_t;
+
+/** Represents a token used in the HS protocol. Each such token maps to a
+ *  specific introduction or rendezvous circuit. */
+typedef struct hs_token_s {
+  /* Type of token. Can be a rendezvous or introduction token for either HS v2
+   * or v3. The size of the token depends on the HS protocol version and the
+   * type of token:
+   *  Old HS protocol uses 128bit tokens for introduction and rendezvous.
+   *  New HS protocol uses 256bit tokens for introduction, and 128bit tokens for
+   *  rendezvous. */
+  hs_token_type_t type;
+
+  /* The size of the token */
+  size_t token_len;
+
+  /* The token itself. Memory allocated at runtime depending on the HS version. */
+  uint8_t *token;
+} hs_token_t;
+
 struct onion_queue_t;
 
 /** An or_circuit_t holds information needed to implement a circuit at an
@@ -3273,7 +3301,12 @@ typedef struct or_circuit_t {
    * is not marked for close. */
   struct or_circuit_t *rend_splice;
 
-  struct or_circuit_rendinfo_s *rendinfo;
+  /** A pointer to an HS token that this circuit might be carrying. Used by the
+   *  HS circuitmap.  */
+  hs_token_t *hs_token;
+  /** Hashtable node: used to look up the circuit by its HS token using the HS
+      circuitmap. */
+  HT_ENTRY(or_circuit_t) hs_circuitmap_node;
 
   /** Stores KH for the handshake. */
   char rend_circ_nonce[DIGEST_LEN];/* KH in tor-spec.txt */
@@ -3308,24 +3341,11 @@ typedef struct or_circuit_t {
   uint32_t max_middle_cells;
 } or_circuit_t;
 
-typedef struct or_circuit_rendinfo_s {
 
 #if REND_COOKIE_LEN != DIGEST_LEN
 #error "The REND_TOKEN_LEN macro assumes REND_COOKIE_LEN == DIGEST_LEN"
 #endif
 #define REND_TOKEN_LEN DIGEST_LEN
-
-  /** A hash of location-hidden service's PK if purpose is INTRO_POINT, or a
-   * rendezvous cookie if purpose is REND_POINT_WAITING. Filled with zeroes
-   * otherwise.
-   */
-  char rend_token[REND_TOKEN_LEN];
-
-  /** True if this is a rendezvous point circuit; false if this is an
-   * introduction point. */
-  unsigned is_rend_circ;
-
-} or_circuit_rendinfo_t;
 
 /** Convert a circuit subtype to a circuit_t. */
 #define TO_CIRCUIT(x)  (&((x)->base_))

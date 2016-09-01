@@ -2647,7 +2647,7 @@ rend_service_launch_establish_intro(rend_service_t *service,
                                                  service->auth_type);
   launched->intro_key = crypto_pk_dup_key(intro->intro_key);
   if (launched->base_.state == CIRCUIT_STATE_OPEN)
-    rend_service_intro_has_opened(launched);
+    rend_service_intro_has_opened_legacy(launched);
   return 0;
 }
 
@@ -2691,8 +2691,12 @@ count_intro_point_circuits(const rend_service_t *service)
 /** Called when we're done building a circuit to an introduction point:
  *  sends a RELAY_ESTABLISH_INTRO cell.
  */
+void rend_service_intro_has_opened(origin_circuit_t *circuit) {
+  return rend_service_intro_has_opened_legacy(circuit);
+}
+
 void
-rend_service_intro_has_opened(origin_circuit_t *circuit)
+rend_service_intro_has_opened_legacy(origin_circuit_t *circuit)
 {
   rend_service_t *service;
   size_t len;
