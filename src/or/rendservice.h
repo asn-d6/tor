@@ -63,6 +63,10 @@ struct rend_intro_cell_s {
   uint8_t dh[DH_KEY_LEN];
 };
 
+STATIC ssize_t encode_establish_intro_cell_legacy(char *cell_body_out,
+                                                  crypto_pk_t *intro_key,
+                                                  char *rend_circ_nonce);
+
 #endif
 
 int num_rend_services(void);
