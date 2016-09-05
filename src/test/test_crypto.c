@@ -1135,6 +1135,45 @@ test_crypto_sha3_xof(void *arg)
   tor_free(mem_op_hex_tmp);
 }
 
+/* Test our HMAC-SHA3 function. There are not actually any HMAC-SHA3 test
+ * vectors out there for our H(k || m) construction. Hence what we are gonna do
+ * is test our crypto_hmac_sha3_256() function against manually doing H(k||m).
+ * If in the future the Keccak group decides to standarize an HMAC construction
+ * and make test vectors, we should incorporate them here. */
+static void
+test_crypto_hmac_sha3(void *arg)
+{
+  const char msg[] = "i am in a library somewhere using my computer";
+  const char key[] = "i'm from the past talking to the future.";
+
+  char hmac_test[DIGEST256_LEN];
+  char hmac_manual[DIGEST256_LEN];
+
+  int retval;
+
+  (void) arg;
+
+  /* First let's use our nice HMAC-SHA3 function */
+  retval = crypto_hmac_sha3_256(hmac_test,
+                                key, sizeof(key),
+                                msg, sizeof(msg));
+  tt_int_op(retval, ==, 0);
+
+  /* Now let's try a manual H(k || m) construction */
+  {
+    crypto_digest_t *d = crypto_digest256_new(DIGEST_SHA3_256);
+    crypto_digest_add_bytes(d, key, sizeof(key));
+    crypto_digest_add_bytes(d, msg, sizeof(msg));
+    crypto_digest_get_digest(d, hmac_manual, sizeof(hmac_manual));
+    crypto_digest_free(d);
+  }
+
+  /* Now compare the two results */
+  tt_mem_op(hmac_test, OP_EQ, hmac_manual, DIGEST256_LEN);
+
+ done: ;
+}
+
 /** Run unit tests for our public key crypto functions */
 static void
 test_crypto_pk(void *arg)
@@ -2918,6 +2957,7 @@ struct testcase_t crypto_tests[] = {
   { "digest_names", test_crypto_digest_names, 0, NULL, NULL },
   { "sha3", test_crypto_sha3, TT_FORK, NULL, NULL},
   { "sha3_xof", test_crypto_sha3_xof, TT_FORK, NULL, NULL},
+  { "hmac_sha3", test_crypto_hmac_sha3, TT_FORK, NULL, NULL},
   CRYPTO_LEGACY(dh),
   { "aes_iv_AES", test_crypto_aes_iv, TT_FORK, &passthrough_setup,
     (void*)"aes" },

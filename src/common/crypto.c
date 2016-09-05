@@ -2109,6 +2109,41 @@ crypto_hmac_sha256(char *hmac_out,
   tor_assert(rv);
 }
 
+/** Compute an HMAC-SHA3 of <b>msg</b> using <b>key</b> as the key. The format
+ * used for HMAC-SHA3 is SHA3(k | m). Write the DIGEST256_LEN-byte result into
+ * <b>hmac_out</b>.  Return 0 on success, 1 on failure. */
+int
+crypto_hmac_sha3_256(char *hmac_out,
+                     const char *key, size_t key_len,
+                     const char *msg, size_t msg_len)
+{
+  char *key_msg_concat = NULL;
+  size_t key_msg_concat_len;
+  int result;
+
+  tor_assert(hmac_out);
+  tor_assert(key);
+  tor_assert(msg);
+
+  /* Check for overflow */
+  if (msg_len > SIZE_T_CEILING - key_len) {
+    return 1;
+  }
+
+  /* SHA3-HMAC is just SHA3(k|m) */
+  key_msg_concat_len = key_len + msg_len;
+  key_msg_concat = tor_malloc(key_msg_concat_len);
+  memcpy(key_msg_concat, key, key_len);
+  memcpy(key_msg_concat + key_len, msg, msg_len);
+
+  result = crypto_digest256(hmac_out,
+                            key_msg_concat, key_msg_concat_len,
+                            DIGEST_SHA3_256);
+
+  tor_free(key_msg_concat);
+  return result;
+}
+
 /** Internal state for a eXtendable-Output Function (XOF). */
 struct crypto_xof_t {
   keccak_state s;
