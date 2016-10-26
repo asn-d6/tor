@@ -29,8 +29,8 @@ static int
 hs_circuits_have_same_token(const or_circuit_t *first_circuit,
                             const or_circuit_t *second_circuit)
 {
-  hs_token_t *first_token;
-  hs_token_t *second_token;
+  const hs_token_t *first_token;
+  const hs_token_t *second_token;
 
   tor_assert(first_circuit);
   tor_assert(second_circuit);
@@ -39,7 +39,7 @@ hs_circuits_have_same_token(const or_circuit_t *first_circuit,
   second_token = second_circuit->hs_token;
 
   /* Both circs must have a token */
-  if (!first_token || !second_token) {
+  if (BUG(!first_token) || BUG(!second_token)) {
     return 0;
   }
 
@@ -153,8 +153,9 @@ hs_circuitmap_register_impl(or_circuit_t *circ, hs_token_t *token)
     hs_circuitmap_remove_circuit(circ);
   }
 
-  /* Check circuitmap to see if we already have a circuit with this token. If
-     there is one, clear and kill that circuit. */
+  /* Kill old circuits with the same token. We want new intro/rend circuits to
+     take precedence over old ones, so that HSes and clients and reestablish
+     killed circuits without changing the HS token. */
   {
     or_circuit_t *found_circ;
     found_circ = get_circuit_with_token(token);
