@@ -23,13 +23,13 @@ int is_circuit_suitable_for_establish_intro(const or_circuit_t *circ);
 #ifdef HS_INTROPOINT_PRIVATE
 
 STATIC int
-verify_establish_intro_cell(hs_cell_establish_intro_t *out,
+verify_establish_intro_cell(const hs_cell_establish_intro_t *out,
                             const char *circuit_key_material,
                             size_t circuit_key_material_len);
 
 STATIC void
 get_auth_key_from_establish_intro_cell(ed25519_public_key_t *auth_key_out,
-                                       hs_cell_establish_intro_t *cell);
+                                       const hs_cell_establish_intro_t *cell);
 
 #endif
 

@@ -25,11 +25,12 @@
  *  place it in <b>auth_key_out</b>. */
 STATIC void
 get_auth_key_from_establish_intro_cell(ed25519_public_key_t *auth_key_out,
-                                       hs_cell_establish_intro_t *cell)
+                                       const hs_cell_establish_intro_t *cell)
 {
   tor_assert(auth_key_out);
 
-  const uint8_t *key_array = hs_cell_establish_intro_getarray_auth_key(cell);
+  const uint8_t *key_array =
+    hs_cell_establish_intro_getconstarray_auth_key(cell);
   tor_assert(key_array);
 
   memcpy(auth_key_out->pubkey, key_array, cell->auth_key_len);
@@ -38,7 +39,7 @@ get_auth_key_from_establish_intro_cell(ed25519_public_key_t *auth_key_out,
 /** We received an ESTABLISH_INTRO <b>cell</b>. Verify its signature and MAC,
  *  given <b>circuit_key_material</b>. */
 STATIC int
-verify_establish_intro_cell(hs_cell_establish_intro_t *cell,
+verify_establish_intro_cell(const hs_cell_establish_intro_t *cell,
                             const char *circuit_key_material,
                             size_t circuit_key_material_len)
 {
@@ -67,7 +68,7 @@ verify_establish_intro_cell(hs_cell_establish_intro_t *cell,
   /* Verify the sig */
   {
     ed25519_signature_t sig_struct;
-    uint8_t *sig_array = hs_cell_establish_intro_getarray_sig(cell);
+    const uint8_t *sig_array = hs_cell_establish_intro_getconstarray_sig(cell);
     memcpy(sig_struct.sig, sig_array, cell->sig_len);
 
     ed25519_public_key_t auth_key;
@@ -104,7 +105,7 @@ send_intro_established_cell,(or_circuit_t *circ))
  *  establish an intro point. */
 static int
 handle_verified_establish_intro_cell(or_circuit_t *circ,
-                                     hs_cell_establish_intro_t *parsed_cell)
+                                     const hs_cell_establish_intro_t *parsed_cell)
 {
   /* Get the auth key of this intro point */
   ed25519_public_key_t auth_key;
