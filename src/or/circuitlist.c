@@ -822,7 +822,9 @@ circuit_free(circuit_t *circ)
     crypto_cipher_free(ocirc->n_crypto);
     crypto_digest_free(ocirc->n_digest);
 
-    hs_circuitmap_remove_circuit(ocirc);
+    if (ocirc->hs_token) {
+      hs_circuitmap_remove_circuit(ocirc);
+    }
 
     if (ocirc->rend_splice) {
       or_circuit_t *other = ocirc->rend_splice;

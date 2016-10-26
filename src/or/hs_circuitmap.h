@@ -33,6 +33,7 @@ void hs_circuitmap_register_intro_circ_v3(or_circuit_t *circ,
 
 void hs_circuitmap_remove_circuit(or_circuit_t *circ);
 
+void hs_circuitmap_init(void);
 void hs_circuitmap_free_all(void);
 
 #ifdef HS_CIRCUITMAP_PRIVATE

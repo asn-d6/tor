@@ -187,6 +187,9 @@ test_rend_token_maps(void *arg)
 
   (void)arg;
   (void)tok1; //xxxx
+
+  hs_circuitmap_init();
+
   c1 = or_circuit_new(0, NULL);
   c2 = or_circuit_new(0, NULL);
   c3 = or_circuit_new(0, NULL);

@@ -2277,6 +2277,9 @@ do_main_loop(void)
     }
   }
 
+  /* Initialize relay-side HS circuitmap */
+  hs_circuitmap_init();
+
   /* set up once-a-second callback. */
   if (! second_timer) {
     struct timeval one_second;

@@ -89,15 +89,6 @@ get_hs_circuitmap(void)
 
 /****************** HS circuitmap utility functions **************************/
 
-/* Initialize the global HS circuitmap. */
-static void
-initialize_hs_circuitmap(void)
-{
-  tor_assert(!the_hs_circuitmap);
-  the_hs_circuitmap = tor_malloc_zero(sizeof(struct hs_circuitmap_ht));
-  HT_INIT(hs_circuitmap_ht, the_hs_circuitmap);
-}
-
 /** Return a new HS token of type <b>type</b> containing <b>token</b>. */
 static hs_token_t *
 hs_token_new(hs_token_type_t type, size_t token_len,
@@ -129,6 +120,8 @@ hs_token_free(hs_token_t *hs_token)
 static or_circuit_t *
 get_circuit_with_token(hs_token_t *search_token)
 {
+  tor_assert(the_hs_circuitmap);
+
   /* We use a dummy circuit object for the hash table search routine. */
   or_circuit_t search_circ;
   search_circ.hs_token = search_token;
@@ -142,11 +135,7 @@ hs_circuitmap_register_impl(or_circuit_t *circ, hs_token_t *token)
 {
   tor_assert(circ);
   tor_assert(token);
-
-  /* Initialize circuitmap if needed. */
-  if (!the_hs_circuitmap) {
-    initialize_hs_circuitmap();
-  }
+  tor_assert(the_hs_circuitmap);
 
   /* If this circuit already has a token, clear it. */
   if (circ->hs_token) {
@@ -200,9 +189,7 @@ hs_circuitmap_get_circuit(hs_token_type_t type,
 {
   or_circuit_t *found_circ = NULL;
 
-  if (!the_hs_circuitmap) {
-    return NULL;
-  }
+  tor_assert(the_hs_circuitmap);
 
   /* Check the circuitmap if we have a circuit with this token */
   {
@@ -296,9 +283,7 @@ hs_circuitmap_register_intro_circ_v3(or_circuit_t *circ,
 void
 hs_circuitmap_remove_circuit(or_circuit_t *circ)
 {
-  if (!the_hs_circuitmap) {
-    return;
-  }
+  tor_assert(the_hs_circuitmap);
 
   if (!circ || !circ->hs_token) {
     return;
@@ -323,13 +308,21 @@ hs_circuitmap_remove_circuit(or_circuit_t *circ)
   circ->hs_token = NULL;
 }
 
+/* Initialize the global HS circuitmap. */
+void
+hs_circuitmap_init(void)
+{
+  tor_assert(!the_hs_circuitmap);
+
+  the_hs_circuitmap = tor_malloc_zero(sizeof(struct hs_circuitmap_ht));
+  HT_INIT(hs_circuitmap_ht, the_hs_circuitmap);
+}
+
 /* Free all memory allocated by the global HS circuitmap. */
 void
 hs_circuitmap_free_all(void)
 {
-  if (!the_hs_circuitmap) {
-    return;
-  }
+  tor_assert(the_hs_circuitmap);
 
   HT_CLEAR(hs_circuitmap_ht, the_hs_circuitmap);
   the_hs_circuitmap = NULL;

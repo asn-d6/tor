@@ -271,10 +271,13 @@ test_intro_point_registration(void *arg)
 
   MOCK(send_intro_established_cell, mock_send_intro_established_cell);
 
+  hs_circuitmap_init();
+
   /* Check that the circuitmap is currently empty */
   {
     the_hs_circuitmap = get_hs_circuitmap();
-    tt_assert(!the_hs_circuitmap);
+    tt_assert(the_hs_circuitmap);
+    tt_int_op(0, ==, HT_SIZE(the_hs_circuitmap));
     /* Do a circuitmap query in any case */
     returned_intro_circ = hs_circuitmap_get_intro_circ_v3(&auth_key);
     tt_ptr_op(returned_intro_circ, ==, NULL);
