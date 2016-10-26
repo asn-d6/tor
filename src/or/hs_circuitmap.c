@@ -307,7 +307,13 @@ hs_circuitmap_remove_circuit(or_circuit_t *circ)
   /* Remove circ from circuitmap */
   or_circuit_t *tmp;
   tmp = HT_REMOVE(hs_circuitmap_ht, the_hs_circuitmap, circ);
-  tor_assert(tmp == circ);
+  /* ... and ensure the removal was successful. */
+  if (tmp) {
+    tor_assert(tmp == circ);
+  } else {
+    log_warn(LD_BUG, "Could not find circuit (%u) in circuitmap.",
+             circ->p_circ_id);
+  }
 
   /* XXX Maybe we should hs_token_free() even if the_hs_circuitmap==NULL? Can
      this ever happen in real code? */
