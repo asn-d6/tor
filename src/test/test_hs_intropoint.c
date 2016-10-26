@@ -269,7 +269,7 @@ test_intro_point_registration(void *arg)
 
   (void) arg;
 
-  MOCK(send_intro_established_cell, mock_send_intro_established_cell);
+  MOCK(hs_send_intro_established_cell, mock_send_intro_established_cell);
 
   hs_circuitmap_init();
 
@@ -336,7 +336,7 @@ test_intro_point_registration(void *arg)
     tt_assert(!the_hs_circuitmap);
   }
 
-  UNMOCK(send_intro_established_cell);
+  UNMOCK(hs_send_intro_established_cell);
 }
 
 struct testcase_t hs_intropoint_tests[] = {

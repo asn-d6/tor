@@ -95,12 +95,12 @@ verify_establish_intro_cell(const hs_cell_establish_intro_t *cell,
 
 /* Send an INTRO_ESTABLISHED cell to <b>circ</b>. */
 MOCK_IMPL(int,
-send_intro_established_cell,(or_circuit_t *circ))
+hs_send_intro_established_cell,(or_circuit_t *circ))
 {
   char ack[1] = {0};
   return relay_send_command_from_edge(0, TO_CIRCUIT(circ),
                                       RELAY_COMMAND_INTRO_ESTABLISHED,
-                                      (const char *)ack, 1, NULL);
+                                      ack, 1, NULL);
 }
 
 /** We received an ESTABLISH_INTRO <b>parsed_cell</b> on <b>circ</b>. It's
@@ -122,7 +122,7 @@ handle_verified_establish_intro_cell(or_circuit_t *circ,
 
   /* Then notify the hidden service that the intro point is established by
      sending an INTRO_ESTABLISHED cell */
-  if (send_intro_established_cell(circ)) {
+  if (hs_send_intro_established_cell(circ)) {
     log_warn(LD_BUG, "Couldn't send INTRO_ESTABLISHED cell.");
     return -1;
   }
@@ -137,7 +137,7 @@ handle_verified_establish_intro_cell(or_circuit_t *circ,
 
 /* Return True if circuit is suitable for becoming an intro circuit. */
 int
-is_circuit_suitable_for_establish_intro(const or_circuit_t *circ)
+hs_circuit_is_suitable_for_intro(const or_circuit_t *circ)
 {
   /* Basic circuit state sanity checks. */
   if (circ->base_.purpose != CIRCUIT_PURPOSE_OR) {
@@ -168,11 +168,8 @@ handle_establish_intro(or_circuit_t *circ, const uint8_t *request,
            "Received an ESTABLISH_INTRO request on circuit %u",
            (unsigned) circ->p_circ_id);
 
-  /* XXX Somewhere here we need to guard with the consensus parameter for
-     OnionServicesV3 */
-
   /* Check that the circuit is in shape to become an intro point */
-  if (!is_circuit_suitable_for_establish_intro(circ)) {
+  if (!hs_circuit_is_suitable_for_intro(circ)) {
     goto err;
   }
 

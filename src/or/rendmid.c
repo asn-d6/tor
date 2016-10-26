@@ -38,7 +38,7 @@ rend_mid_establish_intro_legacy(or_circuit_t *circ, const uint8_t *request,
            "Received a legacy ESTABLISH_INTRO request on circuit %u",
            (unsigned) circ->p_circ_id);
 
-  if (!is_circuit_suitable_for_establish_intro(circ)) {
+  if (!hs_circuit_is_suitable_for_intro(circ)) {
     reason = END_CIRC_REASON_TORPROTOCOL;
     goto err;
   }
@@ -104,7 +104,7 @@ rend_mid_establish_intro_legacy(or_circuit_t *circ, const uint8_t *request,
   }
 
   /* Acknowledge the request. */
-  if (send_intro_established_cell(circ) < 0) {
+  if (hs_send_intro_established_cell(circ) < 0) {
     log_info(LD_GENERAL, "Couldn't send INTRO_ESTABLISHED cell.");
     goto err;
   }

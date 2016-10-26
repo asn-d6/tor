@@ -15,10 +15,10 @@
 int hs_received_establish_intro(or_circuit_t *circ, const uint8_t *request,
                                 size_t request_len);
 
-MOCK_DECL(int, send_intro_established_cell,(or_circuit_t *circ));
+MOCK_DECL(int, hs_send_intro_established_cell,(or_circuit_t *circ));
 
 /* also used by rendservice.c */
-int is_circuit_suitable_for_establish_intro(const or_circuit_t *circ);
+int hs_circuit_is_suitable_for_intro(const or_circuit_t *circ);
 
 #ifdef HS_INTROPOINT_PRIVATE
 
