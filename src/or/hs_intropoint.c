@@ -42,21 +42,15 @@ verify_establish_intro_cell(hs_cell_establish_intro_t *cell,
                             const char *circuit_key_material,
                             size_t circuit_key_material_len)
 {
-  /* XXX perhaps this check can be turned into an assert? the only callpath
-     that reaches here ensures that first byte of cell is 0x02. It's yet
-     another codepath that is not reachable. */
-
-  /* Make sure we understand the authentication version */
-  if (cell->auth_key_type != AUTH_KEY_ED25519) {
-    log_warn(LD_PROTOCOL,
-             "Invalid ESTABLSH_INTRO AUTH_KEY_TYPE: must be in {0, 1, 2}");
-    return -1;
-  }
+  /* We only reach this function if the first byte of the cell is 0x02 which
+     means that auth_key_type is AUTH_KEY_ED25519, hence this assert should
+     always pass. See hs_received_establish_intro().  */
+  tor_assert(cell->auth_key_type == AUTH_KEY_ED25519);
 
   /* Verify the MAC */
   const char *msg = (char*) cell->start_cell;
   const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
-  char mac[TRUNNEL_SHA3_256_LEN];
+  char mac[DIGEST256_LEN];
   int mac_errors = crypto_hmac_sha3_256(mac,
                                         circuit_key_material,
                                         circuit_key_material_len,
