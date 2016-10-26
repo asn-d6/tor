@@ -2111,9 +2111,9 @@ crypto_hmac_sha256(char *hmac_out,
 }
 
 /* XXX need unitests */
-/** Compute a 256-bit digest of <b>len</b> bytes in data stored in <b>m</b>,
- * using the algorithm <b>algorithm</b>.  Write the DIGEST_LEN256-byte result
- * into <b>digest</b>.  Return 0 on success, 1 on failure. */
+/** Compute an HMAC-SHA3 of <b>msg</b> using <b>key</b> as the key. The format
+ * used for HMAC-SHA3 is SHA3(k | m). Write the DIGEST256_LEN-byte result into
+ * <b>hmac_out</b>.  Return 0 on success, 1 on failure. */
 int
 crypto_hmac_sha3_256(char *hmac_out,
                      const char *key, size_t key_len,
@@ -2123,8 +2123,14 @@ crypto_hmac_sha3_256(char *hmac_out,
   size_t key_msg_concat_len;
   int result;
 
-  tor_assert(key_len < INT_MAX);
-  tor_assert(msg_len < INT_MAX);
+  tor_assert(hmac_out);
+  tor_assert(key);
+  tor_assert(msg);
+
+  /* Check for overflow */
+  if (msg_len > SIZE_T_CEILING - key_len) {
+    return 1;
+  }
 
   /* SHA3-HMAC is just SHA3(k|m) */
   key_msg_concat_len = key_len + msg_len;
