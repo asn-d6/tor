@@ -2110,7 +2110,6 @@ crypto_hmac_sha256(char *hmac_out,
   tor_assert(rv);
 }
 
-/* XXX need unitests */
 /** Compute an HMAC-SHA3 of <b>msg</b> using <b>key</b> as the key. The format
  * used for HMAC-SHA3 is SHA3(k | m). Write the DIGEST256_LEN-byte result into
  * <b>hmac_out</b>.  Return 0 on success, 1 on failure. */
