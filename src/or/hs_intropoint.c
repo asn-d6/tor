@@ -48,22 +48,7 @@ verify_establish_intro_cell(const hs_cell_establish_intro_t *cell,
      always pass. See hs_received_establish_intro().  */
   tor_assert(cell->auth_key_type == AUTH_KEY_ED25519);
 
-  /* Verify the MAC */
   const char *msg = (char*) cell->start_cell;
-  const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
-  char mac[DIGEST256_LEN];
-  int mac_errors = crypto_hmac_sha3_256(mac,
-                                        circuit_key_material,
-                                        circuit_key_material_len,
-                                        msg, auth_msg_len);
-  if (mac_errors != 0) {
-    log_warn(LD_BUG, "Error computing ESTABLISH_INTRO handshake_auth");
-    return -1;
-  }
-  if (tor_memneq(mac, cell->handshake_mac, TRUNNEL_SHA3_256_LEN)) {
-    log_warn(LD_PROTOCOL, "ESTABLISH_INTRO handshake_auth not as expected");
-    return -1;
-  }
 
   /* Verify the sig */
   {
@@ -81,6 +66,24 @@ verify_establish_intro_cell(const hs_cell_establish_intro_t *cell,
                                                  &auth_key);
     if (sig_mismatch) {
       log_warn(LD_PROTOCOL, "ESTABLISH_INTRO signature not as expected");
+      return -1;
+    }
+  }
+
+  /* Verify the MAC */
+  {
+    const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
+    char mac[DIGEST256_LEN];
+    int mac_errors = crypto_hmac_sha3_256(mac,
+                                          circuit_key_material,
+                                          circuit_key_material_len,
+                                          msg, auth_msg_len);
+    if (mac_errors != 0) {
+      log_warn(LD_BUG, "Error computing ESTABLISH_INTRO handshake_auth");
+      return -1;
+    }
+    if (tor_memneq(mac, cell->handshake_mac, sizeof(mac))) {
+      log_warn(LD_PROTOCOL, "ESTABLISH_INTRO handshake_auth not as expected");
       return -1;
     }
   }
