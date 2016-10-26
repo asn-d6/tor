@@ -257,7 +257,7 @@ test_rend_token_maps(void *arg)
   tt_mem_op(c4->hs_token->token, OP_EQ, tok3, REND_TOKEN_LEN);
 
   /* Now clear c4's cookie. */
-  hs_circuitmap_register_intro_circ_v2(c4, NULL);
+  hs_circuitmap_remove_circuit(c4);
   tt_ptr_op(c4->hs_token, OP_EQ, NULL);
   tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_intro_circ_v2(tok3));
 

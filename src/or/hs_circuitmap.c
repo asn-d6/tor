@@ -183,16 +183,8 @@ hs_circuitmap_register_circuit(or_circuit_t *circ,
 {
   hs_token_t *hs_token = NULL;
 
-  /* If this function is called with no token, we just want to clear the
-     existing token in this circuit. */
-  if (!token) {
-  /* XXX This functionality is just to keep backwards compatibility with old
-     code. Do we still need it? */
-    hs_circuitmap_remove_circuit(circ);
-    return;
-  }
-
   /* Create a new token and register it to the circuitmap */
+  tor_assert(token);
   hs_token = hs_token_new(type, token_len, token);
   tor_assert(hs_token);
   hs_circuitmap_register_impl(circ, hs_token);
