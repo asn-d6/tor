@@ -11,6 +11,7 @@
 struct cell_extension_st;
 struct link_specifier_st;
 #define TRUNNEL_SHA1_LEN 20
+#define TRUNNEL_REND_COOKIE_LEN 20
 #if !defined(TRUNNEL_OPAQUE) && !defined(TRUNNEL_OPAQUE_HS_CELL_INTRODUCE1)
 struct hs_cell_introduce1_st {
   uint8_t legacy_key_id[TRUNNEL_SHA1_LEN];
@@ -33,8 +34,9 @@ struct hs_cell_introduce_ack_st {
 typedef struct hs_cell_introduce_ack_st hs_cell_introduce_ack_t;
 #if !defined(TRUNNEL_OPAQUE) && !defined(TRUNNEL_OPAQUE_HS_CELL_INTRODUCE_ENCRYPTED)
 struct hs_cell_introduce_encrypted_st {
-  uint8_t rend_cookie[20];
+  uint8_t rend_cookie[TRUNNEL_REND_COOKIE_LEN];
   struct cell_extension_st *extensions;
+  uint8_t onion_key_type;
   uint16_t onion_key_len;
   TRUNNEL_DYNARRAY_HEAD(, uint8_t) onion_key;
   uint8_t nspec;
@@ -327,8 +329,8 @@ uint8_t hs_cell_introduce_encrypted_getconst_rend_cookie(const hs_cell_introduce
  * it will hold the value 'elt'.
  */
 int hs_cell_introduce_encrypted_set_rend_cookie(hs_cell_introduce_encrypted_t *inp, size_t idx, uint8_t elt);
-/** Return a pointer to the 20-element array field rend_cookie of
- * 'inp'.
+/** Return a pointer to the TRUNNEL_REND_COOKIE_LEN-element array
+ * field rend_cookie of 'inp'.
  */
 uint8_t * hs_cell_introduce_encrypted_getarray_rend_cookie(hs_cell_introduce_encrypted_t *inp);
 /** As hs_cell_introduce_encrypted_get_rend_cookie, but take and
@@ -353,6 +355,15 @@ int hs_cell_introduce_encrypted_set_extensions(hs_cell_introduce_encrypted_t *in
  * the previous value.
  */
 int hs_cell_introduce_encrypted_set0_extensions(hs_cell_introduce_encrypted_t *inp, struct cell_extension_st *val);
+/** Return the value of the onion_key_type field of the
+ * hs_cell_introduce_encrypted_t in 'inp'
+ */
+uint8_t hs_cell_introduce_encrypted_get_onion_key_type(hs_cell_introduce_encrypted_t *inp);
+/** Set the value of the onion_key_type field of the
+ * hs_cell_introduce_encrypted_t in 'inp' to 'val'. Return 0 on
+ * success; return -1 and set the error code on 'inp' on failure.
+ */
+int hs_cell_introduce_encrypted_set_onion_key_type(hs_cell_introduce_encrypted_t *inp, uint8_t val);
 /** Return the value of the onion_key_len field of the
  * hs_cell_introduce_encrypted_t in 'inp'
  */

@@ -772,13 +772,13 @@ hs_cell_introduce_encrypted_free(hs_cell_introduce_encrypted_t *obj)
 size_t
 hs_cell_introduce_encrypted_getlen_rend_cookie(const hs_cell_introduce_encrypted_t *inp)
 {
-  (void)inp;  return 20;
+  (void)inp;  return TRUNNEL_REND_COOKIE_LEN;
 }
 
 uint8_t
 hs_cell_introduce_encrypted_get_rend_cookie(hs_cell_introduce_encrypted_t *inp, size_t idx)
 {
-  trunnel_assert(idx < 20);
+  trunnel_assert(idx < TRUNNEL_REND_COOKIE_LEN);
   return inp->rend_cookie[idx];
 }
 
@@ -790,7 +790,7 @@ hs_cell_introduce_encrypted_getconst_rend_cookie(const hs_cell_introduce_encrypt
 int
 hs_cell_introduce_encrypted_set_rend_cookie(hs_cell_introduce_encrypted_t *inp, size_t idx, uint8_t elt)
 {
-  trunnel_assert(idx < 20);
+  trunnel_assert(idx < TRUNNEL_REND_COOKIE_LEN);
   inp->rend_cookie[idx] = elt;
   return 0;
 }
@@ -826,6 +826,17 @@ int
 hs_cell_introduce_encrypted_set0_extensions(hs_cell_introduce_encrypted_t *inp, struct cell_extension_st *val)
 {
   inp->extensions = val;
+  return 0;
+}
+uint8_t
+hs_cell_introduce_encrypted_get_onion_key_type(hs_cell_introduce_encrypted_t *inp)
+{
+  return inp->onion_key_type;
+}
+int
+hs_cell_introduce_encrypted_set_onion_key_type(hs_cell_introduce_encrypted_t *inp, uint8_t val)
+{
+  inp->onion_key_type = val;
   return 0;
 }
 uint16_t
@@ -1088,11 +1099,14 @@ hs_cell_introduce_encrypted_encoded_len(const hs_cell_introduce_encrypted_t *obj
      return -1;
 
 
-  /* Length of u8 rend_cookie[20] */
-  result += 20;
+  /* Length of u8 rend_cookie[TRUNNEL_REND_COOKIE_LEN] */
+  result += TRUNNEL_REND_COOKIE_LEN;
 
   /* Length of struct cell_extension extensions */
   result += cell_extension_encoded_len(obj->extensions);
+
+  /* Length of u8 onion_key_type */
+  result += 1;
 
   /* Length of u16 onion_key_len */
   result += 2;
@@ -1141,12 +1155,12 @@ hs_cell_introduce_encrypted_encode(uint8_t *output, const size_t avail, const hs
   trunnel_assert(encoded_len >= 0);
 #endif
 
-  /* Encode u8 rend_cookie[20] */
+  /* Encode u8 rend_cookie[TRUNNEL_REND_COOKIE_LEN] */
   trunnel_assert(written <= avail);
-  if (avail - written < 20)
+  if (avail - written < TRUNNEL_REND_COOKIE_LEN)
     goto truncated;
-  memcpy(ptr, obj->rend_cookie, 20);
-  written += 20; ptr += 20;
+  memcpy(ptr, obj->rend_cookie, TRUNNEL_REND_COOKIE_LEN);
+  written += TRUNNEL_REND_COOKIE_LEN; ptr += TRUNNEL_REND_COOKIE_LEN;
 
   /* Encode struct cell_extension extensions */
   trunnel_assert(written <= avail);
@@ -1154,6 +1168,13 @@ hs_cell_introduce_encrypted_encode(uint8_t *output, const size_t avail, const hs
   if (result < 0)
     goto fail; /* XXXXXXX !*/
   written += result; ptr += result;
+
+  /* Encode u8 onion_key_type */
+  trunnel_assert(written <= avail);
+  if (avail - written < 1)
+    goto truncated;
+  trunnel_set_uint8(ptr, (obj->onion_key_type));
+  written += 1; ptr += 1;
 
   /* Encode u16 onion_key_len */
   trunnel_assert(written <= avail);
@@ -1240,10 +1261,10 @@ hs_cell_introduce_encrypted_parse_into(hs_cell_introduce_encrypted_t *obj, const
   ssize_t result = 0;
   (void)result;
 
-  /* Parse u8 rend_cookie[20] */
-  CHECK_REMAINING(20, truncated);
-  memcpy(obj->rend_cookie, ptr, 20);
-  remaining -= 20; ptr += 20;
+  /* Parse u8 rend_cookie[TRUNNEL_REND_COOKIE_LEN] */
+  CHECK_REMAINING(TRUNNEL_REND_COOKIE_LEN, truncated);
+  memcpy(obj->rend_cookie, ptr, TRUNNEL_REND_COOKIE_LEN);
+  remaining -= TRUNNEL_REND_COOKIE_LEN; ptr += TRUNNEL_REND_COOKIE_LEN;
 
   /* Parse struct cell_extension extensions */
   result = cell_extension_parse(&obj->extensions, ptr, remaining);
@@ -1251,6 +1272,11 @@ hs_cell_introduce_encrypted_parse_into(hs_cell_introduce_encrypted_t *obj, const
     goto relay_fail;
   trunnel_assert((size_t)result <= remaining);
   remaining -= result; ptr += result;
+
+  /* Parse u8 onion_key_type */
+  CHECK_REMAINING(1, truncated);
+  obj->onion_key_type = (trunnel_get_uint8(ptr));
+  remaining -= 1; ptr += 1;
 
   /* Parse u16 onion_key_len */
   CHECK_REMAINING(2, truncated);

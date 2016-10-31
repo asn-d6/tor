@@ -10,6 +10,7 @@ extern struct cell_extension;
 extern struct link_specifier;
 
 const TRUNNEL_SHA1_LEN = 20;
+const TRUNNEL_REND_COOKIE_LEN = 20;
 
 /* INTRODUCE1 payload. See details in section 3.2.1. */
 struct hs_cell_introduce1 {
@@ -40,16 +41,17 @@ struct hs_cell_introduce_ack {
 /* Encrypted section of the INTRODUCE1/INTRODUCE2 cell. */
 struct hs_cell_introduce_encrypted {
   /* Rendezvous cookie. */
-  u8 rend_cookie[20];
+  u8 rend_cookie[TRUNNEL_REND_COOKIE_LEN];
 
   /* Extension(s). Reserved fields. */
   struct cell_extension extensions;
 
   /* Onion key material. */
+  u8 onion_key_type;
   u16 onion_key_len;
   u8 onion_key[onion_key_len];
 
-  /* Link specificer(s) */
+  /* Link specifiers(s) */
   u8 nspec;
   struct link_specifier nspecs[nspec];
 
