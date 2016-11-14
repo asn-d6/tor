@@ -19,7 +19,7 @@
 /** We simulate the creation of an outgoing ESTABLISH_INTRO cell, and then we
  *  parse it from the receiver side. */
 static void
-test_establish_intro_cell(void *arg)
+test_gen_establish_intro_cell(void *arg)
 {
   (void) arg;
   int retval;
@@ -58,12 +58,28 @@ test_establish_intro_cell(void *arg)
   hs_cell_establish_intro_free(cell_in);
 }
 
-/* XXX: We are missing a unittest that makes generate_establish_intro_cell()
-   fail */
+/** We simulate a failure to create an ESTABLISH_INTRO cell */
+static void
+test_gen_establish_intro_cell_bad(void *arg)
+{
+  (void) arg;
+  hs_cell_establish_intro_t *cell = NULL;
+
+  /* Easiest way to make that function fail is to give it an insanely big
+     circuit key material. */
+  cell = generate_establish_intro_cell("", SIZE_T_CEILING);
+  tt_assert(!cell);
+
+ done:
+  hs_cell_establish_intro_free(cell);
+}
 
 struct testcase_t hs_service_tests[] = {
-  { "establish_intro_cell", test_establish_intro_cell, TT_FORK,
+  { "gen_establish_intro_cell", test_gen_establish_intro_cell, TT_FORK,
     NULL, NULL },
+  { "gen_establish_intro_cell_bad", test_gen_establish_intro_cell_bad, TT_FORK,
+    NULL, NULL },
+
 
   END_OF_TESTCASES
 };
