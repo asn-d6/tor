@@ -1141,7 +1141,7 @@ test_crypto_sha3_xof(void *arg)
  * If in the future the Keccak group decides to standarize an HMAC construction
  * and make test vectors, we should incorporate them here. */
 static void
-test_crypto_hmac_sha3(void *arg)
+test_crypto_mac_sha3(void *arg)
 {
   const char msg[] = "i am in a library somewhere using my computer";
   const char key[] = "i'm from the past talking to the future.";
@@ -1149,23 +1149,25 @@ test_crypto_hmac_sha3(void *arg)
   char hmac_test[DIGEST256_LEN];
   char hmac_manual[DIGEST256_LEN];
 
-  int retval;
-
   (void) arg;
 
   /* First let's use our nice HMAC-SHA3 function */
-  retval = crypto_hmac_sha3_256(hmac_test,
-                                key, sizeof(key),
-                                msg, sizeof(msg));
-  tt_int_op(retval, ==, 0);
+  crypto_mac_sha3_256(hmac_test, sizeof(hmac_test),
+                      key, strlen(key),
+                      msg, strlen(msg));
 
   /* Now let's try a manual H(k || m) construction */
   {
-    crypto_digest_t *d = crypto_digest256_new(DIGEST_SHA3_256);
-    crypto_digest_add_bytes(d, key, sizeof(key));
-    crypto_digest_add_bytes(d, msg, sizeof(msg));
-    crypto_digest_get_digest(d, hmac_manual, sizeof(hmac_manual));
-    crypto_digest_free(d);
+    char *key_msg_concat = NULL;
+    int result;
+
+    tor_asprintf(&key_msg_concat, "%s%s", key, msg);
+
+    result = crypto_digest256(hmac_manual,
+                              key_msg_concat, strlen(key_msg_concat),
+                              DIGEST_SHA3_256);
+    tt_int_op(result, ==, 0);
+    tor_free(key_msg_concat);
   }
 
   /* Now compare the two results */
@@ -2957,7 +2959,7 @@ struct testcase_t crypto_tests[] = {
   { "digest_names", test_crypto_digest_names, 0, NULL, NULL },
   { "sha3", test_crypto_sha3, TT_FORK, NULL, NULL},
   { "sha3_xof", test_crypto_sha3_xof, TT_FORK, NULL, NULL},
-  { "hmac_sha3", test_crypto_hmac_sha3, TT_FORK, NULL, NULL},
+  { "hmac_sha3", test_crypto_mac_sha3, TT_FORK, NULL, NULL},
   CRYPTO_LEGACY(dh),
   { "aes_iv_AES", test_crypto_aes_iv, TT_FORK, &passthrough_setup,
     (void*)"aes" },

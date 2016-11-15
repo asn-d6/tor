@@ -110,7 +110,6 @@ generate_establish_intro_cell(const char *circuit_key_material,
        the MAC from it. */
     uint8_t cell_bytes_tmp[RELAY_PAYLOAD_SIZE] = {0};
     char mac[TRUNNEL_SHA3_256_LEN];
-    int mac_errors = 1;
 
     encoded_len = hs_cell_establish_intro_encode(cell_bytes_tmp,
                                                  sizeof(cell_bytes_tmp),
@@ -124,15 +123,10 @@ generate_establish_intro_cell(const char *circuit_key_material,
     tor_assert(encoded_len > ED25519_SIG_LEN + 2 + TRUNNEL_SHA3_256_LEN);
 
     /* Calculate MAC of all fields before HANDSHAKE_AUTH */
-    mac_errors = crypto_hmac_sha3_256(mac,
-                   circuit_key_material, circuit_key_material_len,
-                   (const char*)cell_bytes_tmp,
-                   encoded_len - (ED25519_SIG_LEN + 2 + TRUNNEL_SHA3_256_LEN));
-    if (mac_errors) {
-      log_warn(LD_BUG, "Unable to generate MAC for ESTABLISH_INTRO cell.");
-      goto err;
-    }
-
+    crypto_mac_sha3_256(mac, sizeof(mac),
+                        circuit_key_material, circuit_key_material_len,
+                        (const char*)cell_bytes_tmp,
+                        encoded_len - (ED25519_SIG_LEN + 2 + TRUNNEL_SHA3_256_LEN));
     /* Write the MAC to the cell */
     uint8_t *handshake_ptr =
       hs_cell_establish_intro_getarray_handshake_mac(cell);

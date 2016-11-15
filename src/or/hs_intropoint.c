@@ -73,14 +73,9 @@ verify_establish_intro_cell(const hs_cell_establish_intro_t *cell,
   {
     const size_t auth_msg_len = (char*) (cell->end_mac_fields) - msg;
     char mac[DIGEST256_LEN];
-    int mac_errors = crypto_hmac_sha3_256(mac,
-                                          circuit_key_material,
-                                          circuit_key_material_len,
-                                          msg, auth_msg_len);
-    if (mac_errors != 0) {
-      log_warn(LD_BUG, "Error computing ESTABLISH_INTRO handshake_auth");
-      return -1;
-    }
+    crypto_mac_sha3_256(mac, sizeof(mac),
+                         circuit_key_material, circuit_key_material_len,
+                         msg, auth_msg_len);
     if (tor_memneq(mac, cell->handshake_mac, sizeof(mac))) {
       log_warn(LD_PROTOCOL, "ESTABLISH_INTRO handshake_auth not as expected");
       return -1;

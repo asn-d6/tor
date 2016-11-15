@@ -2109,39 +2109,26 @@ crypto_hmac_sha256(char *hmac_out,
   tor_assert(rv);
 }
 
-/** Compute an HMAC-SHA3 of <b>msg</b> using <b>key</b> as the key. The format
- * used for HMAC-SHA3 is SHA3(k | m). Write the DIGEST256_LEN-byte result into
+/** Compute an SHA3 MAC of <b>msg</b> using <b>key</b> as the key. The format
+ * used for our MAC is SHA3(k | m). Write the DIGEST256_LEN-byte result into
  * <b>hmac_out</b>.  Return 0 on success, 1 on failure. */
-int
-crypto_hmac_sha3_256(char *hmac_out,
-                     const char *key, size_t key_len,
-                     const char *msg, size_t msg_len)
+void
+crypto_mac_sha3_256(char *mac_out, size_t mac_out_len,
+                    const char *key, size_t key_len,
+                    const char *msg, size_t msg_len)
 {
-  char *key_msg_concat = NULL;
-  size_t key_msg_concat_len;
-  int result;
+  crypto_digest_t *digest;
 
-  tor_assert(hmac_out);
+  tor_assert(mac_out);
   tor_assert(key);
   tor_assert(msg);
 
-  /* Check for overflow */
-  if (msg_len > SIZE_T_CEILING - key_len) {
-    return 1;
-  }
+  digest = crypto_digest256_new(DIGEST_SHA3_256);
 
-  /* SHA3-HMAC is just SHA3(k|m) */
-  key_msg_concat_len = key_len + msg_len;
-  key_msg_concat = tor_malloc(key_msg_concat_len);
-  memcpy(key_msg_concat, key, key_len);
-  memcpy(key_msg_concat + key_len, msg, msg_len);
-
-  result = crypto_digest256(hmac_out,
-                            key_msg_concat, key_msg_concat_len,
-                            DIGEST_SHA3_256);
-
-  tor_free(key_msg_concat);
-  return result;
+  crypto_digest_add_bytes(digest, (const char *) key, key_len);
+  crypto_digest_add_bytes(digest, (const char *) msg, msg_len);
+  crypto_digest_get_digest(digest, (char *) mac_out, mac_out_len);
+  crypto_digest_free(digest);
 }
 
 /** Internal state for a eXtendable-Output Function (XOF). */
