@@ -2111,7 +2111,7 @@ crypto_hmac_sha256(char *hmac_out,
 
 /** Compute an SHA3 MAC of <b>msg</b> using <b>key</b> as the key. The format
  * used for our MAC is SHA3(k | m). Write the DIGEST256_LEN-byte result into
- * <b>hmac_out</b>.  Return 0 on success, 1 on failure. */
+ * <b>mac_out</b> of size <b>mac_out_len</b>. */
 void
 crypto_mac_sha3_256(char *mac_out, size_t mac_out_len,
                     const char *key, size_t key_len,
@@ -2125,9 +2125,9 @@ crypto_mac_sha3_256(char *mac_out, size_t mac_out_len,
 
   digest = crypto_digest256_new(DIGEST_SHA3_256);
 
-  crypto_digest_add_bytes(digest, (const char *) key, key_len);
-  crypto_digest_add_bytes(digest, (const char *) msg, msg_len);
-  crypto_digest_get_digest(digest, (char *) mac_out, mac_out_len);
+  crypto_digest_add_bytes(digest, key, key_len);
+  crypto_digest_add_bytes(digest, msg, msg_len);
+  crypto_digest_get_digest(digest, mac_out, mac_out_len);
   crypto_digest_free(digest);
 }
 
