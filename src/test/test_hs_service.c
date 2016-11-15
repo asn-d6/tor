@@ -58,16 +58,37 @@ test_gen_establish_intro_cell(void *arg)
   hs_cell_establish_intro_free(cell_in);
 }
 
+static int
+mock_ed25519_sign_prefixed(ed25519_signature_t *signature_out,
+                           const uint8_t *msg, size_t msg_len,
+                           const char *prefix_str,
+                           const ed25519_keypair_t *keypair) {
+  (void) signature_out;
+  (void) msg;
+  (void) msg_len;
+  (void) prefix_str;
+  (void) keypair;
+  return -1;
+}
+
 /** We simulate a failure to create an ESTABLISH_INTRO cell */
 static void
 test_gen_establish_intro_cell_bad(void *arg)
 {
   (void) arg;
   hs_cell_establish_intro_t *cell = NULL;
+  char circuit_key_material[DIGEST_LEN] = {0};
+
+  MOCK(ed25519_sign_prefixed, mock_ed25519_sign_prefixed);
+
+  crypto_rand(circuit_key_material, sizeof(circuit_key_material));
+
 
   /* Easiest way to make that function fail is to give it an insanely big
      circuit key material. */
-  cell = generate_establish_intro_cell("", SIZE_T_CEILING);
+  cell = generate_establish_intro_cell(circuit_key_material,
+                                       sizeof(circuit_key_material));
+
   tt_assert(!cell);
 
  done:
