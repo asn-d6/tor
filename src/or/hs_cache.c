@@ -374,9 +374,9 @@ hs_cache_handle_oom(time_t now, size_t min_remove_bytes)
 unsigned int
 hs_cache_get_max_descriptor_size(void)
 {
-  return networkstatus_get_param(NULL,
-                                 "HSV3MaxDescriptorSize",
-                                 HS_DESC_MAX_LEN, 1, UINT32_MAX);
+  return (unsigned) networkstatus_get_param(NULL,
+                                            "HSV3MaxDescriptorSize",
+                                            HS_DESC_MAX_LEN, 1, INT32_MAX);
 }
 
 /* Initialize the hidden service cache subsystem. */
