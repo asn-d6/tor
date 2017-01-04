@@ -1703,7 +1703,7 @@ hs_desc_decode_plaintext(const char *encoded,
 
   /* Check that descriptor is within size limits. */
   encoded_len = strlen(encoded);
-  if (encoded_len >= hs_cache_get_max_hs_descriptor_size()) {
+  if (encoded_len >= hs_cache_get_max_descriptor_size()) {
     log_warn(LD_REND, "Service descriptor is too big (%lu bytes)",
              (unsigned long) encoded_len);
     goto err;

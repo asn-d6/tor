@@ -372,7 +372,7 @@ hs_cache_handle_oom(time_t now, size_t min_remove_bytes)
  * HSDir.
  */
 unsigned int
-hs_cache_get_max_hs_descriptor_size(void)
+hs_cache_get_max_descriptor_size(void)
 {
   return networkstatus_get_param(NULL,
                                  "HSV3MaxDescriptorSize",
