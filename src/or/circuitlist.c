@@ -1497,6 +1497,41 @@ circuit_get_ready_rend_circ_by_rend_data(const rend_data_t *rend_data)
   return NULL;
 }
 
+/** Return the first service rendezvous circuit originating from the global
+ * circuit list after <b>start</b> or at the start of the list if <b>start</b>
+ * is NULL. Return NULL if no circuit is found.
+ *
+ * A service rendezvous point circuit has a purpose of either
+ * CIRCUIT_PURPOSE_S_CONNECT_REND or CIRCUIT_PURPOSE_S_REND_JOINED. This does
+ * not return a circuit marked for close and its state must be open. */
+origin_circuit_t *
+circuit_get_next_service_rp_circ(origin_circuit_t *start)
+{
+  int idx = 0;
+  smartlist_t *lst = circuit_get_global_list();
+
+  if (start) {
+    idx = TO_CIRCUIT(start)->global_circuitlist_idx + 1;
+  }
+
+  for ( ; idx < smartlist_len(lst); ++idx) {
+    circuit_t *circ = smartlist_get(lst, idx);
+
+    /* Ignore a marked for close circuit or purpose not matching a service
+     * intro point or if the state is not open. */
+    if (circ->marked_for_close || circ->state != CIRCUIT_STATE_OPEN ||
+        (circ->purpose != CIRCUIT_PURPOSE_S_CONNECT_REND &&
+         circ->purpose != CIRCUIT_PURPOSE_S_REND_JOINED)) {
+      continue;
+    }
+    /* The purposes we are looking for are only for origin circuits so the
+     * following is valid. */
+    return TO_ORIGIN_CIRCUIT(circ);
+  }
+  /* Not found. */
+  return NULL;
+}
+
 /** Return the first service introduction circuit originating from the global
  * circuit list after <b>start</b> or at the start of the list if <b>start</b>
  * is NULL. Return NULL if no circuit is found.
