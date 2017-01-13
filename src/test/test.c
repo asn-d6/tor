@@ -1212,6 +1212,7 @@ struct testgroup_t testgroups[] = {
   { "extorport/", extorport_tests },
   { "legacy_hs/", hs_tests },
   { "hs_cache/", hs_cache },
+  { "hs_config/", hs_config_tests },
   { "hs_descriptor/", hs_descriptor },
   { "hs_service/", hs_service_tests },
   { "hs_intropoint/", hs_intropoint_tests },

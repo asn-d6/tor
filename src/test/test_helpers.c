@@ -7,9 +7,12 @@
  */
 
 #define ROUTERLIST_PRIVATE
+#define CONFIG_PRIVATE
 #include "orconfig.h"
 #include "or.h"
 
+#include "confparse.h"
+#include "config.h"
 #include "relay.h"
 #include "routerlist.h"
 #include "nodelist.h"
@@ -141,5 +144,40 @@ mock_tor_addr_lookup__fail_on_bad_addrs(const char *name,
     return -1;
   }
   return tor_addr_lookup__real(name, family, out);
+}
+
+/* Helper function to parse a set of torrc options in a text format and return
+ * a newly allocated or_options_t object containing the configuration. On
+ * error, NULL is returned indicating that the conf couldn't be parsed
+ * properly. */
+or_options_t *
+helper_parse_options(const char *conf)
+{
+  int ret = 0;
+  char *msg = NULL;
+  or_options_t *opt = NULL;
+  config_line_t *line = NULL;
+
+  /* Kind of pointless to call this with a NULL value. */
+  tt_assert(conf);
+
+  opt = options_new();
+  tt_assert(opt);
+  ret = config_get_lines(conf, &line, 1);
+  if (ret != 0) {
+    goto done;
+  }
+  ret = config_assign(&options_format, opt, line, 0, &msg);
+  if (ret != 0) {
+    goto done;
+  }
+
+ done:
+  config_free_lines(line);
+  if (ret != 0) {
+    or_options_free(opt);
+    opt = NULL;
+  }
+  return opt;
 }
 

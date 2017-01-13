@@ -4,6 +4,8 @@
 #ifndef TOR_TEST_HELPERS_H
 #define TOR_TEST_HELPERS_H
 
+#include "or.h"
+
 const char *get_yesterday_date_str(void);
 
 circuit_t * dummy_origin_circuit_new(int num_cells);
@@ -21,6 +23,8 @@ int mock_tor_addr_lookup__fail_on_bad_addrs(const char *name,
                                             uint16_t family, tor_addr_t *out);
 
 extern const char TEST_DESCRIPTORS[];
+
+or_options_t *helper_parse_options(const char *conf);
 
 #endif
 
