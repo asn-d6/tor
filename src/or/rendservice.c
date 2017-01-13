@@ -255,8 +255,6 @@ static int
 rend_validate_service(const smartlist_t *service_list,
                       const rend_service_t *service)
 {
-  int dupe = 0;
-
   tor_assert(service_list);
   tor_assert(service);
 
@@ -287,34 +285,6 @@ rend_validate_service(const smartlist_t *service_list,
     log_warn(LD_CONFIG, "Hidden service (%s) with no ports configured.",
              rend_service_escaped_dir(service));
     goto invalid;
-  }
-
-  /* XXX This duplicate check has two problems:
-   *
-   * a) It's O(n^2), but the same comment from the bottom of
-   *    rend_config_services() should apply.
-   *
-   * b) We only compare directory paths as strings, so we can't
-   *    detect two distinct paths that specify the same directory
-   *    (which can arise from symlinks, case-insensitivity, bind
-   *    mounts, etc.).
-   *
-   * It also can't detect that two separate Tor instances are trying
-   * to use the same HiddenServiceDir; for that, we would need a
-   * lock file.  But this is enough to detect a simple mistake that
-   * at least one person has actually made.
-   */
-  if (!rend_service_is_ephemeral(service)) {
-    /* Skip dupe for ephemeral services. */
-    SMARTLIST_FOREACH(service_list, rend_service_t*, ptr,
-                      dupe = dupe ||
-                      !strcmp(ptr->directory, service->directory));
-    if (dupe) {
-      log_warn(LD_REND, "Another hidden service is already configured for "
-                        "directory %s.",
-               rend_service_escaped_dir(service));
-      goto invalid;
-    }
   }
 
   /* Valid. */
@@ -657,10 +627,8 @@ service_shadow_copy(rend_service_t *service, hs_service_t *hs_service)
 int
 rend_config_service(const config_line_t *line_,
                     const or_options_t *options,
-                    int validate_only,
                     hs_service_t *hs_service)
 {
-  (void) validate_only;
   const config_line_t *line;
   rend_service_t *service = NULL;
 
