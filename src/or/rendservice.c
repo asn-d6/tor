@@ -888,7 +888,7 @@ rend_config_services(const or_options_t *options, int validate_only)
   }
 
   /* Validate the service just parsed. */
-  if (rend_validate_service(temp_service_list, service) < 0) {
+  if (rend_validate_service(rend_service_staging_list, service) < 0) {
     service = NULL;
     goto free_and_return;
   }
