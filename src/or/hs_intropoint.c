@@ -594,3 +594,17 @@ hs_intro_received_introduce1(or_circuit_t *circ, const uint8_t *request,
   return -1;
 }
 
+/* Free the given intropoint object ip. */
+void
+hs_intro_free(hs_intropoint_t *ip)
+{
+  if (ip == NULL) {
+    return;
+  }
+  tor_cert_free(ip->auth_key_cert);
+  SMARTLIST_FOREACH(ip->link_specifiers, link_specifier_t *, ls,
+                    link_specifier_free(ls));
+  smartlist_free(ip->link_specifiers);
+  tor_free(ip);
+}
+

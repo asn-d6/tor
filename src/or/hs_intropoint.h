@@ -9,6 +9,9 @@
 #ifndef TOR_HS_INTRO_H
 #define TOR_HS_INTRO_H
 
+#include "crypto_curve25519.h"
+#include "torcert.h"
+
 /* Authentication key type in an ESTABLISH_INTRO cell. */
 enum hs_intro_auth_key_type {
   HS_INTRO_AUTH_KEY_TYPE_LEGACY0 = 0x00,
@@ -24,6 +27,15 @@ typedef enum {
   HS_INTRO_ACK_STATUS_CANT_RELAY = 0x0003,
 } hs_intro_ack_status_t;
 
+/* Object containing introduction point common data between the service and
+ * the client side. */
+typedef struct hs_intropoint_t {
+  /* Authentication key certificate from the descriptor. */
+  tor_cert_t *auth_key_cert;
+  /* A list of link specifier. */
+  smartlist_t *link_specifiers;
+} hs_intropoint_t;
+
 int hs_intro_received_establish_intro(or_circuit_t *circ,
                                       const uint8_t *request,
                                       size_t request_len);
@@ -34,6 +46,8 @@ MOCK_DECL(int, hs_intro_send_intro_established_cell,(or_circuit_t *circ));
 
 /* also used by rendservice.c */
 int hs_intro_circuit_is_suitable_for_establish_intro(const or_circuit_t *circ);
+
+void hs_intro_free(hs_intropoint_t *ip);
 
 #ifdef HS_INTROPOINT_PRIVATE
 
