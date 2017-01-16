@@ -52,6 +52,9 @@
 /* The time period rotation offset as seen in prop224 section [TIME-PERIODS] */
 #define HS_TIME_PERIOD_ROTATION_OFFSET (12 * 60) /* minutes */
 
+void hs_init(void);
+void hs_free_all(void);
+
 int hs_check_service_private_dir(const char *username, const char *path,
                                  unsigned int dir_group_readable,
                                  unsigned int create);
