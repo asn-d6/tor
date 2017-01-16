@@ -9,6 +9,7 @@
 #define CONTROL_PRIVATE
 #define CIRCUITBUILD_PRIVATE
 #define RENDSERVICE_PRIVATE
+#define HS_SERVICE_PRIVATE
 
 #include "or.h"
 #include "test.h"
@@ -552,17 +553,8 @@ test_single_onion_poisoning(void *arg)
   smartlist_t *services = smartlist_new();
   char *poison_path = NULL;
 
-  /* No services, no service to verify, no problem! */
-  mock_options->HiddenServiceSingleHopMode = 0;
-  mock_options->HiddenServiceNonAnonymousMode = 0;
-  ret = rend_config_services(mock_options, 1);
-  tt_assert(ret == 0);
-
-  /* Either way, no problem. */
   mock_options->HiddenServiceSingleHopMode = 1;
   mock_options->HiddenServiceNonAnonymousMode = 1;
-  ret = rend_config_services(mock_options, 1);
-  tt_assert(ret == 0);
 
   /* Create the data directory, and, if the correct bit in arg is set,
    * create a directory for that service.
@@ -617,8 +609,10 @@ test_single_onion_poisoning(void *arg)
   tt_assert(ret == 0);
 
   /* Add the first service */
-  ret = rend_service_check_dir_and_add(services, mock_options, service_1, 0);
-  tt_assert(ret == 0);
+  ret = hs_check_service_private_dir(mock_options->User, service_1->directory,
+                                     service_1->dir_group_readable, 1);
+  tt_int_op(ret, OP_EQ, 0);
+  smartlist_add(services, service_1);
   /* But don't add the second service yet. */
 
   /* Service directories, but no previous keys, no problem! */
@@ -696,8 +690,10 @@ test_single_onion_poisoning(void *arg)
   tt_assert(ret == 0);
 
   /* Now add the second service: it has no key and no poison file */
-  ret = rend_service_check_dir_and_add(services, mock_options, service_2, 0);
-  tt_assert(ret == 0);
+  ret = hs_check_service_private_dir(mock_options->User, service_2->directory,
+                                     service_2->dir_group_readable, 1);
+  tt_int_op(ret, OP_EQ, 0);
+  smartlist_add(services, service_2);
 
   /* A new service, and an existing poisoned service. Not ok. */
   mock_options->HiddenServiceSingleHopMode = 0;
