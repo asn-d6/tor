@@ -168,7 +168,7 @@ handle_verified_establish_intro_cell(or_circuit_t *circ,
   }
 
   /* Associate intro point auth key with this circuit. */
-  hs_circuitmap_register_intro_circ_v3(circ, &auth_key);
+  hs_circuitmap_register_intro_circ_v3_relay_side(circ, &auth_key);
   /* Repurpose this circuit into an intro circuit. */
   circuit_change_purpose(TO_CIRCUIT(circ), CIRCUIT_PURPOSE_INTRO_POINT);
 
