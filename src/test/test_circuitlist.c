@@ -377,6 +377,8 @@ test_hs_circuitmap_isolation(void *arg)
 {
   or_circuit_t *circ1 = NULL;
   origin_circuit_t *circ2 = NULL;
+  or_circuit_t *circ3 = NULL;
+  origin_circuit_t *circ4 = NULL;
 
   (void)arg;
 
@@ -407,16 +409,24 @@ test_hs_circuitmap_isolation(void *arg)
 
     circ2 = origin_circuit_new();
     circ2->base_.purpose = CIRCUIT_PURPOSE_S_ESTABLISH_INTRO;
+    circ3 = or_circuit_new(0, NULL);
+    circ3->base_.purpose = CIRCUIT_PURPOSE_INTRO_POINT;
+    circ4 = origin_circuit_new();
+    circ4->base_.purpose = CIRCUIT_PURPOSE_S_ESTABLISH_INTRO;
 
     /* Register circ2 with tok2 as service-side intro v2 circ */
     hs_circuitmap_register_intro_circ_v2_service_side(circ2, tok2);
+    /* Register circ3 with tok2 again but for different purpose */
+    hs_circuitmap_register_intro_circ_v2_relay_side(circ3, tok2);
+    /* Register circ4 with tok2: it should override circ2 */
+    hs_circuitmap_register_intro_circ_v2_service_side(circ4, tok2);
 
     /* check that relay-side getters don't work */
     tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_rend_circ_relay_side(tok2));
-    tt_ptr_op(NULL, OP_EQ, hs_circuitmap_get_intro_circ_v2_relay_side(tok2));
 
-    /* Check that the right getter works */
-    tt_ptr_op(circ2, OP_EQ, hs_circuitmap_get_intro_circ_v2_service_side(tok2));
+    /* Check that the getter returns circ4; the last circuit registered with
+     * that token. */
+    tt_ptr_op(circ4, OP_EQ, hs_circuitmap_get_intro_circ_v2_service_side(tok2));
   }
 
  done:
@@ -424,7 +434,12 @@ test_hs_circuitmap_isolation(void *arg)
     circuit_free(TO_CIRCUIT(circ1));
   if (circ2)
     circuit_free(TO_CIRCUIT(circ2));
+  if (circ3)
+    circuit_free(TO_CIRCUIT(circ3));
+  if (circ4)
+    circuit_free(TO_CIRCUIT(circ4));
 }
+
 
 struct testcase_t circuitlist_tests[] = {
   { "maps", test_clist_maps, TT_FORK, NULL, NULL },
