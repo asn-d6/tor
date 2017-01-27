@@ -418,6 +418,11 @@ test_hs_circuitmap_isolation(void *arg)
     hs_circuitmap_register_intro_circ_v2_service_side(circ2, tok2);
     /* Register circ3 with tok2 again but for different purpose */
     hs_circuitmap_register_intro_circ_v2_relay_side(circ3, tok2);
+
+    /* Check that the getters work */
+    tt_ptr_op(circ2, OP_EQ, hs_circuitmap_get_intro_circ_v2_service_side(tok2));
+    tt_ptr_op(circ3, OP_EQ, hs_circuitmap_get_intro_circ_v2_relay_side(tok2));
+
     /* Register circ4 with tok2: it should override circ2 */
     hs_circuitmap_register_intro_circ_v2_service_side(circ4, tok2);
 
