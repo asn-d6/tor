@@ -10,6 +10,7 @@
 
 #include "or.h"
 #include "circpathbias.h"
+#include "circuitbuild.h"
 #include "circuitlist.h"
 #include "config.h"
 #include "networkstatus.h"
@@ -18,12 +19,16 @@
 #include "rendservice.h"
 #include "router.h"
 #include "routerkeys.h"
+#include "routerlist.h"
 
 #include "hs_common.h"
 #include "hs_config.h"
+#include "hs_descriptor.h"
 #include "hs_intropoint.h"
 #include "hs_service.h"
 
+/* Trunnel */
+#include "ed25519_cert.h"
 #include "hs/cell_establish_intro.h"
 #include "hs/cell_common.h"
 
@@ -35,6 +40,19 @@
     HT_FOREACH(var##_iter, hs_service_ht, hs_service_map) {  \
       var = *var##_iter;
 #define FOR_EACH_SERVICE_END } STMT_END ;
+
+/* Helper macro. Iterate over both current and previous descriptor of a
+ * service. The var is the name of the descriptor pointer. This macro skips
+ * any descriptor object of the service that is NULL. */
+#define FOR_EACH_DESCRIPTOR_BEGIN(service, var)                  \
+  STMT_BEGIN                                                     \
+    hs_service_descriptor_t *var;                                \
+    for (int var ## _loop_idx = 0; var ## _loop_idx < 2;         \
+         ++var ## _loop_idx) {                                   \
+      (var ## _loop_idx == 0) ? (var = service->desc_current) :  \
+                                (var = service->desc_next);      \
+      if (var == NULL) continue;
+#define FOR_EACH_DESCRIPTOR_END } STMT_END ;
 
 /* Onion service directory file names. */
 static const char *fname_keyfile_prefix = "hs_ed25519";
@@ -203,6 +221,90 @@ service_free_all(void)
   }
 }
 
+/* Free a given service intro point object. */
+static void
+service_intro_point_free(hs_service_intro_point_t *ip)
+{
+  if (!ip) {
+    return;
+  }
+  memwipe(&ip->auth_key_kp, 0, sizeof(ip->auth_key_kp));
+  memwipe(&ip->enc_key_kp, 0, sizeof(ip->enc_key_kp));
+  crypto_pk_free(ip->legacy_key);
+  replaycache_free(ip->replay_cache);
+  hs_intro_free_content(&ip->base);
+  tor_free(ip);
+}
+
+/* Helper: free an hs_service_intro_point_t object. This function is used by
+ * digest256map_free() which requires a void * pointer. */
+static void
+service_intro_point_free_(void *obj)
+{
+  service_intro_point_free(obj);
+}
+
+/* Return a newly allocated service intro point and fully initialized
+ * including generating the authentication key. */
+static hs_service_intro_point_t *
+service_intro_point_new(void)
+{
+  hs_service_intro_point_t *ip = tor_malloc_zero(sizeof(*ip));
+  /* We'll create the key material. No need for extra strong, those are short
+   * term keys. */
+  ed25519_keypair_generate(&ip->auth_key_kp, 0);
+
+  /* XXX: These will be controlled by consensus params. (#20961) */
+  ip->introduce2_max =
+    crypto_rand_int_range(INTRO_POINT_MIN_LIFETIME_INTRODUCTIONS,
+                          INTRO_POINT_MAX_LIFETIME_INTRODUCTIONS);
+  ip->time_to_expire = time(NULL) +
+    crypto_rand_int_range(INTRO_POINT_LIFETIME_MIN_SECONDS,
+                          INTRO_POINT_LIFETIME_MAX_SECONDS);
+  ip->replay_cache = replaycache_new(0, 0);
+
+  /* Initialize the base object. We don't need the certificate object. */
+  ip->base.link_specifiers = smartlist_new();
+  return ip;
+}
+
+/* Add the given intro point object to the given intro point map. The intro
+ * point MUST have its RSA encryption key set if this is a legacy type or the
+ * authentication key set otherwise. */
+static void
+service_intro_point_add(digest256map_t *map, hs_service_intro_point_t *ip)
+{
+  uint8_t key[DIGEST256_LEN] = {0};
+
+  tor_assert(map);
+  tor_assert(ip);
+
+  memcpy(key, ip->auth_key_kp.pubkey.pubkey, sizeof(key));
+  digest256map_set(map, key, ip);
+}
+
+/* Given a service intro point, return the node_t associated to it. This can
+ * return NULL if the given intro point has no legacy ID or if the node can't
+ * be found in the consensus. */
+static const node_t *
+get_node_from_intro_point(const hs_service_intro_point_t *ip)
+{
+  const node_t *node = NULL;
+
+  tor_assert(ip);
+
+  SMARTLIST_FOREACH_BEGIN(ip->base.link_specifiers,
+                          hs_desc_link_specifier_t *, ls) {
+    if (ls->type != LS_LEGACY_ID) {
+      continue;
+    }
+    node = node_get_by_id((const char *) ls->u.legacy_id);
+    break;
+  } SMARTLIST_FOREACH_END(ls);
+
+  return node;
+}
+
 /* Close all rendezvous circuits for the given service. */
 static void
 close_service_rp_circuits(hs_service_t *service)
@@ -248,12 +350,9 @@ close_service_intro_circuits(hs_service_t *service)
 {
   tor_assert(service);
 
-  if (service->desc_current) {
-    close_intro_circuits(&service->desc_current->intro_points);
-  }
-  if (service->desc_next) {
-    close_intro_circuits(&service->desc_next->intro_points);
-  }
+  FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
+    close_intro_circuits(&desc->intro_points);
+  } FOR_EACH_DESCRIPTOR_END;
 }
 
 /* Close any circuits related to the given service. */
@@ -283,7 +382,8 @@ move_descriptor_intro_points(hs_service_descriptor_t *src,
   tor_assert(src);
   tor_assert(dst);
 
-  /* XXX: Free dst introduction points. */
+  digest256map_free(dst->intro_points.current, service_intro_point_free_);
+  digest256map_free(dst->intro_points.expiring, service_intro_point_free_);
   dst->intro_points.current = src->intro_points.current;
   dst->intro_points.expiring = src->intro_points.expiring;
   /* Nullify the source. */
@@ -299,7 +399,6 @@ move_intro_points(hs_service_t *src, hs_service_t *dst)
   tor_assert(src);
   tor_assert(dst);
 
-  /* Cleanup destination. */
   if (src->desc_current && dst->desc_current) {
     move_descriptor_intro_points(src->desc_current, dst->desc_current);
   }
@@ -353,7 +452,6 @@ static void
 register_all_services(void)
 {
   struct hs_service_ht *new_service_map;
-  hs_service_t *s, **iter;
 
   tor_assert(hs_service_staging_list);
 
@@ -373,6 +471,8 @@ register_all_services(void)
   move_ephemeral_services(hs_service_map, new_service_map);
 
   SMARTLIST_FOREACH_BEGIN(hs_service_staging_list, hs_service_t *, snew) {
+    hs_service_t *s;
+
     /* Check if that service is already in our global map and if so, we'll
      * transfer the intro points to it. */
     s = find_service(hs_service_map, &snew->keys.identity_pk);
@@ -400,9 +500,9 @@ register_all_services(void)
 
   /* Close any circuits associated with the non surviving services. Every
    * service in the current global map are roaming. */
-  HT_FOREACH(iter, hs_service_ht, hs_service_map) {
-    close_service_circuits(*iter);
-  }
+  FOR_EACH_SERVICE_BEGIN(service) {
+    close_service_circuits(service);
+  } FOR_EACH_SERVICE_END;
 
   /* Time to make the switch. We'll clear the staging list because its content
    * has now changed ownership to the map. */
@@ -517,13 +617,701 @@ load_service_keys(hs_service_t *service)
   return ret;
 }
 
+/* Free a given service descriptor object and all key material is wiped. */
+static void
+service_descriptor_free(hs_service_descriptor_t *desc)
+{
+  if (!desc) {
+    return;
+  }
+  hs_descriptor_free(desc->desc);
+  memwipe(&desc->signing_kp, 0, sizeof(desc->signing_kp));
+  memwipe(&desc->blinded_kp, 0, sizeof(desc->blinded_kp));
+  /* Cleanup all intro points. */
+  digest256map_free(desc->intro_points.current, service_intro_point_free_);
+  digest256map_free(desc->intro_points.expiring, service_intro_point_free_);
+  tor_free(desc);
+}
+
+/* Return a newly allocated service descriptor object. */
+static hs_service_descriptor_t *
+service_descriptor_new(void)
+{
+  hs_service_descriptor_t *sdesc = tor_malloc_zero(sizeof(*sdesc));
+  sdesc->desc = tor_malloc_zero(sizeof(hs_descriptor_t));
+  /* Initialize the intro points map. */
+  sdesc->intro_points.current = digest256map_new();
+  sdesc->intro_points.expiring = digest256map_new();
+  return sdesc;
+}
+
+#if 0
+/* Copy the descriptor link specifier object from src to dst. */
+static void
+link_specifier_copy(hs_desc_link_specifier_t *dst,
+                    const hs_desc_link_specifier_t *src)
+{
+  tor_assert(dst);
+  tor_assert(src);
+  memcpy(dst, src, sizeof(hs_desc_link_specifier_t));
+}
+
+/* Using the given descriptor from the given service, build the descriptor
+ * intro point list so we can then encode the descriptor for publication. This
+ * function does not pick intro points, they have to be in the descriptor
+ * current map. Cryptographic material (keys) must be initialized in the
+ * descriptor for this function to make sense. */
+static void
+build_desc_intro_points(const hs_service_t *service,
+                        hs_service_descriptor_t *desc, time_t now)
+{
+  const ed25519_public_key_t *signing_key;
+  hs_desc_encrypted_data_t *encrypted;
+
+  tor_assert(service);
+  tor_assert(desc);
+
+  /* Ease our life. */
+  encrypted = &desc->desc->encrypted_data;
+  signing_key = &desc->signing_kp.pubkey;
+
+  DIGEST256MAP_FOREACH(desc->intro_points.current, key,
+                       hs_service_intro_point_t *, ip) {
+    hs_desc_intro_point_t *desc_ip = tor_malloc_zero(sizeof(*desc_ip));
+
+    /* Key and certificate material. */
+    desc_ip->auth_key_cert = tor_cert_create(&desc->signing_kp,
+                                 CERT_TYPE_AUTH_HS_IP_KEY,
+                                 &ip->auth_key_kp.pubkey,
+                                 now, HS_DESC_CERT_LIFETIME,
+                                 CERT_FLAG_INCLUDE_SIGNING_KEY);
+    if (desc_ip->auth_key_cert == NULL) {
+      log_warn(LD_REND, "Unable to create intro point auth-key certificate "
+                        "for service %s",
+               safe_str_client(service->onion_address));
+      tor_free(desc_ip);
+      continue;
+    }
+    /* Copy link specifier. */
+    desc_ip->link_specifiers = smartlist_new();
+    SMARTLIST_FOREACH_BEGIN(ip->base.link_specifiers,
+                            hs_desc_link_specifier_t *, ls) {
+      hs_desc_link_specifier_t *dup = tor_malloc_zero(sizeof(*dup));
+      link_specifier_copy(dup, ls);
+      smartlist_add(desc_ip->link_specifiers, dup);
+    } SMARTLIST_FOREACH_END(ls);
+
+    /* Setup the encryption key and certificate. */
+    if (ip->base.is_only_legacy) {
+      desc_ip->enc_key_type = HS_DESC_KEY_TYPE_LEGACY;
+      desc_ip->enc_key.legacy = crypto_pk_dup_key(ip->enc_key.legacy);
+      /* Create cross certification cert. */
+      ssize_t cert_len = tor_make_rsa_ed25519_crosscert(
+                                      signing_key, ip->enc_key.legacy,
+                                      now + HS_DESC_CERT_LIFETIME,
+                                      &desc_ip->enc_key_cert.legacy.encoded);
+      if (cert_len < 0) {
+        log_warn(LD_REND, "Unable to create encryption key legacy cross "
+                          "certiciate for service %s",
+                 safe_str_client(service->onion_address));
+        continue;
+      }
+      desc_ip->enc_key_cert.legacy.len = cert_len;
+    } else {
+      ed25519_public_key_t ed25519_pubkey;
+      tor_cert_t *cross_cert;
+
+      /* Use the public curve25519 key. */
+      desc_ip->enc_key_type = HS_DESC_KEY_TYPE_CURVE25519;
+      memcpy(&desc_ip->enc_key.curve25519, &ip->enc_key_kp.pubkey,
+             sizeof(desc_ip->enc_key.curve25519));
+      /* The following can't fail. */
+      ed25519_public_key_from_curve25519_public_key(&ed25519_pubkey,
+                                                    &ip->enc_key_kp.pubkey,
+                                                    0);
+      cross_cert = tor_cert_create(&desc->signing_kp,
+                                   CERT_TYPE_CROSS_HS_IP_KEYS,
+                                   &ed25519_pubkey, now,
+                                   HS_DESC_CERT_LIFETIME,
+                                   CERT_FLAG_INCLUDE_SIGNING_KEY);
+      if (cross_cert == NULL) {
+        log_warn(LD_REND, "Unable to create encryption key curve25519 cross "
+                          "certiciate for service %s",
+                 safe_str_client(service->onion_address));
+        continue;
+      }
+      desc_ip->enc_key_cert.curve25519 = cross_cert;
+    }
+
+    /* We have a valid descriptor intro point. Add it to the list. */
+    smartlist_add(encrypted->intro_points, desc_ip);
+  } DIGEST256MAP_FOREACH_END;
+}
+
+#endif /* build_desc_intro_points is disabled because not used */
+
+/* Populate the descriptor encrypted section fomr the given service object.
+ * This will generate a valid list of introduction points that can be used
+ * after for circuit creation. Return 0 on success else -1 on error. */
+static int
+build_service_desc_encrypted(const hs_service_t *service,
+                             hs_service_descriptor_t *desc)
+{
+  hs_desc_encrypted_data_t *encrypted;
+
+  tor_assert(service);
+  tor_assert(desc);
+
+  encrypted = &desc->desc->encrypted_data;
+
+  encrypted->create2_ntor = 1;
+  encrypted->single_onion_service = service->config.is_single_onion;
+
+  /* Setup introduction points from what we have in the service. */
+  if (encrypted->intro_points == NULL) {
+    encrypted->intro_points = smartlist_new();
+  }
+  /* We do NOT build introduction point yet, we only do that once the circuit
+   * have been opened. Until we have the right number of introduction points,
+   * we do not encode anything in the descriptor. */
+
+  /* XXX: Support client authorization (#20700). */
+  encrypted->intro_auth_types = NULL;
+  return 0;
+}
+
+/* Populare the descriptor plaintext section from the given service object.
+ * The caller must make sure that the keys in the descriptors are valid that
+ * is are non-zero. Return 0 on success else -1 on error. */
+static int
+build_service_desc_plaintext(const hs_service_t *service,
+                             hs_service_descriptor_t *desc, time_t now)
+{
+  int ret = -1;
+  hs_desc_plaintext_data_t *plaintext;
+
+  tor_assert(service);
+  tor_assert(desc);
+  /* XXX: Use a "assert_desc_ok()" ? */
+  tor_assert(!tor_mem_is_zero((char *) &desc->blinded_kp,
+                              sizeof(desc->blinded_kp)));
+  tor_assert(!tor_mem_is_zero((char *) &desc->signing_kp,
+                              sizeof(desc->signing_kp)));
+
+  plaintext = &desc->desc->plaintext_data;
+
+  plaintext->version = service->version;
+  plaintext->lifetime_sec = HS_DESC_MAX_LIFETIME;
+  plaintext->signing_key_cert =
+    tor_cert_create(&desc->blinded_kp, CERT_TYPE_SIGNING_HS_DESC,
+                    &desc->signing_kp.pubkey, now, HS_DESC_CERT_LIFETIME,
+                    CERT_FLAG_INCLUDE_SIGNING_KEY);
+  if (plaintext->signing_key_cert == NULL) {
+    log_warn(LD_REND, "Unable to create descriptor signing certificate for "
+                      "service %s",
+             safe_str_client(service->onion_address));
+    goto end;
+  }
+  /* Copy public key material to go in the descriptor. */
+  ed25519_pubkey_copy(&plaintext->signing_pubkey, &desc->signing_kp.pubkey);
+  ed25519_pubkey_copy(&plaintext->blinded_pubkey, &desc->blinded_kp.pubkey);
+  /* Success. */
+  ret = 0;
+
+ end:
+  return ret;
+}
+
+/* For the given service and descriptor object, create the key material which
+ * is the blinded keypair and the descriptor signing keypair. Return 0 on
+ * success else -1 on error where the generated keys MUST be ignored. */
+static int
+build_service_desc_keys(const hs_service_t *service,
+                        hs_service_descriptor_t *desc,
+                        uint64_t time_period_num)
+{
+  int ret = 0;
+  ed25519_keypair_t kp;
+
+  tor_assert(desc);
+  tor_assert(!tor_mem_is_zero((char *) &service->keys.identity_pk,
+             ED25519_PUBKEY_LEN));
+
+  /* XXX: Support offline key feature. */
+
+  /* Copy the identity keys to the keypair so we can use it to create the
+   * blinded key. */
+  memcpy(&kp.pubkey, &service->keys.identity_pk, sizeof(kp.pubkey));
+  memcpy(&kp.seckey, &service->keys.identity_sk, sizeof(kp.seckey));
+  /* Build blinded keypair for this time period. */
+  hs_build_blinded_keypair(&kp, NULL, 0, time_period_num, &desc->blinded_kp);
+  /* Let's not keep too much traces of our keys in memory. */
+  memwipe(&kp, 0, sizeof(kp));
+
+  /* No need for extra strong, this is a temporary key only for this
+   * descriptor. Nothing long term. */
+  if (ed25519_keypair_generate(&desc->signing_kp, 0) < 0) {
+    log_warn(LD_REND, "Can't generate descriptor signing keypair for "
+                      "service %s",
+             safe_str_client(service->onion_address));
+    ret = -1;
+  }
+
+  return ret;
+}
+
+/* Given a service and the current time, build a descriptor for the service.
+ * This function does not pick introduction point, this needs to be done by
+ * the update function. On success, desc_out will point to the newly allocated
+ * descriptor object.
+ *
+ * This can error if we are unable to create keys or certificate. */
+static void
+build_service_descriptor(hs_service_t *service, time_t now,
+                         uint64_t time_period_num,
+                         hs_service_descriptor_t **desc_out)
+{
+  char *encoded_desc;
+  hs_service_descriptor_t *desc;
+
+  tor_assert(service);
+  tor_assert(desc_out);
+
+  desc = service_descriptor_new();
+
+  /* Create the needed keys so we can setup the descriptor content. */
+  if (build_service_desc_keys(service, desc, time_period_num) < 0) {
+    goto err;
+  }
+  /* Setup plaintext descriptor content. */
+  if (build_service_desc_plaintext(service, desc, now) < 0) {
+    goto err;
+  }
+  /* Setup encrypted descriptor content. */
+  if (build_service_desc_encrypted(service, desc) < 0) {
+    goto err;
+  }
+
+  /* Let's make sure that we've created a descriptor that can actually be
+   * encoded properly. This function also checks if the encoded output is
+   * decodable after. */
+  if (BUG(hs_desc_encode_descriptor(desc->desc, &desc->signing_kp,
+                                    &encoded_desc) < 0)) {
+    goto err;
+  }
+  tor_free(encoded_desc);
+
+  /* Assign newly built descriptor to the next slot. */
+  *desc_out = desc;
+  return;
+
+ err:
+  service_descriptor_free(desc);
+}
+
+/* Build descriptors for each service if needed. There are conditions to build
+ * a descriptor which are details in the function. */
+static void
+build_all_descriptors(time_t now)
+{
+  FOR_EACH_SERVICE_BEGIN(service) {
+    if (service->desc_current == NULL) {
+      /* This means we just booted up because else this descriptor will never
+       * be NULL as it should always point to the descriptor that was in
+       * desc_next after rotation. */
+      build_service_descriptor(service, now, hs_get_time_period_num(now),
+                               &service->desc_current);
+    }
+    /* A next descriptor to NULL indicate that we need to build a fresh one
+     * for the _next_ time period since it means we just booted or we just
+     * rotated our descriptors and thus we are in the overlap period starting
+     * 12h before the next time period starts. */
+    if (service->desc_next == NULL) {
+      build_service_descriptor(service, now, hs_get_next_time_period_num(now),
+                               &service->desc_next);
+    }
+  } FOR_EACH_DESCRIPTOR_END;
+}
+
+/* Randomly pick a node to become an introduction point but not present in the
+ * given exclude_nodes list. The chosen node is put in the exclude list
+ * regardless of success or not because in case of failure, the node is simply
+ * unsusable from that point on. If direct_conn is set, try to pick a node
+ * that our local firewall/policy allows to directly connect to and if not,
+ * fallback to a normal 3-hop node. Return a newly allocated service intro
+ * point ready to be used for encoding. NULL on error. */
+static hs_service_intro_point_t *
+pick_intro_point(unsigned int direct_conn, smartlist_t *exclude_nodes)
+{
+  const node_t *node;
+  extend_info_t *info = NULL;
+  hs_service_intro_point_t *ip = NULL;
+  hs_desc_link_specifier_t *ls;
+  /* Normal 3-hop introduction point flags. */
+  router_crn_flags_t flags = CRN_NEED_UPTIME | CRN_NEED_DESC;
+  /* Single onion flags. */
+  router_crn_flags_t direct_flags = flags | CRN_PREF_ADDR | CRN_DIRECT_CONN;
+
+  node = router_choose_random_node(exclude_nodes, get_options()->ExcludeNodes,
+                                   direct_conn ? direct_flags : flags);
+  if (node == NULL && direct_conn) {
+    /* Unable to find a node for direct connection, let's fall back to a
+     * normal 3-hop node. */
+    node = router_choose_random_node(exclude_nodes,
+                                     get_options()->ExcludeNodes, flags);
+  }
+  if (!node) {
+    log_warn(LD_REND, "Unable to find a suitable node to be an "
+             "introduction point.");
+    goto err;
+  }
+
+  /* We have a suitable node, add it to the exclude list. We do this *before*
+   * we can validate the extend information because even in case of failure,
+   * we don't want to use that node anymore. */
+  smartlist_add(exclude_nodes, (void *) node);
+
+  /* We do this to ease our life but also this call makes appropriate checks
+   * of the node object such as validating ntor support for instance. */
+  info = extend_info_from_node(node, direct_conn);
+  if (BUG(info == NULL)) {
+    goto err;
+  }
+  /* Create our objects and populate them with the node info. */
+  ip = service_intro_point_new();
+
+  /* Generate the encryption key for this intro point. */
+  curve25519_keypair_generate(&ip->enc_key_kp, 0);
+  /* Figure out if this chosen node supports v3 or is legacy only. */
+  if (node->rs && !node->rs->supports_ed25519_hs_intro) {
+    /* Legacy mode that is doesn't support v3+ with ed25519 auth key. */
+    ip->legacy_key = crypto_pk_new();
+    if (crypto_pk_generate_key(ip->legacy_key) < 0) {
+      goto err;
+    }
+    ip->base.is_only_legacy = 1;
+  }
+
+  /* We'll try to add all link specifier. Legacy, IPv4 and ed25519 are
+   * mandatory. */
+  ls = hs_desc_link_specifier_new(info, LS_IPV4);
+  /* It is impossible to have an extend info object without a v4. */
+  tor_assert(ls);
+  smartlist_add(ip->base.link_specifiers, ls);
+  ls = hs_desc_link_specifier_new(info, LS_LEGACY_ID);
+  /* It is impossible to have an extend info object without an identity
+   * digest. */
+  tor_assert(ls);
+  smartlist_add(ip->base.link_specifiers, ls);
+  ls = hs_desc_link_specifier_new(info, LS_ED25519_ID);
+  /* It is impossible to have an extend info object without an ed25519
+   * identity key. */
+  tor_assert(ls);
+  smartlist_add(ip->base.link_specifiers, ls);
+  /* IPv6 is optional. */
+  ls = hs_desc_link_specifier_new(info, LS_IPV6);
+  if (ls) {
+    smartlist_add(ip->base.link_specifiers, ls);
+  }
+
+  extend_info_free(info);
+  return ip;
+ err:
+  service_intro_point_free(ip);
+  extend_info_free(info);
+  return NULL;
+}
+
+/* For a given descriptor from the given service, pick any needed intro points
+ * and update the current map with those newly picked intro points. Return the
+ * number node that might have been added to the descriptor current map. */
+static unsigned int
+pick_needed_intro_points(hs_service_t *service,
+                         hs_service_descriptor_t *desc, time_t now)
+{
+  int i = 0, num_needed_ip;
+  smartlist_t *exclude_nodes = smartlist_new();
+
+  tor_assert(service);
+  tor_assert(desc);
+
+  /* Compute how many intro points we actually need to open. */
+  num_needed_ip = service->config.num_intro_points -
+                  digest256map_size(desc->intro_points.current);
+  if (BUG(num_needed_ip < 0)) {
+    /* Let's not make tor freak out here and just skip this. */
+    goto done;
+  }
+  /* We want to end up with config.num_intro_points intro points, but if we
+   * have no intro points at all (chances are they all cycled or we are
+   * starting up), we launch NUM_INTRO_POINTS_EXTRA extra circuits and use the
+   * first config.num_intro_points that complete. See proposal #155, section 4
+   * for the rationale of this which is purely for performance.
+   *
+   * The ones after the first config.num_intro_points will be converted to
+   * 'General' internal circuits and then we'll drop them from the list of
+   * intro points. */
+  if (digest256map_size(desc->intro_points.current) == 0) {
+    /* XXX: Should a consensus param control that value? */
+    num_needed_ip += NUM_INTRO_POINTS_EXTRA;
+  }
+
+  /* Build an exclude list of nodes of our intro point(s). The expiring intro
+   * points are OK to pick again because this is afterall a concept of round
+   * robin so they are considered valid nodes to pick again. */
+  DIGEST256MAP_FOREACH(desc->intro_points.current, key,
+                       hs_service_intro_point_t *, ip) {
+    smartlist_add(exclude_nodes, (void *) get_node_from_intro_point(ip));
+  } DIGEST256MAP_FOREACH_END;
+
+  for (i = 0; i < num_needed_ip; i++) {
+    hs_service_intro_point_t *ip;
+
+    /* This function will add the picked intro point node to the exclude nodes
+     * list so we don't pick the same one at the next iteration. */
+    ip = pick_intro_point(service->config.is_single_onion, exclude_nodes);
+    if (ip == NULL) {
+      /* If we end up unable to pick an introduction point it is because we
+       * can't find suitable node and calling this again is highly unlikely to
+       * give us a valid node all of the sudden. */
+      goto done;
+    }
+    /* XXX: These will be controlled by consensus params. (#20961) */
+    ip->time_to_expire = now +
+      crypto_rand_int_range(INTRO_POINT_LIFETIME_MIN_SECONDS,
+                            INTRO_POINT_LIFETIME_MAX_SECONDS);
+
+    /* Valid intro point object, add it to the descriptor current map. */
+    service_intro_point_add(desc->intro_points.current, ip);
+  }
+
+  /* Success. */
+ done:
+  /* We don't have ownership of the node_t object in this list. */
+  smartlist_free(exclude_nodes);
+  return i;
+}
+
+/* Update the given descriptor from the given service. The possible update
+ * actions includes:
+ *    - Picking missing intro points if needed.
+ *    - Incrementing the revision counter if needed.
+ */
+static void
+update_service_descriptor(hs_service_t *service,
+                          hs_service_descriptor_t *desc, time_t now)
+{
+  tor_assert(service);
+  tor_assert(desc);
+  tor_assert(desc->desc);
+
+  /* Pick missing introduction point. The cast is to avoid gcc to freak out
+   * with an unsigned comparaison. */
+  if ((unsigned int) digest256map_size(desc->intro_points.current) <
+      service->config.num_intro_points) {
+    unsigned int num = pick_needed_intro_points(service, desc, now);
+    if (num != 0) {
+      log_info(LD_REND, "Service %s just picked %u intro points. "
+                        "Launching ESTABLISH_INTRO circuit shortly.",
+               safe_str_client(service->onion_address), num);
+      /* We'll build those introduction point into the descriptor once we have
+       * confirmation that the circuits are opened and ready. */
+    }
+  }
+
+  /* If we are about to upload this descriptor, update the revision counter to
+   * reflect that it has been updated and thus should be considered new by the
+   * hidden service directory. */
+  if (desc->next_upload_time <= now) {
+    desc->desc->plaintext_data.revision_counter += 1;
+  }
+}
+
+/* Update descriptors for each service if needed. */
+static void
+update_all_descriptors(time_t now)
+{
+  FOR_EACH_SERVICE_BEGIN(service) {
+    /* We'll try to update each descriptor that is if certain conditions apply
+     * in order for the descriptor to be updated. */
+    FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
+      update_service_descriptor(service, desc, now);
+    } FOR_EACH_DESCRIPTOR_END;
+  } FOR_EACH_SERVICE_END;
+}
+
+/* Return true iff the given intro point has expired that is it has been used
+ * for too long or we've reached our max seen INTRODUCE2 cell. */
+static int
+intro_point_should_expire(const hs_service_intro_point_t *ip,
+                          time_t now)
+{
+  tor_assert(ip);
+
+  if (ip->introduce2_count >= ip->introduce2_max) {
+    goto expired;
+  }
+
+  if (ip->time_to_expire <= now) {
+    goto expired;
+  }
+
+  /* Not expiring. */
+  return 0;
+ expired:
+  return 1;
+}
+
+/* Go over the expiring map and remove any objects that don't have a circuit
+ * associated to it. */
+static void
+clean_expiring_intro_points(hs_service_intropoints_t *intro_points)
+{
+  tor_assert(intro_points);
+
+  DIGEST256MAP_FOREACH_MODIFY(intro_points->expiring, key,
+                              hs_service_intro_point_t *, ip) {
+    /* XXX: Need a different call for legacy IP. */
+    origin_circuit_t *ocirc =
+      hs_circuitmap_get_intro_circ_v3_service_side(
+                                      (ed25519_public_key_t *) key);
+    if (ocirc) {
+      /* Not yet officially closed so leave it be. */
+      continue;
+    }
+    MAP_DEL_CURRENT(key);
+    service_intro_point_free(ip);
+  } DIGEST256MAP_FOREACH_END;
+}
+
+/* Go over the current map and remove any invalid objects. The conditions for
+ * removal are:
+ *    If the circuit doesn't exists anymore:
+ *      - The node doesn't exists anymore (not in consensus)
+ *                          OR
+ *      - The intro point maximum circuit retry count has been reached.
+ *    Else if the circuit still exists:
+ *      - The intro point has expired for which we move it to the expiring
+ *        map and then close the circuit.
+ * The intro point object can be kept for retry if the circuit is dead. */
+static void
+clean_current_intro_points(hs_service_intropoints_t *intro_points,
+                           time_t now)
+{
+  tor_assert(intro_points);
+
+  /* Go over the current intro points we have, make sure they are still
+   * valid and remove any of them that aren't. */
+  DIGEST256MAP_FOREACH_MODIFY(intro_points->current, key,
+                              hs_service_intro_point_t *, ip) {
+    const node_t *node = get_node_from_intro_point(ip);
+    /* XXX: Need a different call for legacy IP. */
+    origin_circuit_t *ocirc =
+      hs_circuitmap_get_intro_circ_v3_service_side(
+                                      (ed25519_public_key_t *) key);
+    int has_expired = intro_point_should_expire(ip, now);
+
+    /* If we have no circuit, we might keep this intro point and retry to
+     * connect depending on certain conditions. */
+    if (ocirc == NULL) {
+      if (has_expired || node == NULL ||
+          ip->circuit_retries >= MAX_INTRO_POINT_CIRCUIT_RETRIES) {
+        MAP_DEL_CURRENT(key);
+        service_intro_point_free(ip);
+        continue;
+      }
+      /* By keeping the object in the current map, we'll retry later. */
+      ip->circuit_established = 0;
+    } else {
+      /* We do have a valid circuit so only remove expiring intro points. */
+      if (has_expired) {
+        MAP_DEL_CURRENT(key);
+        service_intro_point_add(intro_points->expiring, ip);
+        circuit_mark_for_close(TO_CIRCUIT(ocirc), END_CIRC_REASON_FINISHED);
+        service_intro_point_free(ip);
+        continue;
+      }
+    }
+  } DIGEST256MAP_FOREACH_END;
+}
+
+/* For a given service, cleanup both current and expiring intro point for
+ * each descriptor. */
+static void
+cleanup_intro_points(hs_service_t *service, time_t now)
+{
+  tor_assert(service);
+
+  /* For both descriptors, cleanup the intro points. */
+  FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
+    /* Cleanup current intro points based on certain conditions. See function
+     * comments for the details. */
+    clean_current_intro_points(&desc->intro_points, now);
+
+    /* Cleanup expiring intro points so we don't keep them at vitam eternam. We
+     * do that after the cleanup of the current intro points because some of
+     * them might have expired and thus moved to the expiring map. */
+    clean_expiring_intro_points(&desc->intro_points);
+  } FOR_EACH_DESCRIPTOR_END;
+}
+
+/* Rotate descriptors for each service if needed. If we are just entering
+ * the overlap period, rotate them that is point the previous descriptor to
+ * the current and cleanup the previous one. A non existing current
+ * descriptor will trigger a descriptor build for the next time period. */
+static void
+rotate_all_descriptors(time_t now)
+{
+  FOR_EACH_SERVICE_BEGIN(service) {
+    /* We are _not_ in the overlap period so skip rotation. */
+    if (!hs_overlap_mode_is_active(NULL, now)) {
+      service->state.in_overlap_period = 0;
+      continue;
+    }
+    /* We've entered the overlap period already so skip rotation. */
+    if (service->state.in_overlap_period) {
+      continue;
+    }
+    /* It's the first time the service encounters the overlap period so flag
+     * it in order to make sure we don't rotate at next check. */
+    service->state.in_overlap_period = 1;
+
+    /* Rotate the descriptors. Having no next descriptor will trigger a build
+     * for it using the next time period. */
+
+    if (service->desc_current) {
+      /* Close all IP circuits for the descriptor. */
+      close_intro_circuits(&service->desc_current->intro_points);
+      /* We don't need this one anymore, we won't serve any clients coming with
+       * this service descriptor. */
+      service_descriptor_free(service->desc_current);
+    }
+    /* The next one become the current one and emptying the next will trigger
+     * a descriptor creation for it. */
+    service->desc_current = service->desc_next;
+    service->desc_next = NULL;
+  } FOR_EACH_SERVICE_END;
+}
+
 /* Scheduled event run from the main loop. Make sure all our services are up
  * to date and ready for the other scheduled events. This includes looking at
  * the introduction points status and descriptor rotation time. */
 static void
 run_service_event(time_t now)
 {
-  (void) now;
+  /* Note that nothing here opens circuit(s) nor uploads descriptor(s). We are
+   * simply moving things around or removing uneeded elements. */
+
+  FOR_EACH_SERVICE_BEGIN(service) {
+    /* Cleanup invalid intro points from the service descriptors' set. This
+     * function can move intro points to the expiring map. */
+    cleanup_intro_points(service, now);
+
+    /* At this point, the service is now ready to go through the scheduled
+     * events guaranteeing a valid state. Intro points might be missing from
+     * the descriptors after the cleanup but the update/build process will
+     * make sure we pick those missing ones. */
+  } FOR_EACH_SERVICE_END;
 }
 
 /* Scheduled event run from the main loop. Make sure all descriptors are up to
@@ -532,14 +1320,23 @@ run_service_event(time_t now)
 static void
 run_build_descriptor_event(time_t now)
 {
-  (void) now;
   /* For v2 services, this step happens in the upload event. */
 
   /* Run v3+ events. */
-  FOR_EACH_SERVICE_BEGIN(service) {
-    /* XXX: Actually build descriptors. */
-    (void) service;
-  } FOR_EACH_SERVICE_END;
+  if (HT_SIZE(hs_service_map) > 0) {
+    /* We start by rotating the descriptors only if needed. */
+    rotate_all_descriptors(now);
+
+    /* Then, we'll try to build  new descriptors that we might need. The
+     * condition is that the next descriptor is non existing because it has
+     * been rotated or we just started up. */
+    build_all_descriptors(now);
+
+    /* Finally, we'll check if we should update the descriptors. Missing
+     * introduction points will be picked in this function which is useful for
+     * newly built descriptors. */
+    update_all_descriptors(now);
+  }
 }
 
 /* Scheduled event run from the main loop. Make sure we have all the circuits
@@ -547,8 +1344,6 @@ run_build_descriptor_event(time_t now)
 static void
 run_build_circuit_event(time_t now)
 {
-  (void) now;
-
   /* Make sure we can actually have enough information to build internal
    * circuits as required by services. */
   if (router_have_consensus_path() == CONSENSUS_PATH_UNKNOWN) {
@@ -557,11 +1352,14 @@ run_build_circuit_event(time_t now)
 
   /* Run v2 check. */
   if (num_rend_services() > 0) {
-    rend_consider_services_intro_points();
+    rend_consider_services_intro_points(now);
   }
+
   /* Run v3+ check. */
   FOR_EACH_SERVICE_BEGIN(service) {
     /* XXX: Check every service for validity of circuits. */
+    /* XXX: Make sure we have a retry period so we don't stress circuit
+     * creation. */
     (void) service;
   } FOR_EACH_SERVICE_END;
 }
@@ -667,27 +1465,10 @@ hs_service_free(hs_service_t *service)
     return;
   }
 
-  /* Free descriptors. */
-  if (service->desc_current) {
-    hs_descriptor_free(service->desc_current->desc);
-    /* Wipe keys. */
-    memwipe(&service->desc_current->signing_kp, 0,
-            sizeof(service->desc_current->signing_kp));
-    memwipe(&service->desc_current->blinded_kp, 0,
-            sizeof(service->desc_current->blinded_kp));
-    /* XXX: Free intro points. */
-    tor_free(service->desc_current);
-  }
-  if (service->desc_next) {
-    hs_descriptor_free(service->desc_next->desc);
-    /* Wipe keys. */
-    memwipe(&service->desc_next->signing_kp, 0,
-            sizeof(service->desc_next->signing_kp));
-    memwipe(&service->desc_next->blinded_kp, 0,
-            sizeof(service->desc_next->blinded_kp));
-    /* XXX: Free intro points. */
-    tor_free(service->desc_next);
-  }
+  /* Free descriptors. Go over both descriptor with this loop. */
+  FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
+    service_descriptor_free(desc);
+  } FOR_EACH_DESCRIPTOR_END;
 
   /* Free service configuration. */
   tor_free(service->config.directory_path);
