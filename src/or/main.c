@@ -1187,6 +1187,7 @@ CALLBACK(write_bridge_ns);
 CALLBACK(check_fw_helper_app);
 CALLBACK(heartbeat);
 CALLBACK(clean_consdiffmgr);
+CALLBACK(hs_service);
 
 #undef CALLBACK
 
@@ -1220,6 +1221,7 @@ static periodic_event_item_t periodic_events[] = {
   CALLBACK(check_fw_helper_app),
   CALLBACK(heartbeat),
   CALLBACK(clean_consdiffmgr),
+  CALLBACK(hs_service),
   END_OF_PERIODIC_EVENTS
 };
 #undef CALLBACK
@@ -1451,12 +1453,6 @@ run_scheduled_events(time_t now)
 
   /* 6. And remove any marked circuits... */
   circuit_close_all_marked();
-
-  /* 7. And upload service descriptors if necessary. */
-  if (have_completed_a_circuit() && !net_is_disabled()) {
-    rend_consider_services_upload(now);
-    rend_consider_descriptor_republication();
-  }
 
   /* 8. and blow away any connections that need to die. have to do this now,
    * because if we marked a conn for close and left its socket -1, then
@@ -2053,6 +2049,28 @@ clean_consdiffmgr_callback(time_t now, const or_options_t *options)
     consdiffmgr_cleanup();
   }
   return CDM_CLEAN_CALLBACK_INTERVAL;
+}
+
+/*
+ * Periodic callback: Run scheduled events for HS service. This is called
+ * every second.
+ */
+static int
+hs_service_callback(time_t now, const or_options_t *options)
+{
+  (void) options;
+
+  /* We need to at least be able to build circuits and that we actually have
+   * a working network. */
+  if (!have_completed_a_circuit() || net_is_disabled()) {
+    goto end;
+  }
+
+  hs_service_run_scheduled_events(now);
+
+ end:
+  /* Every 1 second. */
+  return 1;
 }
 
 /** Timer: used to invoke second_elapsed_callback() once per second. */
