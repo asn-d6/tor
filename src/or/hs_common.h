@@ -76,6 +76,22 @@
 #define HS_SERVICE_ADDR_LEN_BASE32 \
   (CEIL_DIV(HS_SERVICE_ADDR_LEN * 8, 5))
 
+/* The default HS time period length */
+#define HS_TIME_PERIOD_LENGTH_DEFAULT 1440 /* 1440 minutes == one day */
+/* The minimum time period length as seen in prop224 section [TIME-PERIODS] */
+#define HS_TIME_PERIOD_LENGTH_MIN 30 /* minutes */
+/* The minimum time period length as seen in prop224 section [TIME-PERIODS] */
+#define HS_TIME_PERIOD_LENGTH_MAX (60 * 24 * 10) /* 10 days or 14400 minutes */
+/* The time period rotation offset as seen in prop224 section [TIME-PERIODS] */
+#define HS_TIME_PERIOD_ROTATION_OFFSET (12 * 60) /* minutes */
+
+/* Keyblinding parameter construction is as follow:
+ *    "key-blind" || INT_8(period_num) || INT_8(start_period_sec) */
+#define HS_KEYBLIND_NONCE_PREFIX "key-blind"
+#define HS_KEYBLIND_NONCE_PREFIX_LEN (sizeof(HS_KEYBLIND_NONCE_PREFIX) - 1)
+#define HS_KEYBLIND_NONCE_LEN \
+  (HS_KEYBLIND_NONCE_PREFIX_LEN + sizeof(uint64_t) + sizeof(uint64_t))
+
 void hs_init(void);
 void hs_free_all(void);
 
@@ -87,6 +103,15 @@ char *hs_path_from_filename(const char *directory, const char *filename);
 void hs_build_address(const ed25519_public_key_t *key,
                               uint8_t version, char *addr_out);
 int hs_address_is_valid(const char *address);
+
+void hs_build_blinded_pubkey(const ed25519_public_key_t *pubkey,
+                             const uint8_t *secret, size_t secret_len,
+                             uint64_t time_period_num,
+                             ed25519_public_key_t *pubkey_out);
+void hs_build_blinded_keypair(const ed25519_keypair_t *kp,
+                              const uint8_t *secret, size_t secret_len,
+                              uint64_t time_period_num,
+                              ed25519_keypair_t *kp_out);
 
 void rend_data_free(rend_data_t *data);
 rend_data_t *rend_data_dup(const rend_data_t *data);
@@ -104,6 +129,7 @@ const char *rend_data_get_desc_id(const rend_data_t *rend_data,
 const uint8_t *rend_data_get_pk_digest(const rend_data_t *rend_data,
                                        size_t *len_out);
 
+uint64_t hs_get_time_period_num(time_t now);
 uint64_t hs_get_next_time_period_num(time_t now);
 
 #ifdef HS_COMMON_PRIVATE
@@ -111,7 +137,6 @@ uint64_t hs_get_next_time_period_num(time_t now);
 #ifdef TOR_UNIT_TESTS
 
 STATIC uint64_t get_time_period_length(void);
-STATIC uint64_t get_time_period_num(time_t now);
 
 #endif /* TOR_UNIT_TESTS */
 
