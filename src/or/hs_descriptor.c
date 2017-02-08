@@ -96,6 +96,15 @@ static token_rule_t hs_desc_v3_token_table[] = {
   END_OF_TABLE
 };
 
+/* Descriptor ruleset for the superencrypted section. */
+static token_rule_t hs_desc_superencrypted_v3_token_table[] = {
+  T1_START(str_desc_auth_type, R3_DESC_AUTH_TYPE, GE(1), NO_OBJ),
+  T1(str_desc_auth_key, R3_DESC_AUTH_KEY, GE(1), NO_OBJ),
+  T1N(str_desc_auth_client, R3_DESC_AUTH_CLIENT, GE(3), NO_OBJ),
+  T1(str_encrypted, R3_ENCRYPTED, NO_ARGS, NEED_OBJ),
+  END_OF_TABLE
+};
+
 /* Descriptor ruleset for the encrypted section. */
 static token_rule_t hs_desc_encrypted_v3_token_table[] = {
   T1_START(str_create2_formats, R3_CREATE2_FORMATS, CONCAT_ARGS, NO_OBJ),
@@ -1284,12 +1293,17 @@ encrypted_data_length_is_valid(size_t len)
   return 0;
 }
 
-/* Decrypt the encrypted section of the descriptor using the given descriptor
- * object desc. A newly allocated NUL terminated string is put in
- * decrypted_out. Return the length of decrypted_out on success else 0 is
- * returned and decrypted_out is set to NULL. */
+/** Decrypt an encrypted descriptor layer at <b>encrypted_blob</b> of size
+ *  <b>encrypted_blob_size</b>. Use the descriptor object <b>desc</b> to
+ *  generate the right decryption keys; set <b>decrypted_out</b> to the
+ *  plaintext. If <b>is_superencrypted_layer</b> is set, this is the outter
+ *  encrypted layer of the descriptor. */
 static size_t
-desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
+decrypt_desc_layer(const hs_descriptor_t *desc,
+                   const uint8_t *encrypted_blob,
+                   size_t encrypted_blob_size,
+                   int is_superencrypted_layer,
+                   char **decrypted_out)
 {
   uint8_t *decrypted = NULL;
   uint8_t secret_key[HS_DESC_ENCRYPTED_KEY_LEN], secret_iv[CIPHER_IV_LEN];
@@ -1299,27 +1313,24 @@ desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
 
   tor_assert(decrypted_out);
   tor_assert(desc);
-  tor_assert(desc->plaintext_data.superencrypted_blob);
+  tor_assert(encrypted_blob);
 
   /* Construction is as follow: SALT | ENCRYPTED_DATA | MAC */
-  if (!encrypted_data_length_is_valid(
-                desc->plaintext_data.superencrypted_blob_size)) {
+  if (!encrypted_data_length_is_valid(encrypted_blob_size)) {
     goto err;
   }
 
   /* Start of the blob thus the salt. */
-  salt = desc->plaintext_data.superencrypted_blob;
+  salt = encrypted_blob;
   /* Next is the encrypted data. */
-  encrypted = desc->plaintext_data.superencrypted_blob +
-    HS_DESC_ENCRYPTED_SALT_LEN;
-  encrypted_len = desc->plaintext_data.superencrypted_blob_size -
+  encrypted = encrypted_blob + HS_DESC_ENCRYPTED_SALT_LEN;
+  encrypted_len = encrypted_blob_size -
     (HS_DESC_ENCRYPTED_SALT_LEN + DIGEST256_LEN);
 
   /* At the very end is the MAC. Make sure it's of the right size. */
   {
     desc_mac = encrypted + encrypted_len;
-    size_t desc_mac_size = desc->plaintext_data.superencrypted_blob_size -
-                           (desc_mac - desc->plaintext_data.superencrypted_blob);
+    size_t desc_mac_size = encrypted_blob_size - (desc_mac - encrypted_blob);
     if (desc_mac_size != DIGEST256_LEN) {
       log_warn(LD_REND, "Service descriptor MAC length of encrypted data "
                         "is invalid (%lu, expected %u)",
@@ -1333,7 +1344,8 @@ desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
   build_secret_key_iv_mac(desc, salt, HS_DESC_ENCRYPTED_SALT_LEN,
                           secret_key, sizeof(secret_key),
                           secret_iv, sizeof(secret_iv),
-                          mac_key, sizeof(mac_key));
+                          mac_key, sizeof(mac_key),
+                          is_superencrypted_layer);
 
   /* Build MAC. */
   build_mac(mac_key, sizeof(mac_key), salt, HS_DESC_ENCRYPTED_SALT_LEN,
@@ -1363,7 +1375,7 @@ desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
   }
 
   {
-    /* Adjust length to remove NULL padding bytes */
+    /* Adjust length to remove NUL padding bytes */
     uint8_t *end = memchr(decrypted, 0, encrypted_len);
     result_len = encrypted_len;
     if (end) {
@@ -1387,6 +1399,150 @@ desc_decrypt_data_v3(const hs_descriptor_t *desc, char **decrypted_out)
   memwipe(secret_key, 0, sizeof(secret_key));
   memwipe(secret_iv, 0, sizeof(secret_iv));
   return result_len;
+}
+
+/* Basic validation that the superencrypted client auth portion of the
+ * descriptor is well-formed. Return True if so, otherwise return False. */
+static int
+superencrypted_auth_data_is_valid(smartlist_t *tokens)
+{
+  /* This is just basic validation for now. When we implement client auth, we
+     can refactor this function so that it actually parses and saves the
+     data. */
+
+  { /* verify desc auth type */
+    const directory_token_t *tok;
+    tok = find_by_keyword(tokens, R3_DESC_AUTH_TYPE);
+    tor_assert(tok->n_args >= 1);
+    if (strcmp(tok->args[0], "x25519")) {
+      return 0;
+    }
+  }
+
+  { /* verify desc auth key */
+    const directory_token_t *tok;
+    curve25519_public_key_t k;
+    tok = find_by_keyword(tokens, R3_DESC_AUTH_KEY);
+    tor_assert(tok->n_args >= 1);
+    if (curve25519_public_from_base64(&k, tok->args[0]) < 0) {
+      log_warn(LD_DIR, "Bogus desc auth key in HS desc");
+      return 0;
+    }
+  }
+
+  /* verify desc auth client items */
+  SMARTLIST_FOREACH_BEGIN(tokens, const directory_token_t *, tok) {
+    if (tok->tp == R3_DESC_AUTH_CLIENT) {
+      tor_assert(tok->n_args >= 3);
+    }
+  } SMARTLIST_FOREACH_END(tok);
+
+  return 1;
+}
+
+/* Parse <b>message</b>, the plaintext of the superencrypted portion of an HS
+ * descriptor. Set <b>encrypted_out</b> to the encrypted blob, and return its
+ * size */
+static size_t
+parse_superencrypted(char *message, size_t message_len,uint8_t **encrypted_out)
+{
+  memarea_t *area = NULL;
+  smartlist_t *tokens = NULL;
+
+  area = memarea_new();
+  tokens = smartlist_new();
+  if (tokenize_string(area, message, message + message_len, tokens,
+                      hs_desc_superencrypted_v3_token_table, 0) < 0) {
+    log_warn(LD_REND, "Superencrypted portion is not parseable");
+    goto err;
+  }
+
+  /* Do some rudimentary validation of the authentication data */
+  if (!superencrypted_auth_data_is_valid(tokens)) {
+    goto err;
+  }
+
+  /* Extract the encrypted data section. */
+  {
+    const directory_token_t *tok;
+    tok = find_by_keyword(tokens, R3_ENCRYPTED);
+    tor_assert(tok->object_body);
+    if (strcmp(tok->object_type, "MESSAGE") != 0) {
+      log_warn(LD_REND, "Desc superencrypted data section is invalid");
+      goto err;
+    }
+    /* Make sure the length of the encrypted blob is valid. */
+    if (!encrypted_data_length_is_valid(tok->object_size)) {
+      goto err;
+    }
+
+    /* Copy the encrypted blob to the descriptor object so we can handle it
+     * latter if needed. */
+    *encrypted_out = tor_memdup(tok->object_body, tok->object_size);
+    return tok->object_size;
+  }
+
+ err:
+  SMARTLIST_FOREACH(tokens, directory_token_t *, t, token_clear(t));
+  smartlist_free(tokens);
+  memarea_drop_all(area);
+
+  return 0;
+}
+
+/* Decrypt the superencrypted section of the descriptor using the given
+ * descriptor object <b>desc</b>. A newly allocated NUL terminated string is
+ * put in decrypted_out. Return the length of decrypted_out on success else 0
+ * is returned and decrypted_out is set to NULL. */
+static size_t
+desc_decrypt_all(const hs_descriptor_t *desc, char **decrypted_out)
+{
+  size_t  decrypted_len = 0;
+  size_t encrypted_len = 0;
+  size_t superencrypted_len = 0;
+  char *superencrypted_plaintext = NULL;
+  uint8_t *encrypted_blob = NULL;
+
+  /* 1. Decrypt middle layer of descriptor */
+  superencrypted_len = decrypt_desc_layer(desc,
+                                 desc->plaintext_data.superencrypted_blob,
+                                 desc->plaintext_data.superencrypted_blob_size,
+                                 1,
+                                 &superencrypted_plaintext);
+  if (!superencrypted_len) {
+    log_warn(LD_REND, "Decrypting superencrypted desc failed.");
+    goto err;
+  }
+  tor_assert(superencrypted_plaintext);
+
+  /* 2. parse superencrypted */
+  encrypted_len = parse_superencrypted(superencrypted_plaintext,
+                                       superencrypted_len,
+                                       &encrypted_blob);
+  if (!encrypted_len) {
+    log_warn(LD_REND, "Decrypting encrypted desc failed.");
+    goto err;
+  }
+  tor_assert(encrypted_blob);
+
+  /* 3. decrypt encrypted and set decrypted_out */
+  char *decrypted_desc;
+  decrypted_len = decrypt_desc_layer(desc,
+                                     encrypted_blob, encrypted_len,
+                                     0, &decrypted_desc);
+  if (!decrypted_len) {
+    log_warn(LD_REND, "Decrypting encrypted desc failed.");
+    goto err;
+  }
+  tor_assert(decrypted_desc);
+
+  *decrypted_out = decrypted_desc;
+
+ err:
+  tor_free(superencrypted_plaintext);
+  tor_free(encrypted_blob);
+
+  return decrypted_len;
 }
 
 /* Given the start of a section and the end of it, decode a single
@@ -1762,8 +1918,8 @@ desc_decode_plaintext_v3(smartlist_t *tokens,
  * desc_encrypted_out will be populated with the decoded data. Return 0 on
  * success else -1. */
 static int
-desc_decode_encrypted_v3(const hs_descriptor_t *desc,
-                         hs_desc_encrypted_data_t *desc_encrypted_out)
+desc_decode_v3(const hs_descriptor_t *desc,
+               hs_desc_encrypted_data_t *desc_encrypted_out)
 {
   int result = -1;
   char *message = NULL;
@@ -1775,10 +1931,9 @@ desc_decode_encrypted_v3(const hs_descriptor_t *desc,
   tor_assert(desc);
   tor_assert(desc_encrypted_out);
 
-  /* Decrypt the encrypted data that is located in the plaintext section in
-   * the descriptor as a blob of bytes. The following functions will use the
-   * keys found in the same section. */
-  message_len = desc_decrypt_data_v3(desc, &message);
+  /* Decrypt the superencrypted data that is located in the plaintext section
+   * in the descriptor as a blob of bytes. */
+  message_len = desc_decrypt_all(desc, &message);
   if (!message_len) {
     log_warn(LD_REND, "Service descriptor decryption failed.");
     goto err;
@@ -1866,7 +2021,7 @@ static int
       hs_desc_encrypted_data_t *desc_encrypted) =
 {
   /* v0 */ NULL, /* v1 */ NULL, /* v2 */ NULL,
-  desc_decode_encrypted_v3,
+  desc_decode_v3,
 };
 
 /* Decode the encrypted data section of the given descriptor and store the
