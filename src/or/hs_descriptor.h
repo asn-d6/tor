@@ -97,12 +97,27 @@ typedef struct hs_desc_intro_point_t {
   /* Keys are mutually exclusive thus the union. */
   union {
     /* Encryption key used to encrypt request to hidden service. */
-    curve25519_keypair_t curve25519;
+    curve25519_public_key_t curve25519;
 
     /* Backward compat: RSA 1024 encryption key for legacy purposes.
      * Mutually exclusive with enc_key. */
     crypto_pk_t *legacy;
   } enc_key;
+
+  /* Encryption key certiciate cross-certifying the descriptor signing key
+   * with the ed25519 equivalent of the curve25519 or the legacy RSA key. */
+  union {
+    /* Used for the ed25519 equivalent of the curve25519 encryption key. */
+    tor_cert_t *curve25519;
+
+    /* Used for the RSA legacy encryption key. Because of the cross
+     * certification API, we need to keep the certificate binary blob and its
+     * length in order to properly encoded after. */
+    struct {
+      uint8_t *encoded;
+      size_t len;
+    } legacy;
+  } enc_key_cert;
 
   /* True iff the introduction point has passed the cross certification. Upon
    * decoding an intro point, this must be true. */

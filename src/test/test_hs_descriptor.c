@@ -19,7 +19,8 @@
 #include "log_test_helpers.h"
 
 static hs_desc_intro_point_t *
-helper_build_intro_point(const ed25519_keypair_t *blinded_kp, time_t now,
+helper_build_intro_point(const ed25519_keypair_t *blinded_kp,
+                         const ed25519_public_key_t *signing_key, time_t now,
                          const char *addr, int legacy)
 {
   int ret;
@@ -66,9 +67,28 @@ helper_build_intro_point(const ed25519_keypair_t *blinded_kp, time_t now,
     tt_assert(ip->enc_key.legacy);
     ret = crypto_pk_generate_key(ip->enc_key.legacy);
     tt_int_op(ret, ==, 0);
+    ssize_t cert_len = tor_make_rsa_ed25519_crosscert(
+                                    signing_key, ip->enc_key.legacy,
+                                    now + HS_DESC_CERT_LIFETIME,
+                                    &ip->enc_key_cert.legacy.encoded);
+    tt_u64_op(cert_len, OP_GT, 0);
+    ip->enc_key_cert.legacy.len = cert_len;
   } else {
-    ret = curve25519_keypair_generate(&ip->enc_key.curve25519, 0);
+    int signbit;
+    curve25519_keypair_t curve25519_kp;
+    ed25519_keypair_t ed25519_kp;
+    tor_cert_t *cross_cert;
+
+    ret = curve25519_keypair_generate(&curve25519_kp, 0);
     tt_int_op(ret, ==, 0);
+    ed25519_keypair_from_curve25519_keypair(&ed25519_kp, &signbit,
+                                            &curve25519_kp);
+    cross_cert = tor_cert_create(&ed25519_kp, CERT_TYPE_CROSS_HS_IP_KEYS,
+                                 signing_key, time(NULL),
+                                 HS_DESC_CERT_LIFETIME,
+                                 CERT_FLAG_INCLUDE_SIGNING_KEY);
+    tt_assert(cross_cert);
+    ip->enc_key_cert.curve25519 = cross_cert;
     ip->enc_key_type = HS_DESC_KEY_TYPE_CURVE25519;
   }
 
@@ -115,13 +135,17 @@ helper_build_hs_desc(unsigned int no_ip, ed25519_public_key_t *signing_pubkey)
   if (!no_ip) {
     /* Add four intro points. */
     smartlist_add(desc->encrypted_data.intro_points,
-                helper_build_intro_point(&blinded_kp, now, "1.2.3.4", 0));
+                helper_build_intro_point(&blinded_kp, signing_pubkey,
+                                         now, "1.2.3.4", 0));
     smartlist_add(desc->encrypted_data.intro_points,
-                helper_build_intro_point(&blinded_kp, now, "[2600::1]", 0));
+                helper_build_intro_point(&blinded_kp, signing_pubkey,
+                                         now, "[2600::1]", 0));
     smartlist_add(desc->encrypted_data.intro_points,
-                helper_build_intro_point(&blinded_kp, now, "3.2.1.4", 1));
+                helper_build_intro_point(&blinded_kp, signing_pubkey,
+                                         now, "3.2.1.4", 1));
     smartlist_add(desc->encrypted_data.intro_points,
-                helper_build_intro_point(&blinded_kp, now, "", 1));
+                helper_build_intro_point(&blinded_kp, signing_pubkey,
+                                         now, "", 1));
   }
 
   descp = desc;
@@ -195,8 +219,7 @@ helper_compare_hs_desc(const hs_descriptor_t *desc1,
                   OP_EQ, 0);
         break;
       case HS_DESC_KEY_TYPE_CURVE25519:
-        tt_mem_op(ip1->enc_key.curve25519.pubkey.public_key, OP_EQ,
-                  ip2->enc_key.curve25519.pubkey.public_key,
+        tt_mem_op(&ip1->enc_key.curve25519, OP_EQ, &ip2->enc_key.curve25519,
                   CURVE25519_PUBKEY_LEN);
         break;
       }

@@ -21,6 +21,7 @@
 /* Build an intro point using a blinded key and an address. */
 static hs_desc_intro_point_t *
 helper_build_intro_point(const ed25519_keypair_t *blinded_kp,
+                         const ed25519_public_key_t *signing_key,
                          const char *addr)
 {
   int ret;
@@ -55,9 +56,24 @@ helper_build_intro_point(const ed25519_keypair_t *blinded_kp,
                                       CERT_FLAG_INCLUDE_SIGNING_KEY);
   tt_assert(ip->auth_key_cert);
 
-  ret = curve25519_keypair_generate(&ip->enc_key.curve25519, 0);
-  tt_int_op(ret, ==, 0);
-  ip->enc_key_type = HS_DESC_KEY_TYPE_CURVE25519;
+  {
+    int signbit;
+    curve25519_keypair_t curve25519_kp;
+    ed25519_keypair_t ed25519_kp;
+    tor_cert_t *cross_cert;
+
+    ret = curve25519_keypair_generate(&curve25519_kp, 0);
+    tt_int_op(ret, ==, 0);
+    ed25519_keypair_from_curve25519_keypair(&ed25519_kp, &signbit,
+                                            &curve25519_kp);
+    cross_cert = tor_cert_create(&ed25519_kp, CERT_TYPE_CROSS_HS_IP_KEYS,
+                                 signing_key, time(NULL),
+                                 HS_DESC_CERT_LIFETIME,
+                                 CERT_FLAG_INCLUDE_SIGNING_KEY);
+    tt_assert(cross_cert);
+    ip->enc_key_cert.curve25519 = cross_cert;
+    ip->enc_key_type = HS_DESC_KEY_TYPE_CURVE25519;
+  }
   intro_point = ip;
  done:
   return intro_point;
@@ -98,7 +114,8 @@ helper_build_hs_desc(uint64_t revision_counter, uint32_t lifetime,
   desc->encrypted_data.intro_points = smartlist_new();
   /* Add an intro point. */
   smartlist_add(desc->encrypted_data.intro_points,
-                helper_build_intro_point(&blinded_kp, "1.2.3.4"));
+                helper_build_intro_point(&blinded_kp, signing_pubkey,
+                                         "1.2.3.4"));
 
   descp = desc;
  done:
