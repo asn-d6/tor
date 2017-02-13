@@ -11,6 +11,12 @@
 
 #include "or.h"
 
+/* The default HS time period length */
+#define HS_TIME_PERIOD_LENGTH_DEFAULT 1440 /* 1440 minutes == one day */
+
+/* The time period rotation offset as seen in prop224 section [TIME-PERIODS] */
+#define HS_TIME_PERIOD_ROTATION_OFFSET 12*60 /* minutes */
+
 /* Protocol version 2. Use this instead of hardcoding "2" in the code base,
  * this adds a clearer semantic to the value when used. */
 #define HS_VERSION_TWO 2
@@ -38,6 +44,9 @@ const char *rend_data_get_desc_id(const rend_data_t *rend_data,
                                   uint8_t replica, size_t *len_out);
 const uint8_t *rend_data_get_pk_digest(const rend_data_t *rend_data,
                                        size_t *len_out);
+
+unsigned int hs_get_time_period_num(time_t now);
+unsigned int hs_get_next_time_period(time_t now);
 
 #endif /* TOR_HS_COMMON_H */
 

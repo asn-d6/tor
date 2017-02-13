@@ -16,6 +16,7 @@
 #include "hs/cell_establish_intro.h"
 #include "hs_service.h"
 #include "hs_intropoint.h"
+#include "hs_common.h"
 
 /** We simulate the creation of an outgoing ESTABLISH_INTRO cell, and then we
  *  parse it from the receiver side. */
@@ -98,6 +99,43 @@ test_gen_establish_intro_cell_bad(void *arg)
  done:
   hs_cell_establish_intro_free(cell);
   UNMOCK(ed25519_sign_prefixed);
+}
+
+/** Test that our HS time period calculation functions work properly */
+static void
+test_time_period(void *arg)
+{
+  (void) arg;
+  unsigned int tn;
+  int retval;
+  time_t fake_time;
+
+  /* Let's do the example in prop224 section [TIME-PERIODS] */
+  retval = parse_rfc1123_time("Wed, 13 Apr 2016 11:00:00 UTC",
+                              &fake_time);
+  tt_int_op(retval, ==, 0);
+
+  /* Check that the time period number is right */
+  tn = hs_get_time_period_num(fake_time);
+  tt_int_op(tn, ==, 16903);
+
+  /* Increase current time to 11:59:59 UTC and check that the time period
+     number is still the same */
+  fake_time += 3599;
+  tn = hs_get_time_period_num(fake_time);
+  tt_int_op(tn, ==, 16903);
+
+  /* Now take time to 12:00:00 UTC and check that the time period rotated */
+  fake_time += 1;
+  tn = hs_get_time_period_num(fake_time);
+  tt_int_op(tn, ==, 16904);
+
+  /* Now also check our hs_get_next_time_period() function */
+  tn = hs_get_next_time_period(fake_time);
+  tt_int_op(tn, ==, 16905);
+
+ done:
+  ;
 }
 
 struct testcase_t hs_service_tests[] = {

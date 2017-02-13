@@ -16,6 +16,45 @@
 #include "hs_common.h"
 #include "rendcommon.h"
 
+/** Get the default HS time period length in minutes from the consensus. */
+static unsigned int
+get_hs_time_period_length(void)
+{
+  int time_period_length =  networkstatus_get_param(NULL, "hsdir-interval",
+                                                 HS_TIME_PERIOD_LENGTH_DEFAULT,
+                                                 1, 24*60*365);
+
+  /* Make sure it's a positive int and cast to unsigned before returning */
+  tor_assert(time_period_length >= 0);
+  return (unsigned int) time_period_length;
+}
+
+/** Get the HS time period number at time <b>now</b> */
+unsigned int
+hs_get_time_period_num(time_t now)
+{
+  unsigned int time_period_num;
+  unsigned int time_period_length = get_hs_time_period_length();
+  unsigned int minutes_since_epoch = now / 60;
+
+  /* Now subtract half a day to fit the prop224 time period schedule (see
+     section [TIME-PERIODS]). */
+  tor_assert(minutes_since_epoch > HS_TIME_PERIOD_ROTATION_OFFSET);
+  minutes_since_epoch -= HS_TIME_PERIOD_ROTATION_OFFSET;
+
+  /* Calculate the time period */
+  time_period_num = minutes_since_epoch / time_period_length;
+  return time_period_num;
+}
+
+/** Get the number of the _upcoming_ HS time period, given that the current
+ *  time is <b>now</b>. */
+unsigned int
+hs_get_next_time_period(time_t now)
+{
+  return hs_get_time_period_num(now) + 1;
+}
+
 /* Create a new rend_data_t for a specific given <b>version</b>.
  * Return a pointer to the newly allocated data structure. */
 static rend_data_t *
