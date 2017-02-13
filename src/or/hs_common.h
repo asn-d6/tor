@@ -132,6 +132,8 @@ const uint8_t *rend_data_get_pk_digest(const rend_data_t *rend_data,
 uint64_t hs_get_time_period_num(time_t now);
 uint64_t hs_get_next_time_period_num(time_t now);
 
+int hs_overlap_mode_is_active(const networkstatus_t *consensus, time_t now);
+
 #ifdef HS_COMMON_PRIVATE
 
 #ifdef TOR_UNIT_TESTS
