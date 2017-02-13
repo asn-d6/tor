@@ -13,6 +13,7 @@
 #include "rendservice.h"
 #include "circuitlist.h"
 #include "circpathbias.h"
+#include "networkstatus.h"
 
 #include "hs_service.h"
 #include "hs_common.h"
@@ -25,6 +26,33 @@
    should revisit these functions and use them. For now we mark them as
    unittest-only code: */
 #ifdef TOR_UNIT_TESTS
+
+/** Return True if HS descriptor overlap mode is active given the date in
+ *  <b>consensus</b>. If no <b>consensus</b> is provided, then we use the
+ *  latest live consensus we can find. */
+STATIC int
+descriptor_overlap_mode_is_active(const networkstatus_t *consensus)
+{
+  time_t now = time(NULL);
+  struct tm valid_after_tm;
+
+  if (!consensus) {
+    consensus = networkstatus_get_live_consensus(now);
+    if (!consensus) {
+      return 0;
+    }
+  }
+
+  /* From the spec: "Specifically, when a hidden service fetches a consensus
+     with "valid-after" between 00:00UTC and 12:00UTC, it goes into "descriptor
+     overlap" mode."  */
+  tor_gmtime_r(&consensus->valid_after, &valid_after_tm);
+  if (valid_after_tm.tm_hour > 0 && valid_after_tm.tm_hour < 12) {
+    return 1;
+  }
+
+  return 0;
+}
 
 /** Given an ESTABLISH_INTRO <b>cell</b>, encode it and place its payload in
  *  <b>buf_out</b> which has size <b>buf_out_len</b>. Return the number of

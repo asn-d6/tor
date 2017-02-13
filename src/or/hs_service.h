@@ -16,6 +16,8 @@
 
 #ifdef TOR_UNIT_TESTS
 
+STATIC int descriptor_overlap_mode_is_active(const networkstatus_t *consensus);
+
 STATIC hs_cell_establish_intro_t *
 generate_establish_intro_cell(const uint8_t *circuit_key_material,
                               size_t circuit_key_material_len);
