@@ -1415,6 +1415,7 @@ superencrypted_auth_data_is_valid(smartlist_t *tokens)
     tok = find_by_keyword(tokens, R3_DESC_AUTH_TYPE);
     tor_assert(tok->n_args >= 1);
     if (strcmp(tok->args[0], "x25519")) {
+      log_warn(LD_DIR, "Unrecognized desc auth type");
       return 0;
     }
   }
@@ -1443,8 +1444,8 @@ superencrypted_auth_data_is_valid(smartlist_t *tokens)
 /* Parse <b>message</b>, the plaintext of the superencrypted portion of an HS
  * descriptor. Set <b>encrypted_out</b> to the encrypted blob, and return its
  * size */
-static size_t
-parse_superencrypted(char *message, size_t message_len,uint8_t **encrypted_out)
+STATIC size_t
+parse_superencrypted(const char *message, size_t message_len,uint8_t **encrypted_out)
 {
   memarea_t *area = NULL;
   smartlist_t *tokens = NULL;
@@ -1459,6 +1460,7 @@ parse_superencrypted(char *message, size_t message_len,uint8_t **encrypted_out)
 
   /* Do some rudimentary validation of the authentication data */
   if (!superencrypted_auth_data_is_valid(tokens)) {
+    log_warn(LD_REND, "Invalid auth data");
     goto err;
   }
 
