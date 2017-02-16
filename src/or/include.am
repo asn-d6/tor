@@ -50,6 +50,7 @@ LIBTOR_A_SOURCES = \
 	src/or/fp_pair.c				\
 	src/or/geoip.c					\
 	src/or/hs_cache.c				\
+	src/or/hs_circuit.c				\
 	src/or/hs_circuitmap.c				\
 	src/or/hs_common.c				\
 	src/or/hs_config.c				\

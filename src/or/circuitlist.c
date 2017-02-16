@@ -65,6 +65,7 @@
 #include "control.h"
 #include "entrynodes.h"
 #include "main.h"
+#include "hs_circuit.h"
 #include "hs_circuitmap.h"
 #include "hs_common.h"
 #include "networkstatus.h"
@@ -916,6 +917,7 @@ circuit_free(circuit_t *circ)
 
     crypto_pk_free(ocirc->intro_key);
     rend_data_free(ocirc->rend_data);
+    hs_circ_identifier_free(ocirc->hs_ident);
 
     tor_free(ocirc->dest_address);
     if (ocirc->socks_username) {

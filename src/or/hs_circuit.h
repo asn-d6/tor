@@ -14,6 +14,7 @@
 #include "crypto_ed25519.h"
 
 #include "hs_common.h"
+#include "hs_service.h"
 
 /* Client and service side circuit identifier that is used for hidden
  * service connection establishment. Not all fields contain data depending
@@ -45,6 +46,14 @@ typedef struct hs_circ_identifier_t {
    * value. */
   uint64_t num_rdv_streams;
 } hs_circ_identifier_t;
+
+/* Identifier API. */
+void hs_circ_identifier_free(hs_circ_identifier_t *ident);
+
+/* Circuit API. */
+int hs_circ_launch_intro_point(hs_service_t *service,
+                               const hs_service_intro_point_t *ip,
+                               extend_info_t *ei, time_t now);
 
 #endif /* TOR_HS_CIRCUIT_H */
 
