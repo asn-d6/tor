@@ -157,6 +157,22 @@ typedef struct hs_service_config_t {
   unsigned int is_ephemeral : 1;
 } hs_service_config_t;
 
+/* Service state. */
+typedef struct hs_service_state_t {
+  /* The time at which we've started our retry period to build circuits. We
+   * don't want to stress circuit creation so we can only retry for a certain
+   * time and then after we stop and wait. */
+  time_t intro_circ_retry_started_time;
+
+  /* Number of circuit we've launched during a single retry period. This
+   * should never go over MAX_INTRO_CIRCS_PER_PERIOD. */
+  unsigned int num_intro_circ_launched;
+
+  /* Indicate that the service has entered the overlap period. We use this
+   * flag to check for descriptor rotation. */
+  unsigned int in_overlap_period : 1;
+} hs_service_state_t;
+
 /* Representation of a service running on this tor instance. */
 typedef struct hs_service_t {
   /* Protocol version of the service. Specified by HiddenServiceVersion. */
@@ -169,6 +185,9 @@ typedef struct hs_service_t {
   /* Hashtable node: use to look up the service by its master public identity
    * key in the service global map. */
   HT_ENTRY(hs_service_t) hs_service_node;
+
+  /* Service state which contains various flags and counters. */
+  hs_service_state_t state;
 
   /* Key material of the service. */
   hs_service_keys_t keys;
