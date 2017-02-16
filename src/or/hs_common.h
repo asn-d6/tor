@@ -92,6 +92,22 @@
 #define HS_KEYBLIND_NONCE_LEN \
   (HS_KEYBLIND_NONCE_PREFIX_LEN + sizeof(uint64_t) + sizeof(uint64_t))
 
+/* Type of authentication key used by an introduction point. */
+typedef enum {
+  HS_AUTH_KEY_TYPE_LEGACY  = 1,
+  HS_AUTH_KEY_TYPE_ED25519 = 2,
+} hs_auth_key_type_t;
+
+/* Client and service side connection identifier used on a directory and edge
+ * connection to identify which service is being queried. This is attached to
+ * an edge_connection_t and dir_connection_t. */
+typedef struct hs_conn_identifier_t {
+  /* The public key used to uniquely identify the service. */
+  ed25519_public_key_t identity_pk;
+
+  /* XXX: Client authorization type. */
+} hs_conn_identifier_t;
+
 void hs_init(void);
 void hs_free_all(void);
 
