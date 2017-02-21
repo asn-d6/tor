@@ -12,6 +12,7 @@
 #include "circpathbias.h"
 #include "circuitbuild.h"
 #include "circuitlist.h"
+#include "circuituse.h"
 #include "config.h"
 #include "main.h"
 #include "networkstatus.h"
@@ -225,6 +226,30 @@ service_free_all(void)
   }
 }
 
+/* Helper: For a given intro point object, build the key in key_out that is
+ * used to index that intro point in the descriptor map. The key_out MUST at
+ * least be of size DIGEST256_LEN. */
+static void
+helper_intro_build_index_key(const hs_service_intro_point_t *ip,
+                             uint8_t *key_out)
+{
+  tor_assert(ip);
+  tor_assert(key_out);
+
+  if (ip->base.is_only_legacy) {
+    char digest[DIGEST_LEN];
+    if (BUG(crypto_pk_get_digest(ip->legacy_key, digest) < 0)) {
+      return;
+    }
+    /* Build a 32 byte key from the RSA 20 byte digest. */
+    crypto_digest256((char *) key_out, digest, sizeof(digest), DIGEST_SHA256);
+  } else {
+    /* In this case, we use the authentication public key as defined by
+     * proposal 224. The curve25519 key is only used for encryption. */
+    memcpy(key_out, ip->auth_key_kp.pubkey.pubkey, DIGEST256_LEN);
+  }
+}
+
 /* Free a given service intro point object. */
 static void
 service_intro_point_free(hs_service_intro_point_t *ip)
@@ -283,8 +308,92 @@ service_intro_point_add(digest256map_t *map, hs_service_intro_point_t *ip)
   tor_assert(map);
   tor_assert(ip);
 
-  memcpy(key, ip->auth_key_kp.pubkey.pubkey, sizeof(key));
+  helper_intro_build_index_key(ip, key);
   digest256map_set(map, key, ip);
+  memwipe(key, 0, sizeof(key));
+}
+
+/* For a given service, remove the intro point from that service which will
+ * look in both descriptors. */
+static void
+service_intro_point_remove(const hs_service_t *service,
+                           const hs_service_intro_point_t *ip)
+{
+  uint8_t key[DIGEST256_LEN] = {0};
+
+  tor_assert(service);
+  tor_assert(ip);
+
+  helper_intro_build_index_key(ip, key);
+
+  /* Trying all descriptors. */
+  FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
+    /* We'll try to remove the descriptor on both descriptors which is not
+     * very expensive to do instead of doing loopup + remove. */
+    digest256map_remove(desc->intro_points.map, key);
+  } FOR_EACH_DESCRIPTOR_END;
+
+  memwipe(key, 0, sizeof(key));
+}
+
+/* For a given service and authentication key, return the intro point. If
+ * is_legacy is true, the auth_key is considered a crypto_pk_t pointer else it
+ * is an ed25519 pubkey. This will check both descriptors in the service. NULL
+ * is returned if not found. */
+static hs_service_intro_point_t *
+service_intro_point_find(const hs_service_t *service, void *auth_key,
+                         int is_legacy)
+{
+  uint8_t key[DIGEST256_LEN] = {0};
+  hs_service_intro_point_t *ip = NULL;
+
+  tor_assert(service);
+  tor_assert(auth_key);
+
+  if (is_legacy) {
+    char digest[DIGEST_LEN];
+    if (BUG(crypto_pk_get_digest((crypto_pk_t *) auth_key, digest) < 0)) {
+      goto end;
+    }
+    /* Build a 32 byte key from the RSA 20 byte digest. */
+    crypto_digest256((char *) key, digest, sizeof(digest), DIGEST_SHA256);
+  } else {
+    memcpy(key, (uint8_t *) auth_key, sizeof(key));
+  }
+
+  /* Trying all descriptors. */
+  FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
+    if ((ip = digest256map_get(desc->intro_points.map, key)) != NULL) {
+      break;
+    }
+  } FOR_EACH_DESCRIPTOR_END;
+ end:
+  memwipe(key, 0, sizeof(key));
+  return ip;
+}
+
+/* For a given service and intro point, return the descriptor for which the
+ * intro point is assigned to. NULL is returned if not found. */
+static hs_service_descriptor_t *
+service_desc_find_by_intro(const hs_service_t *service,
+                           const hs_service_intro_point_t *ip)
+{
+  uint8_t key[DIGEST256_LEN] = {0};
+  hs_service_descriptor_t *descp = NULL;
+
+  tor_assert(service);
+  tor_assert(ip);
+
+  helper_intro_build_index_key(ip, key);
+
+  FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
+    if ((ip = digest256map_get(desc->intro_points.map, key)) != NULL) {
+      descp = desc;
+      break;
+    }
+  } FOR_EACH_DESCRIPTOR_END;
+
+  return descp;
 }
 
 /* From a given intro point, return the first link specifier of type
@@ -722,7 +831,6 @@ service_descriptor_new(void)
   return sdesc;
 }
 
-#if 0
 /* Copy the descriptor link specifier object from src to dst. */
 static void
 link_specifier_copy(hs_desc_link_specifier_t *dst,
@@ -782,28 +890,29 @@ build_desc_intro_points(const hs_service_t *service,
 
     /* Setup the encryption key and certificate. */
     if (ip->base.is_only_legacy) {
-      desc_ip->enc_key_type = HS_DESC_KEY_TYPE_LEGACY;
-      desc_ip->enc_key.legacy = crypto_pk_dup_key(ip->enc_key.legacy);
+      desc_ip->legacy.key = crypto_pk_dup_key(ip->legacy_key);
       /* Create cross certification cert. */
       ssize_t cert_len = tor_make_rsa_ed25519_crosscert(
-                                      signing_key, ip->enc_key.legacy,
+                                      signing_key, desc_ip->legacy.key,
                                       now + HS_DESC_CERT_LIFETIME,
-                                      &desc_ip->enc_key_cert.legacy.encoded);
+                                      &desc_ip->legacy.cert.encoded);
       if (cert_len < 0) {
         log_warn(LD_REND, "Unable to create encryption key legacy cross "
                           "certiciate for service %s",
                  safe_str_client(service->onion_address));
         continue;
       }
-      desc_ip->enc_key_cert.legacy.len = cert_len;
-    } else {
+      desc_ip->legacy.cert.len = cert_len;
+    }
+
+    /* Encryption key and its cross certificate. */
+    {
       ed25519_public_key_t ed25519_pubkey;
       tor_cert_t *cross_cert;
 
       /* Use the public curve25519 key. */
-      desc_ip->enc_key_type = HS_DESC_KEY_TYPE_CURVE25519;
-      memcpy(&desc_ip->enc_key.curve25519, &ip->enc_key_kp.pubkey,
-             sizeof(desc_ip->enc_key.curve25519));
+      memcpy(&desc_ip->enc_key, &ip->enc_key_kp.pubkey,
+             sizeof(desc_ip->enc_key));
       /* The following can't fail. */
       ed25519_public_key_from_curve25519_public_key(&ed25519_pubkey,
                                                     &ip->enc_key_kp.pubkey,
@@ -819,15 +928,13 @@ build_desc_intro_points(const hs_service_t *service,
                  safe_str_client(service->onion_address));
         continue;
       }
-      desc_ip->enc_key_cert.curve25519 = cross_cert;
+      desc_ip->enc_key_cert = cross_cert;
     }
 
     /* We have a valid descriptor intro point. Add it to the list. */
     smartlist_add(encrypted->intro_points, desc_ip);
   } DIGEST256MAP_FOREACH_END;
 }
-
-#endif /* build_desc_intro_points is disabled because not used */
 
 /* Populate the descriptor encrypted section fomr the given service object.
  * This will generate a valid list of introduction points that can be used
@@ -1573,13 +1680,113 @@ run_upload_descriptor_event(time_t now)
   /* Run v3+ check. */
   FOR_EACH_SERVICE_BEGIN(service) {
     /* XXX: Upload if needed the descriptor(s). Update next upload time. */
-    (void) service;
+    /* XXX: Build the descriptor intro points list with
+     * build_desc_intro_points() once we have enough circuit opened. */
+    build_desc_intro_points(service, NULL, now);
   } FOR_EACH_SERVICE_END;
+}
+
+/* Called when the introduction point circuit is done building and ready to be
+ * used. */
+static void
+service_intro_circ_has_opened(origin_circuit_t *circ)
+{
+  int close_reason;
+  hs_service_t *service;
+  hs_service_intro_point_t *ip;
+  hs_service_descriptor_t *desc = NULL;
+
+  tor_assert(circ);
+  tor_assert(circ->cpath);
+  /* Getting here means this is a v3 intro circuit. */
+  tor_assert(circ->hs_ident);
+  tor_assert(TO_CIRCUIT(circ)->purpose == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO);
+
+  /* Get service object from the circuit identifier. */
+  service = find_service(hs_service_map, &circ->hs_ident->identity_pk);
+  if (service == NULL) {
+    log_warn(LD_REND, "Unknown service identity key %s on the introduction "
+                      "circuit %u. Can't find onion service.",
+             safe_str_client(ed25519_fmt(&circ->hs_ident->identity_pk)),
+             TO_CIRCUIT(circ)->n_circ_id);
+    close_reason = END_CIRC_REASON_NOSUCHSERVICE;
+    goto err;
+  }
+
+  /* From the service object, get the intro point object of that circuit. The
+   * following will query both descriptors intro points list. */
+  switch (circ->hs_ident->auth_key_type) {
+  case HS_AUTH_KEY_TYPE_LEGACY:
+    ip = service_intro_point_find(service, circ->hs_ident->intro_key.legacy, 1);
+    break;
+  case HS_AUTH_KEY_TYPE_ED25519:
+    ip = service_intro_point_find(service, &circ->hs_ident->intro_key.ed25519_pk, 0);
+    break;
+  default:
+    tor_assert(0);
+  }
+  if (ip == NULL) {
+    log_warn(LD_REND, "Unknown authentication key on the introduction "
+                      "circuit %u for service %s",
+             TO_CIRCUIT(circ)->n_circ_id,
+             safe_str_client(service->onion_address));
+    /* Closing this circuit because we don't recognize the key. */
+    close_reason = END_CIRC_REASON_NOSUCHSERVICE;
+    goto err;
+  }
+  /* We can't have an IP object without a descriptor. */
+  desc = service_desc_find_by_intro(service, ip);
+  tor_assert(desc);
+
+  if (hs_circ_service_intro_has_opened(service, ip, desc, circ)) {
+    /* Getting here means that the circuit has been re-purposed because we
+     * have enough intro circuit opened. Remove the IP from the service. */
+    service_intro_point_remove(service, ip);
+    service_intro_point_free(ip);
+  }
+
+  goto done;
+
+ err:
+  /* Close circuit, we can't use it. */
+  circuit_mark_for_close(TO_CIRCUIT(circ), close_reason);
+ done:
+  return;
+}
+
+static void
+service_rendezvous_circ_has_opened(origin_circuit_t *circ)
+{
+  tor_assert(circ);
+  /* XXX: Implement rendezvous support. */
 }
 
 /* ========== */
 /* Public API */
 /* ========== */
+
+/* Called when any kind of hidden service circuit is done building thus
+ * opened. This is the entry point from the circuit subsystem. */
+void
+hs_service_circuit_has_opened(origin_circuit_t *circ)
+{
+  tor_assert(circ);
+
+  /* Handle both version. v2 uses rend_data and v3 uses the hs circuit
+   * identifier hs_ident. Can't be both. */
+  switch (TO_CIRCUIT(circ)->purpose) {
+  case CIRCUIT_PURPOSE_S_ESTABLISH_INTRO:
+    (circ->hs_ident) ? service_intro_circ_has_opened(circ) :
+                       rend_service_intro_has_opened(circ);
+    break;
+  case CIRCUIT_PURPOSE_S_CONNECT_REND:
+    (circ->hs_ident) ? service_rendezvous_circ_has_opened(circ) :
+                       rend_service_rendezvous_has_opened(circ);
+    break;
+  default:
+    tor_assert(0);
+  }
+}
 
 /* Load and/or generate keys for all onion services including the client
  * authorization if any. Return 0 on success, -1 on failure. */
