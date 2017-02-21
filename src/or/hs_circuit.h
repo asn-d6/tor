@@ -51,9 +51,17 @@ typedef struct hs_circ_identifier_t {
 void hs_circ_identifier_free(hs_circ_identifier_t *ident);
 
 /* Circuit API. */
+int hs_circ_service_intro_has_opened(hs_service_t *service,
+                                     hs_service_intro_point_t *ip,
+                                     origin_circuit_t *circ);
 int hs_circ_launch_intro_point(hs_service_t *service,
                                const hs_service_intro_point_t *ip,
                                extend_info_t *ei, time_t now);
+
+/* Cell API. */
+void hs_circ_send_establish_intro(const hs_service_t *service,
+                                  hs_service_intro_point_t *ip,
+                                  origin_circuit_t *circ);
 
 #endif /* TOR_HS_CIRCUIT_H */
 

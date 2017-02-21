@@ -6,17 +6,44 @@
  **/
 
 #include "or.h"
+#include "circpathbias.h"
 #include "circuitbuild.h"
+#include "circuitlist.h"
 #include "circuituse.h"
 #include "config.h"
+#include "relay.h"
 #include "rephist.h"
 #include "router.h"
 
+#include "hs_cell.h"
 #include "hs_circuit.h"
 #include "hs_service.h"
 
 /* Trunnel. */
 #include "hs/cell_common.h"
+#include "hs/cell_establish_intro.h"
+
+/* Return the number of opened introduction circuit for the given circuit that
+ * is matching its identity key. */
+static unsigned int
+count_opened_intro_point_circuits(const hs_service_t *service)
+{
+  unsigned int count = 0;
+  origin_circuit_t *ocirc = NULL;
+
+  tor_assert(service);
+
+  while ((ocirc = circuit_get_next_service_intro_circ(ocirc))) {
+    /* We only want to count those with a circuit identifier so only v3+
+     * ignoring v2 circuits. */
+    if (ocirc->hs_ident &&
+        ed25519_pubkey_eq(&service->keys.identity_pk,
+                          &ocirc->hs_ident->identity_pk)) {
+      count++;
+    }
+  }
+  return count;
+}
 
 /* From a given service and service intro point, create an introduction point
  * circuit identifier. This can't fail. */
@@ -42,6 +69,60 @@ create_intro_circuit_identifier(const hs_service_t *service,
 
   return ident;
 }
+
+/* For a given introduction point and an introduction circuit, send the
+ * ESTABLISH_INTRO cell. The service object is used for logging. This can fail
+ * and if so, the circuit is closed and the intro point object is flagged
+ * that the circuit is not established anymore which is important for the
+ * retry mechanism. */
+static void
+send_establish_intro(const hs_service_t *service,
+                     hs_service_intro_point_t *ip, origin_circuit_t *circ)
+{
+  ssize_t cell_len;
+  uint8_t payload[RELAY_PAYLOAD_SIZE];
+
+  tor_assert(service);
+  tor_assert(ip);
+  tor_assert(circ);
+
+  /* Encode establish intro cell. */
+  cell_len = hs_cell_build_establish_intro(circ->cpath->prev->rend_circ_nonce,
+                                           ip, payload);
+  if (cell_len < 0) {
+    log_warn(LD_REND, "Unable to encode ESTABLISH_INTRO cell for service %s "
+                      "on circuit %u. Closing circuit.",
+             safe_str_client(service->onion_address),
+             TO_CIRCUIT(circ)->n_circ_id);
+    goto err;
+  }
+
+  /* Send the cell on the circuit. */
+  if (relay_send_command_from_edge(CONTROL_CELL_ID, TO_CIRCUIT(circ),
+                                   RELAY_COMMAND_ESTABLISH_INTRO,
+                                   (char *) payload, cell_len,
+                                   circ->cpath->prev) < 0) {
+    log_info(LD_REND, "Unable to send ESTABLISH_INTRO cell for service %s "
+                      "on circuit %u.",
+             safe_str_client(service->onion_address),
+             TO_CIRCUIT(circ)->n_circ_id);
+    /* On error, the circuit has been closed. */
+    goto done;
+  }
+
+  /* Record the attempt to use this circuit. */
+  pathbias_count_use_attempt(circ);
+  goto done;
+
+ err:
+  circuit_mark_for_close(TO_CIRCUIT(circ), END_CIRC_REASON_INTERNAL);
+ done:
+  memwipe(payload, 0, sizeof(payload));
+}
+
+/* ========== */
+/* Public API */
+/* ========== */
 
 /* For a given service and a service intro point, launch a circuit to the
  * extend info ei. If the service is a single onion, a one-hop circuit will be
@@ -91,6 +172,63 @@ hs_circ_launch_intro_point(hs_service_t *service,
   /* Success. */
   ret = 0;
  end:
+  return ret;
+}
+
+/* Called when a service introduction point circuit is done building. Given
+ * the service and intro point object, this function will send the
+ * ESTABLISH_INTRO cell on the circuit. Return 0 on success. Return 1 if the
+ * circuit has been repurposed to General because we already have too many
+ * opened. */
+int
+hs_circ_service_intro_has_opened(hs_service_t *service,
+                                 hs_service_intro_point_t *ip,
+                                 origin_circuit_t *circ)
+{
+  int ret = 0;
+  unsigned int num_intro_circ;
+
+  tor_assert(service);
+  tor_assert(ip);
+  tor_assert(circ);
+
+  num_intro_circ = count_opened_intro_point_circuits(service);
+  if (num_intro_circ > service->config.num_intro_points) {
+    /* There are too many opened valid intro circuit for what the service
+     * needs so repurpose this one. */
+
+    /* XXX: Legacy code checks options->ExcludeNodes and if not NULL it just
+     * closes the circuit. I have NO idea why it does that so it hasn't been
+     * added here. --dgoulet */
+
+    log_info(LD_CIRC | LD_REND, "Introduction circuit just opened but we "
+                                "have enough for service %s. Repurposing "
+                                "it to general and leaving internal.",
+             safe_str_client(service->onion_address));
+    tor_assert(circ->build_state->is_internal);
+    /* Cleaning up the hidden service identifier and repurposing. */
+    tor_free(circ->hs_ident);
+    circ->hs_ident = NULL;
+    circuit_change_purpose(TO_CIRCUIT(circ), CIRCUIT_PURPOSE_C_GENERAL);
+    /* Inform that this circuit just opened for this new purpose. */
+    circuit_has_opened(circ);
+    /* This return value indicate to the caller that the IP object should be
+     * removed from the service because it's corresponding circuit has just
+     * been repurposed. */
+    ret = 1;
+    goto done;
+  }
+
+  log_info(LD_REND, "Introduction circuit %u established for service %s.",
+           TO_CIRCUIT(circ)->n_circ_id,
+           safe_str_client(service->onion_address));
+  circuit_log_path(LOG_INFO, LD_REND, circ);
+
+  /* Time to send an ESTABLISH_INTRO cell on this circuit. On error, this call
+   * makes sure the circuit gets closed. */
+  send_establish_intro(service, ip, circ);
+
+ done:
   return ret;
 }
 
