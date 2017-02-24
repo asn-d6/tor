@@ -689,11 +689,14 @@ encrypt_descriptor_data(const hs_descriptor_t *desc, const char *plaintext,
 }
 
 /* Create and return a string containing a fake client-auth entry. It's the
- * responsibility of the caller to free the returned string. */
+ * responsibility of the caller to free the returned string. This function will
+ * never fail. */
 static char *
 get_fake_auth_client_str(void)
 {
   char *auth_client_str = NULL;
+  /* We are gonna fill these arrays with fake base64 data. They are all double
+   * the size of their binary representation to fit the base64 overhead. */
   char client_id_b64[8*2];
   char iv_b64[16*2];
   char encrypted_cookie_b64[16*2];
@@ -704,9 +707,7 @@ get_fake_auth_client_str(void)
   crypto_rand((char *)field, sizeof(field));                     \
   retval = base64_encode_nopad(field##_b64, sizeof(field##_b64), \
                                field, sizeof(field));            \
-  if (retval < 0) {                                              \
-    goto done;                                                   \
-  }                                                              \
+  tor_assert(retval > 0);                                        \
   STMT_END
 
   { /* Get those fakes! */
@@ -723,10 +724,11 @@ get_fake_auth_client_str(void)
   tor_asprintf(&auth_client_str, "%s %s %s %s", str_desc_auth_client,
                client_id_b64, iv_b64, encrypted_cookie_b64);
 
- done:
 #undef FILL_WITH_FAKE_DATA_AND_BASE64
+
   return auth_client_str;
 }
+
 
 /** Create the "client-auth" part of the descriptor and return a
  *  newly-allocated string with it. It's the responsibility of the caller to
@@ -744,9 +746,7 @@ get_fake_auth_client_lines(void)
   const int num_fake_clients = 16;
   for (i = 0; i < num_fake_clients; i++) {
     char *auth_client_str = get_fake_auth_client_str();
-    if (BUG(!auth_client_str)) {
-      continue;
-    }
+    tor_assert(auth_client_str);
     smartlist_add(auth_client_lines, auth_client_str);
   }
 
