@@ -694,9 +694,9 @@ static char *
 get_fake_auth_client_str(void)
 {
   char *auth_client_str = NULL;
-  char client_id_b64[16];
-  char iv_b64[32];
-  char encrypted_cookie_b64[32];
+  char client_id_b64[8*2];
+  char iv_b64[16*2];
+  char encrypted_cookie_b64[16*2];
   int retval;
 
   /* This is a macro to fill a field with random data and then base64 it. */
@@ -744,9 +744,10 @@ get_fake_auth_client_lines(void)
   const int num_fake_clients = 16;
   for (i = 0; i < num_fake_clients; i++) {
     char *auth_client_str = get_fake_auth_client_str();
-    if (auth_client_str) {
-      smartlist_add(auth_client_lines, auth_client_str);
+    if (BUG(!auth_client_str)) {
+      continue;
     }
+    smartlist_add(auth_client_lines, auth_client_str);
   }
 
   /* Join all lines together to form final string */
