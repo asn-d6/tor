@@ -1408,8 +1408,8 @@ decrypt_desc_layer(const hs_descriptor_t *desc,
 static int
 superencrypted_auth_data_is_valid(smartlist_t *tokens)
 {
-  /* This is just basic validation for now. When we implement client auth, we
-     can refactor this function so that it actually parses and saves the
+  /* XXX: This is just basic validation for now. When we implement client auth,
+     we can refactor this function so that it actually parses and saves the
      data. */
 
   { /* verify desc auth type */
@@ -1447,7 +1447,8 @@ superencrypted_auth_data_is_valid(smartlist_t *tokens)
  * descriptor. Set <b>encrypted_out</b> to the encrypted blob, and return its
  * size */
 STATIC size_t
-parse_superencrypted(const char *message, size_t message_len,uint8_t **encrypted_out)
+parse_superencrypted(const char *message, size_t message_len,
+                     uint8_t **encrypted_out)
 {
   memarea_t *area = NULL;
   smartlist_t *tokens = NULL;
@@ -1922,7 +1923,7 @@ desc_decode_plaintext_v3(smartlist_t *tokens,
  * desc_encrypted_out will be populated with the decoded data. Return 0 on
  * success else -1. */
 static int
-desc_decode_v3(const hs_descriptor_t *desc,
+desc_decode_encrypted_v3(const hs_descriptor_t *desc,
                hs_desc_encrypted_data_t *desc_encrypted_out)
 {
   int result = -1;
@@ -2025,7 +2026,7 @@ static int
       hs_desc_encrypted_data_t *desc_encrypted) =
 {
   /* v0 */ NULL, /* v1 */ NULL, /* v2 */ NULL,
-  desc_decode_v3,
+  desc_decode_encrypted_v3,
 };
 
 /* Decode the encrypted data section of the given descriptor and store the
