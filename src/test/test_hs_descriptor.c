@@ -1083,7 +1083,8 @@ test_parse_hs_desc_superencrypted(void *arg)
                                   &encrypted_out);
     tt_int_op(retval, ==, 0);
     tt_assert(!encrypted_out);
-    expect_log_msg_containing("Length of descriptor\'s encrypted data is too small.");
+    expect_log_msg_containing("Length of descriptor\'s encrypted data "
+                              "is too small.");
     teardown_capture_of_logs();
   }
 
