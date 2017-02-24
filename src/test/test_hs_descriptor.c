@@ -1094,7 +1094,8 @@ test_parse_hs_desc_superencrypted(void *arg)
                                 &encrypted_out);
 
   tt_int_op(retval, ==, strlen(correct_encrypted_plaintext));
-  tt_str_op((char *) encrypted_out, ==, correct_encrypted_plaintext);
+  tt_mem_op(encrypted_out, OP_EQ, correct_encrypted_plaintext,
+            strlen(correct_encrypted_plaintext));
 
  done:
   tor_free(encrypted_out);
