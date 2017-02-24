@@ -729,6 +729,8 @@ get_fake_auth_client_str(void)
   return auth_client_str;
 }
 
+/** How many lines of "client-auth" we want in our descriptors; fake or not. */
+#define CLIENT_AUTH_ENTRIES_BLOCK_SIZE 16
 
 /** Create the "client-auth" part of the descriptor and return a
  *  newly-allocated string with it. It's the responsibility of the caller to
@@ -743,7 +745,7 @@ get_fake_auth_client_lines(void)
   char *auth_client_lines_str = NULL;
 
   /* Make a line for each fake client */
-  const int num_fake_clients = 16;
+  const int num_fake_clients = CLIENT_AUTH_ENTRIES_BLOCK_SIZE;
   for (i = 0; i < num_fake_clients; i++) {
     char *auth_client_str = get_fake_auth_client_str();
     tor_assert(auth_client_str);
