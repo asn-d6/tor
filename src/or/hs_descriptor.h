@@ -43,7 +43,7 @@
   CIPHER256_KEY_LEN + CIPHER_IV_LEN + DIGEST256_LEN
 /* Pad plaintext of superencrypted data section before encryption so that its
  * length is a multiple of this value. */
-#define HS_DESC_PLAINTEXT_PADDING_MULTIPLE 10000
+#define HS_DESC_SUPERENC_PLAINTEXT_PAD_MULTIPLE 10000
 /* Minimum length in bytes of the encrypted portion of the descriptor. */
 #define HS_DESC_ENCRYPTED_MIN_LEN HS_DESC_ENCRYPTED_SALT_LEN + DIGEST256_LEN
 /* Maximum length in bytes of a full hidden service descriptor. */
