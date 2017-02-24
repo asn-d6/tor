@@ -210,7 +210,7 @@ size_t hs_desc_plaintext_obj_size(const hs_desc_plaintext_data_t *data);
 
 #ifdef HS_DESCRIPTOR_PRIVATE
 
-STATIC size_t parse_superencrypted(const char *message, size_t message_len,
+STATIC size_t decode_superencrypted(const char *message, size_t message_len,
                                    uint8_t **encrypted_out);
 
 /* Encoding. */

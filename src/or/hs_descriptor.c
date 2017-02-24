@@ -1449,7 +1449,7 @@ superencrypted_auth_data_is_valid(smartlist_t *tokens)
  * descriptor. Set <b>encrypted_out</b> to the encrypted blob, and return its
  * size */
 STATIC size_t
-parse_superencrypted(const char *message, size_t message_len,
+decode_superencrypted(const char *message, size_t message_len,
                      uint8_t **encrypted_out)
 {
   int retval = 0;
@@ -1502,8 +1502,9 @@ parse_superencrypted(const char *message, size_t message_len,
 
 /* Decrypt the superencrypted section of the descriptor using the given
  * descriptor object <b>desc</b>. A newly allocated NUL terminated string is
- * put in decrypted_out. Return the length of decrypted_out on success else 0
- * is returned and decrypted_out is set to NULL. */
+ * put in decrypted_out which contains the inner encrypted layer of the
+ * descriptor. Return the length of decrypted_out on success else 0 is returned
+ * and decrypted_out is set to NULL. */
 static size_t
 desc_decrypt_all(const hs_descriptor_t *desc, char **decrypted_out)
 {
@@ -1512,6 +1513,11 @@ desc_decrypt_all(const hs_descriptor_t *desc, char **decrypted_out)
   size_t superencrypted_len = 0;
   char *superencrypted_plaintext = NULL;
   uint8_t *encrypted_blob = NULL;
+
+  /** Function logic: This function takes us from the descriptor header to the
+   *  inner encrypted layer, by decrypting and decoding the middle descriptor
+   *  layer. In the end we return the contents of the inner encrypted layer to
+   *  our caller. */
 
   /* 1. Decrypt middle layer of descriptor */
   superencrypted_len = decrypt_desc_layer(desc,
@@ -1526,9 +1532,9 @@ desc_decrypt_all(const hs_descriptor_t *desc, char **decrypted_out)
   tor_assert(superencrypted_plaintext);
 
   /* 2. parse superencrypted */
-  encrypted_len = parse_superencrypted(superencrypted_plaintext,
-                                       superencrypted_len,
-                                       &encrypted_blob);
+  encrypted_len = decode_superencrypted(superencrypted_plaintext,
+                                        superencrypted_len,
+                                        &encrypted_blob);
   if (!encrypted_len) {
     log_warn(LD_REND, "Decrypting encrypted desc failed.");
     goto err;
