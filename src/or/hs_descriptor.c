@@ -1450,6 +1450,7 @@ STATIC size_t
 parse_superencrypted(const char *message, size_t message_len,
                      uint8_t **encrypted_out)
 {
+  int retval = 0;
   memarea_t *area = NULL;
   smartlist_t *tokens = NULL;
 
@@ -1484,15 +1485,17 @@ parse_superencrypted(const char *message, size_t message_len,
     /* Copy the encrypted blob to the descriptor object so we can handle it
      * latter if needed. */
     *encrypted_out = tor_memdup(tok->object_body, tok->object_size);
-    return tok->object_size;
+    retval = tok->object_size;
   }
 
  err:
   SMARTLIST_FOREACH(tokens, directory_token_t *, t, token_clear(t));
   smartlist_free(tokens);
-  memarea_drop_all(area);
+  if (area) {
+    memarea_drop_all(area);
+  }
 
-  return 0;
+  return retval;
 }
 
 /* Decrypt the superencrypted section of the descriptor using the given
@@ -1682,7 +1685,9 @@ decode_introduction_point(const hs_descriptor_t *desc, const char *start)
   tor_cert_free(cross_cert);
   SMARTLIST_FOREACH(tokens, directory_token_t *, t, token_clear(t));
   smartlist_free(tokens);
-  memarea_drop_all(area);
+  if (area) {
+    memarea_drop_all(area);
+  }
 
   return ip;
 }
