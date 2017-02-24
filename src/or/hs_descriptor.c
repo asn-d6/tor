@@ -1929,7 +1929,7 @@ desc_decode_plaintext_v3(smartlist_t *tokens,
  * success else -1. */
 static int
 desc_decode_encrypted_v3(const hs_descriptor_t *desc,
-               hs_desc_encrypted_data_t *desc_encrypted_out)
+                         hs_desc_encrypted_data_t *desc_encrypted_out)
 {
   int result = -1;
   char *message = NULL;
