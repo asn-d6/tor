@@ -1056,9 +1056,9 @@ test_parse_hs_desc_superencrypted(void *arg)
 
   {
     setup_full_capture_of_logs(LOG_WARN);
-    retval = parse_superencrypted(bad_superencrypted_text1,
-                                  strlen(bad_superencrypted_text1),
-                                  &encrypted_out);
+    retval = decode_superencrypted(bad_superencrypted_text1,
+                                   strlen(bad_superencrypted_text1),
+                                   &encrypted_out);
     tt_int_op(retval, ==, 0);
     tt_assert(!encrypted_out);
     expect_log_msg_containing("Unrecognized desc auth type");
@@ -1067,9 +1067,9 @@ test_parse_hs_desc_superencrypted(void *arg)
 
   {
     setup_full_capture_of_logs(LOG_WARN);
-    retval = parse_superencrypted(bad_superencrypted_text2,
-                                  strlen(bad_superencrypted_text2),
-                                  &encrypted_out);
+    retval = decode_superencrypted(bad_superencrypted_text2,
+                                   strlen(bad_superencrypted_text2),
+                                   &encrypted_out);
     tt_int_op(retval, ==, 0);
     tt_assert(!encrypted_out);
     expect_log_msg_containing("Bogus desc auth key in HS desc");
@@ -1078,9 +1078,9 @@ test_parse_hs_desc_superencrypted(void *arg)
 
   {
     setup_full_capture_of_logs(LOG_WARN);
-    retval = parse_superencrypted(bad_superencrypted_text3,
-                                  strlen(bad_superencrypted_text3),
-                                  &encrypted_out);
+    retval = decode_superencrypted(bad_superencrypted_text3,
+                                   strlen(bad_superencrypted_text3),
+                                   &encrypted_out);
     tt_int_op(retval, ==, 0);
     tt_assert(!encrypted_out);
     expect_log_msg_containing("Length of descriptor\'s encrypted data "
@@ -1089,9 +1089,9 @@ test_parse_hs_desc_superencrypted(void *arg)
   }
 
   /* Now finally the good one */
-  retval = parse_superencrypted(correct_superencrypted_text,
-                                strlen(correct_superencrypted_text),
-                                &encrypted_out);
+  retval = decode_superencrypted(correct_superencrypted_text,
+                                 strlen(correct_superencrypted_text),
+                                 &encrypted_out);
 
   tt_int_op(retval, ==, strlen(correct_encrypted_plaintext));
   tt_mem_op(encrypted_out, OP_EQ, correct_encrypted_plaintext,
