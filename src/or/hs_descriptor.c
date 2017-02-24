@@ -823,15 +823,15 @@ get_inner_encrypted_layer_plaintext(const hs_descriptor_t *desc)
  * caller to free the returned string. */
 static char *
 get_outer_encrypted_layer_plaintext(const hs_descriptor_t *desc,
-                                     const char *layer2_b64_ciphertext)
+                                    const char *layer2_b64_ciphertext)
 {
   char *layer1_str = NULL;
   smartlist_t *lines = smartlist_new();
 
-  /* Disclaimer: This function generates only _fake_ client auth data. Real
-   * client auth is not yet implemented, but client auth data MUST always be
-   * present in descriptors. In the future this function will be refactored to
-   * use real client auth data if they exist. */
+  /* XXX: Disclaimer: This function generates only _fake_ client auth
+   * data. Real client auth is not yet implemented, but client auth data MUST
+   * always be present in descriptors. In the future this function will be
+   * refactored to use real client auth data if they exist (#20700). */
   (void) *desc;
 
   /* Specify auth type */
@@ -850,6 +850,7 @@ get_outer_encrypted_layer_plaintext(const hs_descriptor_t *desc,
     }
     smartlist_add_asprintf(lines, "%s %s\n",
                            str_desc_auth_key, ephemeral_key_base64);
+    /* No need to memwipe any of these fake keys. They will go unused. */
   }
 
   {  /* Create fake auth-client lines. */
@@ -924,9 +925,10 @@ encode_superencrypted_data(const hs_descriptor_t *desc,
   tor_assert(desc);
   tor_assert(encrypted_blob_out);
 
-  /* Function logic: We first create the inner layer of the descriptor. We then
-   * encrypt it and use it to create the middle layer of the descriptor.
-   * Finally we superencrypt the middle-layer and return it to our caller. */
+  /* Func logic: We first create the inner layer of the descriptor (layer2).
+   * We then encrypt it and use it to create the middle layer of the descriptor
+   * (layer1).  Finally we superencrypt the middle layer and return it to our
+   * caller. */
 
   /* Create inner descriptor layer */
   layer2_str = get_inner_encrypted_layer_plaintext(desc);
