@@ -17,6 +17,8 @@
 #include "hs_service.h"
 #include "hs_intropoint.h"
 
+#include "hs_ntor.h"
+
 /** We simulate the creation of an outgoing ESTABLISH_INTRO cell, and then we
  *  parse it from the receiver side. */
 static void
@@ -100,11 +102,106 @@ test_gen_establish_intro_cell_bad(void *arg)
   UNMOCK(ed25519_sign_prefixed);
 }
 
+/** Test the HS ntor handshake. Simulate the sending of an encrypted INTRODUCE1
+ *  cell, and verify the proper derivation of decryption keys on the other end.
+ *  Then simulate the sending of an authenticated RENDEZVOUS1 cell and verify
+ *  the proper verification on the other end. */
+static void
+test_hs_ntor(void *arg)
+{
+  int retval;
+
+  uint8_t subcredential[DIGEST256_LEN];
+
+  ed25519_keypair_t service_intro_auth_keypair;
+  curve25519_keypair_t service_intro_enc_keypair;
+  curve25519_keypair_t service_ephemeral_rend_keypair;
+
+  curve25519_keypair_t client_ephemeral_enc_keypair;
+
+  intro1_key_material_t client_intro1_key_material;
+  intro1_key_material_t service_intro1_key_material;
+
+  rend1_key_material_t service_rend1_key_material;
+  rend1_key_material_t client_rend1_key_material;
+
+  (void) arg;
+
+  /* Generate fake data for this unittest */
+  {
+    /* Generate fake subcredential */
+    memset(subcredential, 'Z', DIGEST256_LEN);
+
+    /* service */
+    curve25519_keypair_generate(&service_intro_enc_keypair, 0);
+    ed25519_keypair_generate(&service_intro_auth_keypair, 0);
+    curve25519_keypair_generate(&service_ephemeral_rend_keypair, 0);
+    /* client */
+    curve25519_keypair_generate(&client_ephemeral_enc_keypair, 0);
+  }
+
+  /* Client: Simulate the sending of an encrypted INTRODUCE1 cell */
+  retval =
+    hs_ntor_client_get_introduce1_keys(&service_intro_auth_keypair.pubkey,
+                                       &service_intro_enc_keypair.pubkey,
+                                       &client_ephemeral_enc_keypair,
+                                       subcredential,
+                                       &client_intro1_key_material);
+  tt_int_op(retval, ==, 0);
+
+  /* Service: Simulate the decryption of the received INTRODUCE1 */
+  retval =
+    hs_ntor_service_get_introduce1_keys(&service_intro_auth_keypair.pubkey,
+                                        &service_intro_enc_keypair,
+                                        &client_ephemeral_enc_keypair.pubkey,
+                                        subcredential,
+                                        &service_intro1_key_material);
+  tt_int_op(retval, ==, 0);
+
+  /* Test that the INTRODUCE1 encryption/mac keys match! */
+  tt_mem_op(client_intro1_key_material.enc_key, OP_EQ,
+            service_intro1_key_material.enc_key,
+            CIPHER256_KEY_LEN);
+  tt_mem_op(client_intro1_key_material.mac_key, OP_EQ,
+            service_intro1_key_material.mac_key,
+            DIGEST256_LEN);
+
+  /* Service: Simulate creation of RENDEZVOUS1 key material. */
+  retval =
+    hs_ntor_service_get_rendezvous1_keys(&service_intro_auth_keypair.pubkey,
+                                         &service_intro_enc_keypair,
+                                         &service_ephemeral_rend_keypair,
+                                         &client_ephemeral_enc_keypair.pubkey,
+                                         &service_rend1_key_material);
+  tt_int_op(retval, ==, 0);
+
+  /* Client: Simulate the verification of a received RENDEZVOUS1 cell */
+  retval =
+    hs_ntor_client_get_rendezvous1_keys(&service_intro_auth_keypair.pubkey,
+                                        &client_ephemeral_enc_keypair,
+                                        &service_intro_enc_keypair.pubkey,
+                                        &service_ephemeral_rend_keypair.pubkey,
+                                        &client_rend1_key_material);
+  tt_int_op(retval, ==, 0);
+
+  /* Test that the RENDEZVOUS1 key material match! */
+  tt_mem_op(client_rend1_key_material.rend_cell_auth_mac, OP_EQ,
+            service_rend1_key_material.rend_cell_auth_mac,
+            DIGEST256_LEN);
+  tt_mem_op(client_rend1_key_material.ntor_key_seed, OP_EQ,
+            service_rend1_key_material.ntor_key_seed,
+            DIGEST256_LEN);
+
+ done:
+  ;
+}
+
 struct testcase_t hs_service_tests[] = {
   { "gen_establish_intro_cell", test_gen_establish_intro_cell, TT_FORK,
     NULL, NULL },
   { "gen_establish_intro_cell_bad", test_gen_establish_intro_cell_bad, TT_FORK,
     NULL, NULL },
+  { "hs_ntor", test_hs_ntor, TT_FORK, NULL, NULL },
 
   END_OF_TESTCASES
 };
