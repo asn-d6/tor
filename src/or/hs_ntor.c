@@ -1,0 +1,545 @@
+/* Copyright (c) 2012-2016, The Tor Project, Inc. */
+/* See LICENSE for licensing information */
+
+/** \file hs_ntor.c
+ *  \brief Implements the ntor variant used in Tor hidden services.
+ *
+ *  \details
+ *  This module handles the variant of the ntor handshake that is documented in
+ *  section [NTOR-WITH-EXTRA-DATA] of rend-spec-ng.txt .
+ *
+ *  The functions in this file provide an API that should be used when sending
+ *  or receiving INTRODUCE1/RENDEZVOUS1 cells to generate the various key
+ *  material required to create and handle those cells.
+ *
+ *  In the case of INTRODUCE1 it provides encryption and MAC keys to
+ *  encode/decode the encrypted blob (see intro1_key_material_t). The relevant
+ *  public functions are hs_ntor_{client,service}_get_introduce1_keys().
+ *
+ *  In the case of RENDEZVOUS1 it calculates the MAC required to authenticate
+ *  the cell, and also provides the key seed that is used to derive the crypto
+ *  material for rendezvous encryption (see rend1_key_material_t). The relevant
+ *  public functions are hs_ntor_{client,service}_get_rendezvous1_keys().
+ */
+
+#include "or.h"
+#include "hs_ntor.h"
+
+/* String constants used by the ntor HS protocol */
+#define PROTOID "tor-hs-ntor-curve25519-sha3-256-1"
+#define SERVER_STR "Server"
+
+/* Protocol-specific tweaks to our crypto inputs */
+#define T_HSENC PROTOID ":hs_key_extract"
+#define T_HSVERIFY   PROTOID ":hs_verify"
+#define T_HSMAC   PROTOID ":hs_mac"
+#define M_HSEXPAND  PROTOID ":hs_key_expand"
+
+/************************* Helper functions: *******************************/
+
+/** Helper macro: copy <b>len</b> bytes from <b>inp</b> to <b>ptr</b> and
+ *advance <b>ptr</b> by the number of bytes copied. Stolen from onion_ntor.c */
+#define APPEND(ptr, inp, len)                   \
+  STMT_BEGIN {                                  \
+    memcpy(ptr, (inp), (len));                  \
+    ptr += len;                                 \
+  } STMT_END
+
+/* Length of EXP(X,y) | EXP(X,b) | AUTH_KEY | B | X | Y | PROTOID */
+#define REND_SECRET_HS_INPUT_LEN CURVE25519_OUTPUT_LEN * 2 + \
+  ED25519_PUBKEY_LEN + CURVE25519_PUBKEY_LEN * 3 + strlen(PROTOID)
+/* Length of auth_input = verify | AUTH_KEY | B | Y | X | PROTOID | "Server" */
+#define REND_AUTH_INPUT_LEN DIGEST256_LEN + ED25519_PUBKEY_LEN + \
+  CURVE25519_PUBKEY_LEN * 3 + strlen(PROTOID) + strlen(SERVER_STR)
+
+/** Helper function: Compute the last part of the HS ntor handshake which
+ *  derives key material necessary to create and handle RENDEZVOUS1
+ *  cells. Function used by both client and service. The actual calculations is
+ *  as follows:
+ *
+ *    NTOR_KEY_SEED = MAC(rend_secret_hs_input, t_hsenc)
+ *    verify = MAC(rend_secret_hs_input, t_hsverify)
+ *    auth_input = verify | AUTH_KEY | B | Y | X | PROTOID | "Server"
+ *    auth_input_mac = MAC(auth_input, t_hsmac)
+ *
+ *  where in the above, AUTH_KEY is <b>intro_auth_pubkey</b>, B is
+ *  <b>intro_enc_pubkey</b>, Y is <b>service_ephemeral_rend_pubkey</b>, and X
+ *  is <b>client_ephemeral_enc_pubkey</b>.
+ *
+ *  The final results of NTOR_KEY_SEED and auth_input_mac are placed in
+ *  <b>rend1_key_material_out</b>. Return 0 if everything went fine. */
+static int
+get_rendezvous1_key_material(const uint8_t *rend_secret_hs_input,
+                  const ed25519_public_key_t *intro_auth_pubkey,
+                  const curve25519_public_key_t *intro_enc_pubkey,
+                  const curve25519_public_key_t *service_ephemeral_rend_pubkey,
+                  const curve25519_public_key_t *client_ephemeral_enc_pubkey,
+                  rend1_key_material_t *rend1_key_material_out)
+{
+  int bad = 0;
+  uint8_t ntor_key_seed[DIGEST256_LEN];
+  uint8_t ntor_verify[DIGEST256_LEN];
+  uint8_t rend_auth_input[REND_AUTH_INPUT_LEN];
+  uint8_t rend_cell_auth[DIGEST256_LEN];
+  uint8_t *ptr;
+
+  /* Let's build NTOR_KEY_SEED */
+  crypto_mac_sha3_256(ntor_key_seed, sizeof(ntor_key_seed),
+                      rend_secret_hs_input, REND_SECRET_HS_INPUT_LEN,
+                      (const uint8_t *)T_HSENC, strlen(T_HSENC));
+  bad |= safe_mem_is_zero(ntor_key_seed, DIGEST256_LEN);
+
+  /* Let's build ntor_verify */
+  crypto_mac_sha3_256(ntor_verify, sizeof(ntor_verify),
+                      rend_secret_hs_input, REND_SECRET_HS_INPUT_LEN,
+                      (const uint8_t *)T_HSVERIFY, strlen(T_HSVERIFY));
+  bad |= safe_mem_is_zero(ntor_verify, DIGEST256_LEN);
+
+  /* Let's build auth_input: */
+  ptr = rend_auth_input;
+  /* Append ntor_verify */
+  APPEND(ptr, ntor_verify, sizeof(ntor_verify));
+  /* Append AUTH_KEY */
+  APPEND(ptr, intro_auth_pubkey->pubkey, ED25519_PUBKEY_LEN);
+  /* Append B */
+  APPEND(ptr, intro_enc_pubkey->public_key, CURVE25519_PUBKEY_LEN);
+  /* Append Y */
+  APPEND(ptr,
+         service_ephemeral_rend_pubkey->public_key, CURVE25519_PUBKEY_LEN);
+  /* Append X */
+  APPEND(ptr,
+         client_ephemeral_enc_pubkey->public_key, CURVE25519_PUBKEY_LEN);
+  /* Append PROTOID */
+  APPEND(ptr, PROTOID, strlen(PROTOID));
+  /* Append "Server" */
+  APPEND(ptr, SERVER_STR, strlen(SERVER_STR));
+  tor_assert(ptr == rend_auth_input + sizeof(rend_auth_input));
+
+  /* Let's build auth_input_mac that goes in RENDEZVOUS1 cell */
+  crypto_mac_sha3_256(rend_cell_auth, sizeof(rend_cell_auth),
+                      rend_auth_input, sizeof(rend_auth_input),
+                      (const uint8_t *)T_HSMAC, strlen(T_HSMAC));
+  bad |= safe_mem_is_zero(ntor_verify, DIGEST256_LEN);
+
+  { /* Get the computed RENDEZVOUS1 material! */
+    memcpy(&rend1_key_material_out->rend_cell_auth_mac,
+           rend_cell_auth, DIGEST256_LEN);
+    memcpy(&rend1_key_material_out->ntor_key_seed,
+           ntor_key_seed, DIGEST256_LEN);
+  }
+
+  return bad;
+}
+
+/** Length of secret_input = EXP(B,x) | AUTH_KEY | X | B | PROTOID */
+#define INTRO_SECRET_HS_INPUT_LEN CURVE25519_OUTPUT_LEN + ED25519_PUBKEY_LEN +\
+  CURVE25519_PUBKEY_LEN + CURVE25519_PUBKEY_LEN + strlen(PROTOID)
+/* Length of info = m_hsexpand | subcredential */
+#define INFO_BLOB_LEN strlen(M_HSEXPAND) + DIGEST256_LEN
+/* Length of KDF input = intro_secret_hs_input | t_hsenc | info */
+#define KDF_INPUT_LEN INTRO_SECRET_HS_INPUT_LEN +strlen(T_HSENC) +INFO_BLOB_LEN
+
+/** Helper function: Compute the part of the HS ntor handshake that generates
+ *  key material for creating and handling INTRODUCE1 cells. Function used
+ *  by both client and service. Specifically, calculate the following:
+ *
+ *     info = m_hsexpand | subcredential
+ *     hs_keys = KDF(intro_secret_hs_input | t_hsenc | info, S_KEY_LEN+MAC_LEN)
+ *     ENC_KEY = hs_keys[0:S_KEY_LEN]
+ *     MAC_KEY = hs_keys[S_KEY_LEN:S_KEY_LEN+MAC_KEY_LEN]
+ *
+ *  where intro_secret_hs_input is <b>secret_input</b>.
+ *
+ * If everything went well, fill <b>intro1_key_material_out</b> with the
+ * necessary key material, and return 0. */
+static void
+get_introduce1_key_material(const uint8_t *secret_input,
+                            const uint8_t *subcredential,
+                            intro1_key_material_t *intro1_key_material_out)
+{
+  uint8_t keystream[CIPHER256_KEY_LEN + DIGEST256_LEN];
+  uint8_t info_blob[INFO_BLOB_LEN];
+  uint8_t kdf_input[KDF_INPUT_LEN];
+  crypto_xof_t *xof;
+  uint8_t *ptr;
+
+  /* Let's build info */
+  ptr = info_blob;
+  APPEND(ptr, M_HSEXPAND, strlen(M_HSEXPAND));
+  APPEND(ptr, subcredential, DIGEST256_LEN);
+  tor_assert(ptr == info_blob + sizeof(info_blob));
+
+  /* Let's build the input to the KDF */
+  ptr = kdf_input;
+  APPEND(ptr, secret_input, INTRO_SECRET_HS_INPUT_LEN);
+  APPEND(ptr, T_HSENC, strlen(T_HSENC));
+  APPEND(ptr, info_blob, sizeof(info_blob));
+  tor_assert(ptr == kdf_input + sizeof(kdf_input));
+
+  /* Now we need to run kdf_input over SHAKE-256 */
+  xof = crypto_xof_new();
+  crypto_xof_add_bytes(xof, kdf_input, sizeof(kdf_input));
+  crypto_xof_squeeze_bytes(xof, keystream, sizeof(keystream)) ;
+  crypto_xof_free(xof);
+
+  { /* Get the keys */
+    memcpy(&intro1_key_material_out->enc_key, keystream, CIPHER256_KEY_LEN);
+    memcpy(&intro1_key_material_out->mac_key,
+           keystream+CIPHER256_KEY_LEN, DIGEST256_LEN);
+  }
+
+  memwipe(keystream,  0, sizeof(keystream));
+}
+
+/** Helper function: Calculate the 'intro_secret_hs_input' element used by the
+ * HS ntor handshake and place it in <b>secret_input_out</b>. This function is
+ * used by both client and service code.
+ *
+ * For the client-side it looks like this:
+ *
+ *         intro_secret_hs_input = EXP(B,x) | AUTH_KEY | X | B | PROTOID
+ *
+ * whereas for the service-side it looks like this:
+ *
+ *         intro_secret_hs_input = EXP(X,b) | AUTH_KEY | X | B | PROTOID
+ *
+ * In this function, <b>dh_result</b> carries the EXP() result,
+ * <b>intro_auth_pubkey</b> is AUTH_KEY, <b>client_ephemeral_enc_pubkey</b> is
+ * X, and <b>intro_enc_pubkey</b> is B.
+ */
+static void
+get_intro_secret_hs_input(const uint8_t *dh_result,
+                    const ed25519_public_key_t *intro_auth_pubkey,
+                    const curve25519_public_key_t *client_ephemeral_enc_pubkey,
+                    const curve25519_public_key_t *intro_enc_pubkey,
+                    uint8_t *secret_input_out)
+{
+  uint8_t *ptr;
+
+  /* Append EXP() */
+  ptr = secret_input_out;
+  APPEND(ptr, dh_result, CURVE25519_OUTPUT_LEN);
+  /* Append AUTH_KEY */
+  APPEND(ptr, intro_auth_pubkey->pubkey, ED25519_PUBKEY_LEN);
+  /* Append X */
+  APPEND(ptr, client_ephemeral_enc_pubkey->public_key, CURVE25519_PUBKEY_LEN);
+  /* Append B */
+  APPEND(ptr, intro_enc_pubkey->public_key, CURVE25519_PUBKEY_LEN);
+  /* Append PROTOID */
+  APPEND(ptr, PROTOID, strlen(PROTOID));
+  tor_assert(ptr == secret_input_out + INTRO_SECRET_HS_INPUT_LEN);
+}
+
+/** Calculate the 'rend_secret_hs_input' element used by the HS ntor handshake
+ *  and place it in <b>rend_secret_hs_input_out</b>. This function is used by
+ *  both client and service code.
+ *
+ * The computation on the client side is:
+ *  rend_secret_hs_input = EXP(X,y) | EXP(X,b) | AUTH_KEY | B | X | Y | PROTOID
+ * whereas on the service side it is:
+ *  rend_secret_hs_input = EXP(Y,x) | EXP(B,x) | AUTH_KEY | B | X | Y | PROTOID
+ *
+ * In this function, the two EXP() results are carried in <b>dh_result1</b> and
+ * <b>dh_result2</b>, <b>intro_auth_pubkey</b> is AUTH_KEY,
+ * <b>intro_enc_pubkey</b> is B, <b>client_ephemeral_enc_pubkey</b> is X, and
+ * <b>service_ephemeral_rend_pubkey</b> is Y.
+ */
+static void
+get_rend_secret_hs_input(const uint8_t *dh_result1, const uint8_t *dh_result2,
+                  const ed25519_public_key_t *intro_auth_pubkey,
+                  const curve25519_public_key_t *intro_enc_pubkey,
+                  const curve25519_public_key_t *client_ephemeral_enc_pubkey,
+                  const curve25519_public_key_t *service_ephemeral_rend_pubkey,
+                  uint8_t *rend_secret_hs_input_out)
+{
+  uint8_t *ptr;
+
+  ptr = rend_secret_hs_input_out;
+  /* Append the first EXP() */
+  APPEND(ptr, dh_result1, CURVE25519_OUTPUT_LEN);
+  /* Append the other EXP() */
+  APPEND(ptr, dh_result2, CURVE25519_OUTPUT_LEN);
+  /* Append AUTH_KEY */
+  APPEND(ptr, intro_auth_pubkey->pubkey, ED25519_PUBKEY_LEN);
+  /* Append B */
+  APPEND(ptr, intro_enc_pubkey->public_key, CURVE25519_PUBKEY_LEN);
+  /* Append X */
+  APPEND(ptr,
+         client_ephemeral_enc_pubkey->public_key, CURVE25519_PUBKEY_LEN);
+  /* Append Y */
+  APPEND(ptr,
+         service_ephemeral_rend_pubkey->public_key, CURVE25519_PUBKEY_LEN);
+  /* Append PROTOID */
+  APPEND(ptr, PROTOID, strlen(PROTOID));
+  tor_assert(ptr == rend_secret_hs_input_out + REND_SECRET_HS_INPUT_LEN);
+}
+
+/************************* Public functions: *******************************/
+
+/* Public function: Do the appropriate ntor calculations and derive the keys
+ * needed to encrypt and authenticate INTRODUCE1 cells. Return 0 and place the
+ * final key material in <b>intro1_key_material_out</b> if everything went
+ * well, otherwise return -1;
+ *
+ * The relevant calculations are as follows:
+ *
+ *     intro_secret_hs_input = EXP(B,x) | AUTH_KEY | X | B | PROTOID
+ *     info = m_hsexpand | subcredential
+ *     hs_keys = KDF(intro_secret_hs_input | t_hsenc | info, S_KEY_LEN+MAC_LEN)
+ *     ENC_KEY = hs_keys[0:S_KEY_LEN]
+ *     MAC_KEY = hs_keys[S_KEY_LEN:S_KEY_LEN+MAC_KEY_LEN]
+ *
+ * where:
+ * <b>intro_auth_pubkey</b> is AUTH_KEY (found in HS descriptor),
+ * <b>intro_enc_pubkey</b> is B (also found in HS descriptor),
+ * <b>client_ephemeral_enc_keypair</b> is freshly generated keypair (x,X)
+ * <b>subcredential</b> is the hidden service subcredential. */
+int
+hs_ntor_client_get_introduce1_keys(
+                      const ed25519_public_key_t *intro_auth_pubkey,
+                      const curve25519_public_key_t *intro_enc_pubkey,
+                      const curve25519_keypair_t *client_ephemeral_enc_keypair,
+                      const uint8_t *subcredential,
+                      intro1_key_material_t *intro1_key_material_out)
+{
+  int bad = 0;
+  uint8_t secret_input[INTRO_SECRET_HS_INPUT_LEN];
+  uint8_t dh_result[CURVE25519_OUTPUT_LEN];
+
+  tor_assert(intro1_key_material_out);
+
+  /* Calculate EXP(B,x) */
+  curve25519_handshake(dh_result,
+                       &client_ephemeral_enc_keypair->seckey,
+                       intro_enc_pubkey);
+  bad = safe_mem_is_zero(dh_result, CURVE25519_OUTPUT_LEN);
+
+  /* Get intro_secret_hs_input */
+  get_intro_secret_hs_input(dh_result, intro_auth_pubkey,
+                            &client_ephemeral_enc_keypair->pubkey,
+                            intro_enc_pubkey, secret_input);
+  bad |= safe_mem_is_zero(secret_input, CURVE25519_OUTPUT_LEN);
+
+  /* Get ENC_KEY and MAC_KEY! */
+  get_introduce1_key_material(secret_input, subcredential,
+                              intro1_key_material_out);
+
+  { /* Some debug logs: */
+    log_debug(LD_REND, "client enc_key = %s\n",
+              hex_str((char*)intro1_key_material_out->enc_key, 32));
+    log_debug(LD_REND, "client mac_key = %s\n",
+              hex_str((char*)intro1_key_material_out->mac_key, 32));
+  }
+
+  /* Cleanup */
+  memwipe(secret_input,  0, sizeof(secret_input));
+
+  return bad ? -1 : 0;
+}
+
+/* Public function: Do the appropriate ntor calculations and derive the keys
+ * needed to verify RENDEZVOUS1 cells and encrypt further rendezvous
+ * traffic. Return 0 and place the final key material in
+ * <b>rend1_key_material_out</b> if everything went well, otherwise return -1.
+ *
+ * The relevant calculations are as follows:
+ *
+ *  rend_secret_hs_input = EXP(Y,x) | EXP(B,x) | AUTH_KEY | B | X | Y | PROTOID
+ *  NTOR_KEY_SEED = MAC(rend_secret_hs_input, t_hsenc)
+ *  verify = MAC(rend_secret_hs_input, t_hsverify)
+ *  auth_input = verify | AUTH_KEY | B | Y | X | PROTOID | "Server"
+ *  auth_input_mac = MAC(auth_input, t_hsmac)
+ *
+ * where:
+ * <b>intro_auth_pubkey</b> is AUTH_KEY (found in HS descriptor),
+ * <b>client_ephemeral_enc_keypair</b> is freshly generated keypair (x,X)
+ * <b>intro_enc_pubkey</b> is B (also found in HS descriptor),
+ * <b>service_ephemeral_rend_pubkey</b> is Y (SERVER_PK in RENDEZVOUS1 cell) */
+int
+hs_ntor_client_get_rendezvous1_keys(
+                  const ed25519_public_key_t *intro_auth_pubkey,
+                  const curve25519_keypair_t *client_ephemeral_enc_keypair,
+                  const curve25519_public_key_t *intro_enc_pubkey,
+                  const curve25519_public_key_t *service_ephemeral_rend_pubkey,
+                  rend1_key_material_t *rend1_key_material_out)
+{
+  int bad = 0;
+  uint8_t rend_secret_hs_input[REND_SECRET_HS_INPUT_LEN];
+  uint8_t dh_result1[CURVE25519_OUTPUT_LEN];
+  uint8_t dh_result2[CURVE25519_OUTPUT_LEN];
+
+  tor_assert(rend1_key_material_out);
+
+  /* Compute EXP(Y, x) */
+  curve25519_handshake(dh_result1,
+                       &client_ephemeral_enc_keypair->seckey,
+                       service_ephemeral_rend_pubkey);
+  bad = safe_mem_is_zero(dh_result1, CURVE25519_OUTPUT_LEN);
+
+  /* Compute EXP(B, x) */
+  curve25519_handshake(dh_result2,
+                       &client_ephemeral_enc_keypair->seckey,
+                       intro_enc_pubkey);
+  bad |= safe_mem_is_zero(dh_result2, CURVE25519_OUTPUT_LEN);
+
+  /* Get rend_secret_hs_input */
+  get_rend_secret_hs_input(dh_result1, dh_result2,
+                           intro_auth_pubkey, intro_enc_pubkey,
+                           &client_ephemeral_enc_keypair->pubkey,
+                           service_ephemeral_rend_pubkey,
+                           rend_secret_hs_input);
+
+  /* Get NTOR_KEY_SEED and the auth_input MAC */
+  bad |= get_rendezvous1_key_material(rend_secret_hs_input,
+                                      intro_auth_pubkey,
+                                      intro_enc_pubkey,
+                                      service_ephemeral_rend_pubkey,
+                                      &client_ephemeral_enc_keypair->pubkey,
+                                      rend1_key_material_out);
+
+  { /* Some debug logs */
+    log_debug(LD_REND, "client rend_cell_auth_mac = %s\n",
+              hex_str((char*)rend1_key_material_out->rend_cell_auth_mac, 32));
+    log_debug(LD_REND, "client ntor_key_seed = %s\n",
+              hex_str((char*)rend1_key_material_out->ntor_key_seed, 32));
+  }
+
+  memwipe(rend_secret_hs_input, 0, sizeof(rend_secret_hs_input));
+
+  return bad ? -1 : 0;
+}
+
+/* Public function: Do the appropriate ntor calculations and derive the keys
+ * needed to decrypt and verify INTRODUCE1 cells. Return 0 and place the final
+ * key material in <b>intro1_key_material_out</b> if everything went well,
+ * otherwise return -1;
+ *
+ * The relevant calculations are as follows:
+ *
+ *    intro_secret_hs_input = EXP(X,b) | AUTH_KEY | X | B | PROTOID
+ *    info = m_hsexpand | subcredential
+ *    hs_keys = KDF(intro_secret_hs_input | t_hsenc | info, S_KEY_LEN+MAC_LEN)
+ *    HS_DEC_KEY = hs_keys[0:S_KEY_LEN]
+ *    HS_MAC_KEY = hs_keys[S_KEY_LEN:S_KEY_LEN+MAC_KEY_LEN]
+ *
+ * where:
+ * <b>intro_auth_pubkey</b> is AUTH_KEY (introduction point auth key),
+ * <b>intro_enc_keypair</b> is (b,B) (introduction point encryption keypair),
+ * <b>client_ephemeral_enc_pubkey</b> is X (CLIENT_PK in INTRODUCE2 cell),
+ * <b>subcredential</b> is the hidden service subcredential. */
+int
+hs_ntor_service_get_introduce1_keys(
+                    const ed25519_public_key_t *intro_auth_pubkey,
+                    const curve25519_keypair_t *intro_enc_keypair,
+                    const curve25519_public_key_t *client_ephemeral_enc_pubkey,
+                    const uint8_t *subcredential,
+                    intro1_key_material_t *intro1_key_material_out)
+{
+  int bad = 0;
+  uint8_t secret_input[INTRO_SECRET_HS_INPUT_LEN];
+  uint8_t dh_result[CURVE25519_OUTPUT_LEN];
+
+  tor_assert(intro1_key_material_out);
+
+  /* Compute EXP(X, b) */
+  curve25519_handshake(dh_result,
+                       &intro_enc_keypair->seckey,
+                       client_ephemeral_enc_pubkey);
+  bad = safe_mem_is_zero(dh_result, CURVE25519_OUTPUT_LEN);
+
+  /* Get intro_secret_hs_input */
+  get_intro_secret_hs_input(dh_result, intro_auth_pubkey,
+                            client_ephemeral_enc_pubkey,
+                            &intro_enc_keypair->pubkey,
+                            secret_input);
+  bad |= safe_mem_is_zero(secret_input, CURVE25519_OUTPUT_LEN);
+
+  /* Get ENC_KEY and MAC_KEY! */
+  get_introduce1_key_material(secret_input, subcredential,
+                              intro1_key_material_out);
+
+  { /* Some debug logs */
+    log_debug(LD_REND, "service enc_key = %s\n",
+              hex_str((char*)intro1_key_material_out->enc_key, 32));
+    log_debug(LD_REND, "service mac_key = %s\n",
+              hex_str((char*)intro1_key_material_out->mac_key, 32));
+  }
+
+  memwipe(secret_input,  0, sizeof(secret_input));
+
+  return bad ? -1 : 0;
+}
+
+/* Public function: Do the appropriate ntor calculations and derive the keys
+ * needed to create and authenticate RENDEZVOUS1 cells. Return 0 and place the
+ * final key material in <b>rend1_key_material_out</b> if all went fine, return
+ * -1 if error happened.
+ *
+ * The relevant calculations are as follows:
+ *
+ *  rend_secret_hs_input = EXP(X,y) | EXP(X,b) | AUTH_KEY | B | X | Y | PROTOID
+ *  NTOR_KEY_SEED = MAC(rend_secret_hs_input, t_hsenc)
+ *  verify = MAC(rend_secret_hs_input, t_hsverify)
+ *  auth_input = verify | AUTH_KEY | B | Y | X | PROTOID | "Server"
+ *  auth_input_mac = MAC(auth_input, t_hsmac)
+ *
+ * where:
+ * <b>intro_auth_pubkey</b> is AUTH_KEY (intro point auth key),
+ * <b>intro_enc_keypair</b> is (b,B) (intro point enc keypair)
+ * <b>service_ephemeral_rend_keypair</b> is a fresh (y,Y) keypair
+ * <b>client_ephemeral_enc_pubkey</b> is X (CLIENT_PK in INTRODUCE2 cell) */
+int
+hs_ntor_service_get_rendezvous1_keys(
+                    const ed25519_public_key_t *intro_auth_pubkey,
+                    const curve25519_keypair_t *intro_enc_keypair,
+                    const curve25519_keypair_t *service_ephemeral_rend_keypair,
+                    const curve25519_public_key_t *client_ephemeral_enc_pubkey,
+                    rend1_key_material_t *rend1_key_material_out)
+{
+  int bad = 0;
+  uint8_t rend_secret_hs_input[REND_SECRET_HS_INPUT_LEN];
+  uint8_t dh_result1[CURVE25519_OUTPUT_LEN];
+  uint8_t dh_result2[CURVE25519_OUTPUT_LEN];
+
+  tor_assert(rend1_key_material_out);
+
+  /* Compute EXP(X, y) */
+  curve25519_handshake(dh_result1,
+                       &service_ephemeral_rend_keypair->seckey,
+                       client_ephemeral_enc_pubkey);
+  bad = safe_mem_is_zero(dh_result1, CURVE25519_OUTPUT_LEN);
+
+  /* Compute EXP(X, b) */
+  curve25519_handshake(dh_result2,
+                       &intro_enc_keypair->seckey,
+                       client_ephemeral_enc_pubkey);
+  bad |= safe_mem_is_zero(dh_result2, CURVE25519_OUTPUT_LEN);
+
+  /* Get rend_secret_hs_input */
+  get_rend_secret_hs_input(dh_result1, dh_result2,
+                           intro_auth_pubkey,
+                           &intro_enc_keypair->pubkey,
+                           client_ephemeral_enc_pubkey,
+                           &service_ephemeral_rend_keypair->pubkey,
+                           rend_secret_hs_input);
+
+  /* Get NTOR_KEY_SEED and AUTH_INPUT_MAC! */
+  bad |= get_rendezvous1_key_material(rend_secret_hs_input,
+                                      intro_auth_pubkey,
+                                      &intro_enc_keypair->pubkey,
+                                      &service_ephemeral_rend_keypair->pubkey,
+                                      client_ephemeral_enc_pubkey,
+                                      rend1_key_material_out);
+
+  { /* Some debug logs */
+    log_debug(LD_REND, "service rend_cell_auth_mac = %s\n",
+              hex_str((char*)rend1_key_material_out->rend_cell_auth_mac, 32));
+    log_debug(LD_REND, "service ntor_key_seed = %s\n",
+              hex_str((char*)rend1_key_material_out->ntor_key_seed, 32));
+  }
+
+  memwipe(rend_secret_hs_input, 0, sizeof(rend_secret_hs_input));
+
+  return bad ? -1 : 0;
+}
+
