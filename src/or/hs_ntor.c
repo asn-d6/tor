@@ -328,7 +328,7 @@ hs_ntor_client_get_introduce1_keys(
   curve25519_handshake(dh_result,
                        &client_ephemeral_enc_keypair->seckey,
                        intro_enc_pubkey);
-  bad = safe_mem_is_zero(dh_result, CURVE25519_OUTPUT_LEN);
+  bad |= safe_mem_is_zero(dh_result, CURVE25519_OUTPUT_LEN);
 
   /* Get intro_secret_hs_input */
   get_intro_secret_hs_input(dh_result, intro_auth_pubkey,
@@ -339,13 +339,6 @@ hs_ntor_client_get_introduce1_keys(
   /* Get ENC_KEY and MAC_KEY! */
   get_introduce1_key_material(secret_input, subcredential,
                               intro1_key_material_out);
-
-  { /* Some debug logs: */
-    log_debug(LD_REND, "client enc_key = %s\n",
-              hex_str((char*)intro1_key_material_out->enc_key, 32));
-    log_debug(LD_REND, "client mac_key = %s\n",
-              hex_str((char*)intro1_key_material_out->mac_key, 32));
-  }
 
   /* Cleanup */
   memwipe(secret_input,  0, sizeof(secret_input));
@@ -397,7 +390,7 @@ hs_ntor_client_get_rendezvous1_keys(
   curve25519_handshake(dh_result1,
                        &client_ephemeral_enc_keypair->seckey,
                        service_ephemeral_rend_pubkey);
-  bad = safe_mem_is_zero(dh_result1, CURVE25519_OUTPUT_LEN);
+  bad |= safe_mem_is_zero(dh_result1, CURVE25519_OUTPUT_LEN);
 
   /* Compute EXP(B, x) */
   curve25519_handshake(dh_result2,
@@ -419,13 +412,6 @@ hs_ntor_client_get_rendezvous1_keys(
                                       service_ephemeral_rend_pubkey,
                                       &client_ephemeral_enc_keypair->pubkey,
                                       rend1_key_material_out);
-
-  { /* Some debug logs */
-    log_debug(LD_REND, "client rend_cell_auth_mac = %s\n",
-              hex_str((char*)rend1_key_material_out->rend_cell_auth_mac, 32));
-    log_debug(LD_REND, "client ntor_key_seed = %s\n",
-              hex_str((char*)rend1_key_material_out->ntor_key_seed, 32));
-  }
 
   memwipe(rend_secret_hs_input, 0, sizeof(rend_secret_hs_input));
   if (bad) {
@@ -475,7 +461,7 @@ hs_ntor_service_get_introduce1_keys(
   curve25519_handshake(dh_result,
                        &intro_enc_keypair->seckey,
                        client_ephemeral_enc_pubkey);
-  bad = safe_mem_is_zero(dh_result, CURVE25519_OUTPUT_LEN);
+  bad |= safe_mem_is_zero(dh_result, CURVE25519_OUTPUT_LEN);
 
   /* Get intro_secret_hs_input */
   get_intro_secret_hs_input(dh_result, intro_auth_pubkey,
@@ -487,13 +473,6 @@ hs_ntor_service_get_introduce1_keys(
   /* Get ENC_KEY and MAC_KEY! */
   get_introduce1_key_material(secret_input, subcredential,
                               intro1_key_material_out);
-
-  { /* Some debug logs */
-    log_debug(LD_REND, "service enc_key = %s\n",
-              hex_str((char*)intro1_key_material_out->enc_key, 32));
-    log_debug(LD_REND, "service mac_key = %s\n",
-              hex_str((char*)intro1_key_material_out->mac_key, 32));
-  }
 
   memwipe(secret_input,  0, sizeof(secret_input));
   if (bad) {
@@ -544,7 +523,7 @@ hs_ntor_service_get_rendezvous1_keys(
   curve25519_handshake(dh_result1,
                        &service_ephemeral_rend_keypair->seckey,
                        client_ephemeral_enc_pubkey);
-  bad = safe_mem_is_zero(dh_result1, CURVE25519_OUTPUT_LEN);
+  bad |= safe_mem_is_zero(dh_result1, CURVE25519_OUTPUT_LEN);
 
   /* Compute EXP(X, b) */
   curve25519_handshake(dh_result2,
@@ -567,13 +546,6 @@ hs_ntor_service_get_rendezvous1_keys(
                                       &service_ephemeral_rend_keypair->pubkey,
                                       client_ephemeral_enc_pubkey,
                                       rend1_key_material_out);
-
-  { /* Some debug logs */
-    log_debug(LD_REND, "service rend_cell_auth_mac = %s\n",
-              hex_str((char*)rend1_key_material_out->rend_cell_auth_mac, 32));
-    log_debug(LD_REND, "service ntor_key_seed = %s\n",
-              hex_str((char*)rend1_key_material_out->ntor_key_seed, 32));
-  }
 
   memwipe(rend_secret_hs_input, 0, sizeof(rend_secret_hs_input));
   if (bad) {
