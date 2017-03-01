@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2016, The Tor Project, Inc. */
+/* Copyright (c) 2017, The Tor Project, Inc. */
 /* See LICENSE for licensing information */
 
 /** \file hs_ntor.c
@@ -31,9 +31,9 @@
 
 /* Protocol-specific tweaks to our crypto inputs */
 #define T_HSENC PROTOID ":hs_key_extract"
-#define T_HSVERIFY   PROTOID ":hs_verify"
-#define T_HSMAC   PROTOID ":hs_mac"
-#define M_HSEXPAND  PROTOID ":hs_key_expand"
+#define T_HSVERIFY PROTOID ":hs_verify"
+#define T_HSMAC PROTOID ":hs_mac"
+#define M_HSEXPAND PROTOID ":hs_key_expand"
 
 /************************* Helper functions: *******************************/
 
@@ -64,7 +64,8 @@
  *
  *  where in the above, AUTH_KEY is <b>intro_auth_pubkey</b>, B is
  *  <b>intro_enc_pubkey</b>, Y is <b>service_ephemeral_rend_pubkey</b>, and X
- *  is <b>client_ephemeral_enc_pubkey</b>.
+ *  is <b>client_ephemeral_enc_pubkey</b>. The provided
+ *  <b>rend_secret_hs_input</b> is of size REND_SECRET_HS_INPUT_LEN.
  *
  *  The final results of NTOR_KEY_SEED and auth_input_mac are placed in
  *  <b>rend1_key_material_out</b>. Return 0 if everything went fine. */
@@ -148,7 +149,9 @@ get_rendezvous1_key_material(const uint8_t *rend_secret_hs_input,
  *     ENC_KEY = hs_keys[0:S_KEY_LEN]
  *     MAC_KEY = hs_keys[S_KEY_LEN:S_KEY_LEN+MAC_KEY_LEN]
  *
- *  where intro_secret_hs_input is <b>secret_input</b>.
+ *  where intro_secret_hs_input is <b>secret_input</b> (of size
+ *  INTRO_SECRET_HS_INPUT_LEN), and <b>subcredential</b> is of size
+ *  DIGEST256_LEN.
  *
  * If everything went well, fill <b>intro1_key_material_out</b> with the
  * necessary key material, and return 0. */
@@ -203,9 +206,9 @@ get_introduce1_key_material(const uint8_t *secret_input,
  *
  *         intro_secret_hs_input = EXP(X,b) | AUTH_KEY | X | B | PROTOID
  *
- * In this function, <b>dh_result</b> carries the EXP() result,
- * <b>intro_auth_pubkey</b> is AUTH_KEY, <b>client_ephemeral_enc_pubkey</b> is
- * X, and <b>intro_enc_pubkey</b> is B.
+ * In this function, <b>dh_result</b> carries the EXP() result (and has size
+ * CURVE25519_OUTPUT_LEN) <b>intro_auth_pubkey</b> is AUTH_KEY,
+ * <b>client_ephemeral_enc_pubkey</b> is X, and <b>intro_enc_pubkey</b> is B.
  */
 static void
 get_intro_secret_hs_input(const uint8_t *dh_result,
@@ -239,9 +242,12 @@ get_intro_secret_hs_input(const uint8_t *dh_result,
  * whereas on the service side it is:
  *  rend_secret_hs_input = EXP(Y,x) | EXP(B,x) | AUTH_KEY | B | X | Y | PROTOID
  *
- * In this function, the two EXP() results are carried in <b>dh_result1</b> and
- * <b>dh_result2</b>, <b>intro_auth_pubkey</b> is AUTH_KEY,
- * <b>intro_enc_pubkey</b> is B, <b>client_ephemeral_enc_pubkey</b> is X, and
+ * where:
+ * <b>dh_result1</b> and <b>dh_result2</b> carry the two EXP() results (of size
+ * CURVE25519_OUTPUT_LEN)
+ * <b>intro_auth_pubkey</b> is AUTH_KEY,
+ * <b>intro_enc_pubkey</b> is B,
+ * <b>client_ephemeral_enc_pubkey</b> is X, and
  * <b>service_ephemeral_rend_pubkey</b> is Y.
  */
 static void
@@ -293,7 +299,8 @@ get_rend_secret_hs_input(const uint8_t *dh_result1, const uint8_t *dh_result2,
  * <b>intro_auth_pubkey</b> is AUTH_KEY (found in HS descriptor),
  * <b>intro_enc_pubkey</b> is B (also found in HS descriptor),
  * <b>client_ephemeral_enc_keypair</b> is freshly generated keypair (x,X)
- * <b>subcredential</b> is the hidden service subcredential. */
+ * <b>subcredential</b> is the hidden service subcredential (of size
+ * DIGEST256_LEN). */
 int
 hs_ntor_client_get_introduce1_keys(
                       const ed25519_public_key_t *intro_auth_pubkey,
@@ -426,7 +433,7 @@ hs_ntor_client_get_rendezvous1_keys(
  * <b>intro_auth_pubkey</b> is AUTH_KEY (introduction point auth key),
  * <b>intro_enc_keypair</b> is (b,B) (introduction point encryption keypair),
  * <b>client_ephemeral_enc_pubkey</b> is X (CLIENT_PK in INTRODUCE2 cell),
- * <b>subcredential</b> is the hidden service subcredential. */
+ * <b>subcredential</b> is the HS subcredential (of size DIGEST256_LEN) */
 int
 hs_ntor_service_get_introduce1_keys(
                     const ed25519_public_key_t *intro_auth_pubkey,

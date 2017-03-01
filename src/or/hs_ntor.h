@@ -1,3 +1,6 @@
+/* Copyright (c) 2017, The Tor Project, Inc. */
+/* See LICENSE for licensing information */
+
 #ifndef TOR_HS_NTOR_H
 #define TOR_HS_NTOR_H
 
