@@ -129,6 +129,10 @@ get_rendezvous1_key_material(const uint8_t *rend_secret_hs_input,
            ntor_key_seed, DIGEST256_LEN);
   }
 
+  memwipe(rend_cell_auth, 0, sizeof(rend_cell_auth));
+  memwipe(rend_auth_input, 0, sizeof(rend_auth_input));
+  memwipe(ntor_key_seed, 0, sizeof(ntor_key_seed));
+
   return bad;
 }
 
@@ -192,6 +196,7 @@ get_introduce1_key_material(const uint8_t *secret_input,
   }
 
   memwipe(keystream,  0, sizeof(keystream));
+  memwipe(kdf_input,  0, sizeof(kdf_input));
 }
 
 /** Helper function: Calculate the 'intro_secret_hs_input' element used by the
@@ -313,6 +318,10 @@ hs_ntor_client_get_introduce1_keys(
   uint8_t secret_input[INTRO_SECRET_HS_INPUT_LEN];
   uint8_t dh_result[CURVE25519_OUTPUT_LEN];
 
+  tor_assert(intro_auth_pubkey);
+  tor_assert(intro_enc_pubkey);
+  tor_assert(client_ephemeral_enc_keypair);
+  tor_assert(subcredential);
   tor_assert(intro1_key_material_out);
 
   /* Calculate EXP(B,x) */
@@ -340,6 +349,9 @@ hs_ntor_client_get_introduce1_keys(
 
   /* Cleanup */
   memwipe(secret_input,  0, sizeof(secret_input));
+  if (bad) {
+    memwipe(intro1_key_material_out, 0, sizeof(intro1_key_material_t));
+  }
 
   return bad ? -1 : 0;
 }
@@ -375,6 +387,10 @@ hs_ntor_client_get_rendezvous1_keys(
   uint8_t dh_result1[CURVE25519_OUTPUT_LEN];
   uint8_t dh_result2[CURVE25519_OUTPUT_LEN];
 
+  tor_assert(intro_auth_pubkey);
+  tor_assert(client_ephemeral_enc_keypair);
+  tor_assert(intro_enc_pubkey);
+  tor_assert(service_ephemeral_rend_pubkey);
   tor_assert(rend1_key_material_out);
 
   /* Compute EXP(Y, x) */
@@ -412,6 +428,9 @@ hs_ntor_client_get_rendezvous1_keys(
   }
 
   memwipe(rend_secret_hs_input, 0, sizeof(rend_secret_hs_input));
+  if (bad) {
+    memwipe(rend1_key_material_out, 0, sizeof(rend1_key_material_t));
+  }
 
   return bad ? -1 : 0;
 }
@@ -446,6 +465,10 @@ hs_ntor_service_get_introduce1_keys(
   uint8_t secret_input[INTRO_SECRET_HS_INPUT_LEN];
   uint8_t dh_result[CURVE25519_OUTPUT_LEN];
 
+  tor_assert(intro_auth_pubkey);
+  tor_assert(intro_enc_keypair);
+  tor_assert(client_ephemeral_enc_pubkey);
+  tor_assert(subcredential);
   tor_assert(intro1_key_material_out);
 
   /* Compute EXP(X, b) */
@@ -473,6 +496,9 @@ hs_ntor_service_get_introduce1_keys(
   }
 
   memwipe(secret_input,  0, sizeof(secret_input));
+  if (bad) {
+    memwipe(intro1_key_material_out, 0, sizeof(intro1_key_material_t));
+  }
 
   return bad ? -1 : 0;
 }
@@ -508,6 +534,10 @@ hs_ntor_service_get_rendezvous1_keys(
   uint8_t dh_result1[CURVE25519_OUTPUT_LEN];
   uint8_t dh_result2[CURVE25519_OUTPUT_LEN];
 
+  tor_assert(intro_auth_pubkey);
+  tor_assert(intro_enc_keypair);
+  tor_assert(service_ephemeral_rend_keypair);
+  tor_assert(client_ephemeral_enc_pubkey);
   tor_assert(rend1_key_material_out);
 
   /* Compute EXP(X, y) */
@@ -546,6 +576,9 @@ hs_ntor_service_get_rendezvous1_keys(
   }
 
   memwipe(rend_secret_hs_input, 0, sizeof(rend_secret_hs_input));
+  if (bad) {
+    memwipe(rend1_key_material_out, 0, sizeof(rend1_key_material_t));
+  }
 
   return bad ? -1 : 0;
 }
@@ -558,6 +591,9 @@ hs_ntor_client_rendezvous2_mac_is_good(
                                 const rend1_key_material_t *rend1_key_material,
                                 const uint8_t *rcvd_mac)
 {
+  tor_assert(rcvd_mac);
+  tor_assert(rend1_key_material);
+
   return tor_memeq(rend1_key_material->rend_cell_auth_mac,
                    rcvd_mac, DIGEST256_LEN);
 }
