@@ -543,3 +543,15 @@ hs_ntor_service_get_rendezvous1_keys(
   return bad ? -1 : 0;
 }
 
+/** Given a received RENDEZVOUS2 MAC in <b>mac</b> (of length DIGEST256_LEN),
+ *  and the RENDEZVOUS1 key material in <b>rend1_key_material</b>, return 1 if
+ *  the MAC is good, otherwise return 0. */
+int
+hs_ntor_client_rendezvous2_mac_is_good(
+                                const rend1_key_material_t *rend1_key_material,
+                                const uint8_t *rcvd_mac)
+{
+  return tor_memeq(rend1_key_material->rend_cell_auth_mac,
+                   rcvd_mac, DIGEST256_LEN);
+}
+

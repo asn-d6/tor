@@ -49,5 +49,9 @@ int hs_ntor_service_get_rendezvous1_keys(
                   const curve25519_public_key_t *client_ephemeral_enc_pubkey,
                   rend1_key_material_t *rend1_key_material_out);
 
+int hs_ntor_client_rendezvous2_mac_is_good(
+                                const rend1_key_material_t *rend1_key_material,
+                                const uint8_t *rcvd_mac);
+
 #endif
 
