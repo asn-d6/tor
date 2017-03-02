@@ -1073,6 +1073,13 @@ desc_encode_v3(const hs_descriptor_t *desc,
   encoded_str = smartlist_join_strings(lines, "\n", 1, NULL);
   *encoded_out = encoded_str;
 
+  if (strlen(encoded_str) >= hs_cache_get_max_descriptor_size()) {
+    log_warn(LD_GENERAL, "We just made an HS descriptor that's too big (%d)."
+             "Failing.", (int)strlen(encoded_str));
+    tor_free(encoded_str);
+    goto err;
+  }
+
   /* XXX: Trigger a control port event. */
 
   /* Success! */
