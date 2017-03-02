@@ -840,18 +840,17 @@ get_outer_encrypted_layer_plaintext(const hs_descriptor_t *desc,
   smartlist_add_asprintf(lines, "%s %s\n", str_desc_auth_type, "x25519");
 
   {  /* Create fake ephemeral x25519 key */
-    char ephemeral_key_base64[CURVE25519_BASE64_PADDED_LEN + 1];
-    curve25519_secret_key_t ephemeral_x25519_privkey;
-    curve25519_public_key_t ephemeral_x25519_pubkey;
-    curve25519_secret_key_generate(&ephemeral_x25519_privkey, 0);
-    curve25519_public_key_generate(&ephemeral_x25519_pubkey,
-                                   &ephemeral_x25519_privkey);
-    if (curve25519_public_to_base64(ephemeral_key_base64,
-                                    &ephemeral_x25519_pubkey) < 0) {
+    char fake_key_base64[CURVE25519_BASE64_PADDED_LEN + 1];
+    curve25519_keypair_t fake_x25519_keypair;
+    if (curve25519_keypair_generate(&fake_x25519_keypair, 0) < 0) {
+      goto done;
+    }
+    if (curve25519_public_to_base64(fake_key_base64,
+                                    &fake_x25519_keypair.pubkey) < 0) {
       goto done;
     }
     smartlist_add_asprintf(lines, "%s %s\n",
-                           str_desc_auth_key, ephemeral_key_base64);
+                           str_desc_auth_key, fake_key_base64);
     /* No need to memwipe any of these fake keys. They will go unused. */
   }
 
