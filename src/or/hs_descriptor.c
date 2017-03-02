@@ -20,7 +20,7 @@
  *      ||  desc-auth-ephemeral-key                          | |
  *      ||  auth-client                                      | |
  *      ||  auth-client                                      | |
-        ||  ...                                              | |
+ *      ||  ...                                              | |
  *      ||  encrypted                                        | |
  *      ||+-------------------------------------------------+| |
  *      |||ENCRYPTED LAYER (aka INNER ENCRYPTED LAYER):     || |
@@ -28,11 +28,28 @@
  *      |||  intro-auth-required                            || |
  *      |||  introduction-point                             || |
  *      |||  introduction-point                             || |
-        |||  ...                                            || |
+ *      |||  ...                                            || |
  *      ||+-------------------------------------------------+| |
  *      |+---------------------------------------------------+ |
  *      +------------------------------------------------------+
  *
+ * The DESCRIPTOR HEADER section is completely unencrypted and contains generic
+ * descriptor metadata.
+ *
+ * The SUPERENCRYPTED LAYER section is the first layer of encryption, and it's
+ * encrypted using the blinded public key of the hidden service to protect
+ * against entities who don't know its onion address. The clients of the hidden
+ * service know its onion address and blinded public key, whereas third-parties
+ * (like HSDirs) don't know it (except if it's a public hidden service).
+ *
+ * The ENCRYPTED LAYER section is the second layer of encryption, and it's
+ * encrypted using the client authorization key material (if those exist). When
+ * client authorization is enabled, this second layer of encryption protects
+ * the descriptor content from unauthorized entities. If client authorization
+ * is disabled, this second layer of encryption does not provide any extra
+ * security but is still present. The plaintext of this layer contains all the
+ * information required to connect to the hidden service like its list of
+ * introduction points.
  **/
 
 /* For unit tests.*/
@@ -1405,7 +1422,8 @@ decrypt_desc_layer(const hs_descriptor_t *desc,
 }
 
 /* Basic validation that the superencrypted client auth portion of the
- * descriptor is well-formed. Return True if so, otherwise return False. */
+ * descriptor is well-formed and recognized. Return True if so, otherwise
+ * return False. */
 static int
 superencrypted_auth_data_is_valid(smartlist_t *tokens)
 {
@@ -1499,11 +1517,11 @@ decode_superencrypted(const char *message, size_t message_len,
   return retval;
 }
 
-/* Decrypt the superencrypted section of the descriptor using the given
- * descriptor object <b>desc</b>. A newly allocated NUL terminated string is
- * put in decrypted_out which contains the inner encrypted layer of the
- * descriptor. Return the length of decrypted_out on success else 0 is returned
- * and decrypted_out is set to NULL. */
+/* Decrypt both the superencrypted and the encrypted section of the descriptor
+ * using the given descriptor object <b>desc</b>. A newly allocated NUL
+ * terminated string is put in decrypted_out which contains the inner encrypted
+ * layer of the descriptor. Return the length of decrypted_out on success else
+ * 0 is returned and decrypted_out is set to NULL. */
 static size_t
 desc_decrypt_all(const hs_descriptor_t *desc, char **decrypted_out)
 {
