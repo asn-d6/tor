@@ -1307,11 +1307,12 @@ cert_parse_and_validate(tor_cert_t **cert_out, const char *data,
 STATIC int
 encrypted_data_length_is_valid(size_t len)
 {
-  /* Check for the minimum length possible. */
-  if (len < HS_DESC_ENCRYPTED_MIN_LEN) {
+  /* Make sure there is enough data for the salt and the mac. The equality is
+     there to ensure that there is at least one byte of encrypted data. */
+  if (len <= HS_DESC_ENCRYPTED_SALT_LEN + DIGEST256_LEN) {
     log_warn(LD_REND, "Length of descriptor's encrypted data is too small. "
                       "Got %lu but minimum value is %d",
-             (unsigned long)len, HS_DESC_ENCRYPTED_MIN_LEN);
+             (unsigned long)len, HS_DESC_ENCRYPTED_SALT_LEN + DIGEST256_LEN);
     goto err;
   }
 
@@ -1342,29 +1343,23 @@ decrypt_desc_layer(const hs_descriptor_t *desc,
   tor_assert(desc);
   tor_assert(encrypted_blob);
 
-  /* Construction is as follow: SALT | ENCRYPTED_DATA | MAC */
+  /* Construction is as follow: SALT | ENCRYPTED_DATA | MAC .
+   * Make sure we have enough space for all these things. */
   if (!encrypted_data_length_is_valid(encrypted_blob_size)) {
     goto err;
   }
 
   /* Start of the blob thus the salt. */
   salt = encrypted_blob;
+
   /* Next is the encrypted data. */
   encrypted = encrypted_blob + HS_DESC_ENCRYPTED_SALT_LEN;
   encrypted_len = encrypted_blob_size -
     (HS_DESC_ENCRYPTED_SALT_LEN + DIGEST256_LEN);
+  tor_assert(encrypted_len > 0); /* guaranteed by the check above */
 
-  /* At the very end is the MAC. Make sure it's of the right size. */
-  {
-    desc_mac = encrypted + encrypted_len;
-    size_t desc_mac_size = encrypted_blob_size - (desc_mac - encrypted_blob);
-    if (desc_mac_size != DIGEST256_LEN) {
-      log_warn(LD_REND, "Service descriptor MAC length of encrypted data "
-                        "is invalid (%lu, expected %u)",
-               (unsigned long) desc_mac_size, DIGEST256_LEN);
-      goto err;
-    }
-  }
+  /* And last comes the MAC. */
+  desc_mac = encrypted_blob + encrypted_blob_size - DIGEST256_LEN;
 
   /* KDF construction resulting in a key from which the secret key, IV and MAC
    * key are extracted which is what we need for the decryption. */

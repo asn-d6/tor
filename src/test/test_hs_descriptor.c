@@ -594,7 +594,7 @@ test_encrypted_data_len(void *arg)
   ret = encrypted_data_length_is_valid(0);
   tt_int_op(ret, OP_EQ, 0);
   /* Valid value. */
-  value = HS_DESC_ENCRYPTED_SALT_LEN + DIGEST256_LEN;
+  value = HS_DESC_ENCRYPTED_SALT_LEN + DIGEST256_LEN + 1;
   ret = encrypted_data_length_is_valid(value);
   tt_int_op(ret, OP_EQ, 1);
 
