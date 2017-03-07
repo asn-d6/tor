@@ -7,13 +7,136 @@
  **/
 
 #include "or.h"
+#include "config.h"
 #include "rendservice.h"
 
 #include "hs_cell.h"
+#include "hs_ntor.h"
 
 /* Trunnel. */
 #include "hs/cell_common.h"
 #include "hs/cell_establish_intro.h"
+#include "hs/cell_introduce1.h"
+
+/* From a set of keys, subcredential and the ENCRYPTED section of an
+ * INTRODUCE2 cell, return a newly allocated intro cell keys structure.
+ * Finally, the client public key is copied in client_pk. On error, return
+ * NULL. */
+static hs_ntor_intro_cell_keys_t *
+get_introduce2_key_material(const ed25519_public_key_t *auth_key,
+                            const curve25519_keypair_t *enc_key,
+                            const uint8_t *subcredential,
+                            const uint8_t *encrypted_section,
+                            curve25519_public_key_t *client_pk)
+{
+  hs_ntor_intro_cell_keys_t *keys;
+
+  tor_assert(auth_key);
+  tor_assert(enc_key);
+  tor_assert(subcredential);
+  tor_assert(encrypted_section);
+  tor_assert(client_pk);
+
+  keys = tor_malloc_zero(sizeof(*keys));
+
+  /* First bytes of the ENCRYPTED section are the client public key. */
+  memcpy(client_pk->public_key, encrypted_section, CURVE25519_PUBKEY_LEN);
+
+  if (hs_ntor_service_get_introduce1_keys(auth_key, enc_key, client_pk,
+                                          subcredential, keys) < 0) {
+    /* Don't rely on the caller to wipe this on error. */
+    memwipe(client_pk, 0, sizeof(curve25519_public_key_t));
+    tor_free(keys);
+    keys = NULL;
+  }
+  return keys;
+}
+
+/* Using the given encryption key, decrypt the encrypted_section of length
+ * encrypted_section_len of an INTRODUCE2 cell and return a newly allocated
+ * buffer containing the decrypted data. On decryption failure, NULL is
+ * returned. */
+static uint8_t *
+decrypt_introduce2(const uint8_t *enc_key, const uint8_t *encrypted_section,
+                   size_t encrypted_section_len)
+{
+  uint8_t *decrypted = NULL;
+  crypto_cipher_t *cipher = NULL;
+
+  tor_assert(enc_key);
+  tor_assert(encrypted_section);
+
+  /* Decrypt ENCRYPTED section. */
+  cipher = crypto_cipher_new_with_bits((char *) enc_key,
+                                       CURVE25519_PUBKEY_LEN);
+  tor_assert(cipher);
+
+  /* This is symmetric encryption so can't be bigger than the encrypted
+   * section length. */
+  decrypted = tor_malloc_zero(encrypted_section_len);
+  if (crypto_cipher_decrypt(cipher, (char *) decrypted,
+                            (const char *) encrypted_section,
+                            encrypted_section_len) < 0) {
+    tor_free(decrypted);
+    decrypted = NULL;
+    goto done;
+  }
+
+ done:
+  crypto_cipher_free(cipher);
+  return decrypted;
+}
+
+/* Given a pointer to the decrypted data of the ENCRYPTED section of an
+ * INTRODUCE2 cell of length decrypted_len, parse and validate the cell
+ * content. Return a newly allocated cell structure or NULL on error. The
+ * circuit and service object are only used for logging purposes. */
+static trn_cell_introduce_encrypted_t *
+parse_introduce2_encrypted(const uint8_t *decrypted_data,
+                           size_t decrypted_len, const origin_circuit_t *circ,
+                           const hs_service_t *service)
+{
+  trn_cell_introduce_encrypted_t *enc_cell = NULL;
+
+  tor_assert(decrypted_data);
+  tor_assert(circ);
+  tor_assert(service);
+
+  if (trn_cell_introduce_encrypted_parse(&enc_cell, decrypted_data,
+                                         decrypted_len) < 0) {
+    log_info(LD_REND, "Unable to parse the decrypted ENCRYPTED section of "
+                      "the INTRODUCE2 cell on circuit %u for service %s",
+             TO_CIRCUIT(circ)->n_circ_id,
+             safe_str_client(service->onion_address));
+    goto err;
+  }
+
+  if (trn_cell_introduce_encrypted_get_onion_key_type(enc_cell) !=
+      HS_CELL_ONION_KEY_TYPE_NTOR) {
+    log_info(LD_REND, "INTRODUCE2 onion key type is invalid. Got %u but "
+                      "expected %u on circuit %u for service %s",
+             trn_cell_introduce_encrypted_get_onion_key_type(enc_cell),
+             HS_CELL_ONION_KEY_TYPE_NTOR, TO_CIRCUIT(circ)->n_circ_id,
+             safe_str_client(service->onion_address));
+    goto err;
+  }
+
+  if (trn_cell_introduce_encrypted_getlen_onion_key(enc_cell) !=
+      CURVE25519_PUBKEY_LEN) {
+    log_info(LD_REND, "INTRODUCE2 onion key length is invalid. Got %ld but "
+                      "expected %d on circuit %u for service %s",
+             trn_cell_introduce_encrypted_getlen_onion_key(enc_cell),
+             CURVE25519_PUBKEY_LEN, TO_CIRCUIT(circ)->n_circ_id,
+             safe_str_client(service->onion_address));
+    goto err;
+  }
+  /* XXX: Validate NSPEC field as well. */
+
+  return enc_cell;
+ err:
+  trn_cell_introduce_encrypted_free(enc_cell);
+  return NULL;
+}
 
 /* Build a legacy ESTABLISH_INTRO cell with the given circuit nonce and RSA
  * encryption key. The encoded cell is put in cell_out that MUST at least be
@@ -181,6 +304,117 @@ hs_cell_parse_intro_established(const uint8_t *payload, size_t payload_len)
      * was successfully parsed. */
     trn_cell_intro_established_free(cell);
   }
+  return ret;
+}
+
+/* Parsse the INTRODUCE2 cell using data which contains everything we need to
+ * do so and contains the destination buffers of information we extract and
+ * compute from the cell. Return 0 on success else a negative value. The
+ * service and circ are only used for logging purposes. */
+ssize_t
+hs_cell_parse_introduce2(hs_cell_introduce2_data_t *data,
+                         const origin_circuit_t *circ,
+                         const hs_service_t *service)
+{
+  int ret = -1;
+  uint8_t *decrypted = NULL;
+  size_t encrypted_section_len;
+  const uint8_t *encrypted_section;
+  curve25519_public_key_t client_pk;
+  trn_cell_introduce1_t *cell = NULL;
+  trn_cell_introduce_encrypted_t *enc_cell = NULL;
+  hs_ntor_intro_cell_keys_t *intro_keys = NULL;
+
+  tor_assert(data);
+  tor_assert(circ);
+  tor_assert(service);
+
+  /* Parse the cell so we can start cell validation. */
+  if (trn_cell_introduce1_parse(&cell, data->payload,
+                                data->payload_len) < 0) {
+    log_info(LD_PROTOCOL, "Unable to parse INTRODUCE2 cell on circuit %u "
+                          "for service %s",
+             TO_CIRCUIT(circ)->n_circ_id,
+             safe_str_client(service->onion_address));
+    goto done;
+  }
+
+  /* XXX: Add/Test replaycache. */
+
+  log_info(LD_REND, "Received a valid INTRODUCE2 cell on circuit %u "
+                    "for service %s. Parsing encrypted section.",
+           TO_CIRCUIT(circ)->n_circ_id,
+           safe_str_client(service->onion_address));
+
+  encrypted_section = trn_cell_introduce1_getconstarray_encrypted(cell);
+  encrypted_section_len = trn_cell_introduce1_getlen_encrypted(cell);
+
+  /* Build the key material out of the key material found in the cell. */
+  intro_keys = get_introduce2_key_material(data->auth_pk, data->enc_kp,
+                                           data->subcredential,
+                                           encrypted_section, &client_pk);
+  if (intro_keys == NULL) {
+    log_info(LD_REND, "Invalid INTRODUCE2 encrypted data. Unable to "
+                      "compute key material on circuit %u for service %s",
+             TO_CIRCUIT(circ)->n_circ_id,
+             safe_str_client(service->onion_address));
+    goto done;
+  }
+
+  /* Validate MAC from the cell and our computed key material. The MAC field
+   * in the cell is at the end of the encrypted section. */
+  {
+    size_t mac_offset = encrypted_section_len - sizeof(intro_keys->mac_key);
+    if (!fast_memcmp(intro_keys->mac_key, encrypted_section + mac_offset,
+                     sizeof(intro_keys->mac_key))) {
+      log_info(LD_REND, "Invalid MAC validation for INTRODUCE2 cell on "
+               "circuit %u for service %s",
+               TO_CIRCUIT(circ)->n_circ_id,
+               safe_str_client(service->onion_address));
+      goto done;
+    }
+  }
+
+  /* This will decrypt the ENCRYPTED section of the cell. */
+  decrypted = decrypt_introduce2(intro_keys->enc_key, encrypted_section,
+                                 encrypted_section_len);
+  if (decrypted == NULL) {
+    log_info(LD_REND, "Unable to decrypt the ENCRYPTED section of an "
+                      "INTRODUCE2 cell on circuit %u for service %s",
+             TO_CIRCUIT(circ)->n_circ_id,
+             safe_str_client(service->onion_address));
+    goto done;
+  }
+
+  /* Parse this blob into an encrypted cell structure so we can then extract
+   * the data we need out of it. */
+  enc_cell = parse_introduce2_encrypted(decrypted, encrypted_section_len,
+                                        circ, service);
+  if (enc_cell == NULL) {
+    goto done;
+  }
+
+  /* XXX: Implement client authorization checks. */
+
+  /* Extract onion key and rendezvous cookie from the cell used for the
+   * rendezvous point circuit e2e encryption. */
+  memcpy(data->onion_pk.public_key,
+         trn_cell_introduce_encrypted_getconstarray_onion_key(enc_cell),
+         CURVE25519_PUBKEY_LEN);
+  memcpy(data->rendezvous_cookie,
+         trn_cell_introduce_encrypted_getconstarray_rend_cookie(enc_cell),
+         sizeof(data->rendezvous_cookie));
+
+  /* Success. */
+  ret = 0;
+
+ done:
+  memwipe(&intro_keys, 0, sizeof(intro_keys));
+  memwipe(&client_pk, 0, sizeof(client_pk));
+  tor_free(intro_keys);
+  tor_free(decrypted);
+  trn_cell_introduce1_free(cell);
+  trn_cell_introduce_encrypted_free(enc_cell);
   return ret;
 }
 
