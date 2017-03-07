@@ -62,6 +62,11 @@ int hs_circ_launch_intro_point(hs_service_t *service,
 void hs_circ_send_establish_intro(const hs_service_t *service,
                                   hs_service_intro_point_t *ip,
                                   origin_circuit_t *circ);
+int hs_circ_handle_intro_established(const hs_service_t *service,
+                                     origin_circuit_t *circ,
+                                     hs_service_intro_point_t *ip,
+                                     const uint8_t *payload,
+                                     size_t payload_len);
 
 #endif /* TOR_HS_CIRCUIT_H */
 
