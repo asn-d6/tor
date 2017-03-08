@@ -41,6 +41,8 @@ typedef struct hs_cell_introduce2_data_t {
   curve25519_public_key_t onion_pk;
   /* Rendezvous cookie taken from the INTRODUCE2 encrypted section. */
   uint8_t rendezvous_cookie[REND_COOKIE_LEN];
+  /* Client public key from the INTRODUCE2 encrypted section. */
+  curve25519_public_key_t client_pk;
 } hs_cell_introduce2_data_t;
 
 ssize_t hs_cell_build_establish_intro(const char *circ_nonce,
