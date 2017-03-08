@@ -423,6 +423,39 @@ service_desc_find_by_intro(const hs_service_t *service,
   return descp;
 }
 
+/* From a circuit identifier, get all the possible objects associated with the
+ * ident. If not NULL, service, ip or desc are set if the object can be found.
+ * They are untouched if they can't be found.
+ *
+ * This is an helper function because we do those lookups often so it's more
+ * convenient to simply call this functions to get all the things at once. */
+static void
+get_objects_from_ident(hs_circ_identifier_t *ident,
+                       hs_service_t **service, hs_service_intro_point_t **ip,
+                       hs_service_descriptor_t **desc)
+{
+  hs_service_t *s;
+
+  tor_assert(ident);
+
+  /* Get service object from the circuit identifier. */
+  s = find_service(hs_service_map, &ident->identity_pk);
+  if (s && service) {
+    *service = s;
+  }
+
+  /* From the service object, get the intro point object of that circuit. The
+   * following will query both descriptors intro points list. */
+  if (s && ip) {
+    *ip = service_intro_point_find_by_ident(s, ident);
+  }
+
+  /* Get the descriptor for this introduction point and service. */
+  if (s && ip && *ip && desc) {
+    *desc = service_desc_find_by_intro(s, *ip);
+  }
+}
+
 /* Given a service intro point, return the node_t associated to it. This can
  * return NULL if the given intro point has no legacy ID or if the node can't
  * be found in the consensus. */
@@ -1628,9 +1661,8 @@ run_upload_descriptor_event(time_t now)
 static void
 service_intro_circ_has_opened(origin_circuit_t *circ)
 {
-  int close_reason;
-  hs_service_t *service;
-  hs_service_intro_point_t *ip;
+  hs_service_t *service = NULL;
+  hs_service_intro_point_t *ip = NULL;
 
   tor_assert(circ);
   tor_assert(circ->cpath);
@@ -1638,23 +1670,22 @@ service_intro_circ_has_opened(origin_circuit_t *circ)
   tor_assert(circ->hs_ident);
   tor_assert(TO_CIRCUIT(circ)->purpose == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO);
 
-  /* Get service object from the circuit identifier. */
-  service = find_service(hs_service_map, &circ->hs_ident->identity_pk);
+  /* Get the corresponding service and intro point. */
+  get_objects_from_ident(circ->hs_ident, &service, &ip, NULL);
+
   if (service == NULL) {
     log_warn(LD_REND, "Unknown service identity key %s on the introduction "
                       "circuit %u. Can't find onion service.",
              safe_str_client(ed25519_fmt(&circ->hs_ident->identity_pk)),
              TO_CIRCUIT(circ)->n_circ_id);
-    close_reason = END_CIRC_REASON_NOSUCHSERVICE;
     goto err;
   }
 
-  /* From the service object, get the intro point object of that circuit. The
-   * following will query both descriptors intro points list. */
-  ip = service_intro_point_find_by_ident(service, circ->hs_ident);
   if (ip == NULL) {
-    /* Closing this circuit because we don't recognize the key. */
-    close_reason = END_CIRC_REASON_NOSUCHSERVICE;
+    log_warn(LD_REND, "Unknown introduction point auth key on circuit %u "
+                      "for service %s",
+             TO_CIRCUIT(circ)->n_circ_id,
+             safe_str_client(service->onion_address));
     goto err;
   }
 
@@ -1669,7 +1700,7 @@ service_intro_circ_has_opened(origin_circuit_t *circ)
 
  err:
   /* Close circuit, we can't use it. */
-  circuit_mark_for_close(TO_CIRCUIT(circ), close_reason);
+  circuit_mark_for_close(TO_CIRCUIT(circ), END_CIRC_REASON_NOSUCHSERVICE);
  done:
   return;
 }
@@ -1696,19 +1727,17 @@ service_handle_intro_established(origin_circuit_t *circ,
   tor_assert(payload);
   tor_assert(TO_CIRCUIT(circ)->purpose == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO);
 
+  /* We'll need every object associated with this circuit. */
+  get_objects_from_ident(circ->hs_ident, &service, &ip, &desc);
+
   /* Get service object from the circuit identifier. */
-  service = find_service(hs_service_map, &circ->hs_ident->identity_pk);
   if (service == NULL) {
     log_warn(LD_REND, "Unknown service identity key %s on the introduction "
-             "circuit %u. Can't find onion service.",
+                      "circuit %u. Can't find onion service.",
              safe_str_client(ed25519_fmt(&circ->hs_ident->identity_pk)),
              TO_CIRCUIT(circ)->n_circ_id);
     goto err;
   }
-
-  /* From the service object, get the intro point object of that circuit. The
-   * following will query both descriptors intro points list. */
-  ip = service_intro_point_find_by_ident(service, circ->hs_ident);
   if (ip == NULL) {
     /* We don't recognize the key. */
     log_warn(LD_REND, "Introduction circuit established without an intro "
@@ -1717,6 +1746,8 @@ service_handle_intro_established(origin_circuit_t *circ,
              safe_str_client(service->onion_address));
     goto err;
   }
+  /* If we have an IP object, we MUST have a descriptor object. */
+  tor_assert(desc);
 
   /* Try to parse the payload into a cell making sure we do actually have a
    * valid cell. On success, the ip object is updated. */
