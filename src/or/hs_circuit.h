@@ -41,6 +41,17 @@ typedef struct hs_circ_identifier_t {
    * RENDEZVOUS1 cell. */
   uint8_t rendezvous_cookie[REND_COOKIE_LEN];
 
+  /* (Only rendezvous circuit) The HANDSHAKE_INFO needed in the RENDEZVOUS1
+   * cell of the service. The construction is as follows:
+   *    SERVER_PK   [32 bytes]
+   *    AUTH_MAC    [32 bytes]
+   */
+  uint8_t rendezvous_handshake_info[CURVE25519_PUBKEY_LEN + DIGEST256_LEN];
+
+  /* (Only rendezvous circuit) The NTOR_KEY_SEED needed for key derivation for
+   * the e2e encryption with the client on the circuit. */
+  uint8_t rendezvous_ntor_key_seed[DIGEST256_LEN];
+
   /* (Only rendezvous circuit) Number of streams associated with this
    * rendezvous circuit. We track this because there is a check on a maximum
    * value. */
