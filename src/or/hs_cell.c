@@ -416,3 +416,28 @@ hs_cell_parse_introduce2(hs_cell_introduce2_data_t *data,
   return ret;
 }
 
+/* Build a RENDEZVOUS1 cell with the given rendezvous cookie and handshake
+ * info. The encoded cell is put in cell_out and the length of the data is
+ * returned. This can't fail. */
+ssize_t
+hs_cell_build_rendezvous1(const uint8_t *rendezvous_cookie,
+                          size_t rendezvous_cookie_len,
+                          const uint8_t *rendezvous_handshake_info,
+                          size_t rendezvous_handshake_info_len,
+                          uint8_t *cell_out)
+{
+  size_t offset = 0;
+
+  tor_assert(rendezvous_cookie);
+  tor_assert(rendezvous_handshake_info);
+  tor_assert(cell_out);
+
+  memcpy(cell_out, rendezvous_cookie, rendezvous_cookie_len);
+  offset += rendezvous_cookie_len;
+  memcpy(cell_out + offset, rendezvous_handshake_info,
+         rendezvous_handshake_info_len);
+  offset += rendezvous_handshake_info_len;
+  tor_assert(offset <= RELAY_PAYLOAD_SIZE);
+  return offset;
+}
+
