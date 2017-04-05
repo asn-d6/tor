@@ -13,6 +13,7 @@
 #include "config.h"
 #include "policies.h"
 #include "relay.h"
+#include "rendservice.h"
 #include "rephist.h"
 #include "router.h"
 
@@ -808,6 +809,7 @@ hs_circ_handle_introduce2(const hs_service_t *service,
   data.subcredential = subcredential;
   data.payload = payload;
   data.payload_len = payload_len;
+  data.is_legacy = ip->base.is_only_legacy;
 
   if (hs_cell_parse_introduce2(&data, circ, service) < 0) {
     goto done;
