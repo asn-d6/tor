@@ -2067,6 +2067,9 @@ hs_service_new(const or_options_t *options)
   set_service_default_config(&service->config, options);
   /* Set the default service version. */
   service->config.version = HS_SERVICE_DEFAULT_VERSION;
+  /* Allocate the CLIENT_PK replay cache in service state. */
+  service->state.replay_cache_rend_cookie =
+    replaycache_new(REND_REPLAY_TIME_INTERVAL, REND_REPLAY_TIME_INTERVAL);
   return service;
 }
 
@@ -2087,6 +2090,11 @@ hs_service_free(hs_service_t *service)
 
   /* Free service configuration. */
   service_clear_config(&service->config);
+
+  /* Free replay cache from state. */
+  if (service->state.replay_cache_rend_cookie) {
+    replaycache_free(service->state.replay_cache_rend_cookie);
+  }
 
   /* Wipe service keys. */
   memwipe(&service->keys.identity_sk, 0, sizeof(service->keys.identity_sk));
