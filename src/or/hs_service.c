@@ -328,7 +328,7 @@ service_intro_point_remove(const hs_service_t *service,
   FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
     /* We'll try to remove the descriptor on both descriptors which is not
      * very expensive to do instead of doing loopup + remove. */
-    digest256map_remove(desc->intro_points.current, key);
+    digest256map_remove(desc->intro_points.map, key);
   } FOR_EACH_DESCRIPTOR_END;
 
   memwipe(key, 0, sizeof(key));
@@ -361,7 +361,7 @@ service_intro_point_find(const hs_service_t *service, void *auth_key,
 
   /* Trying all descriptors. */
   FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
-    if ((ip = digest256map_get(desc->intro_points.current, key)) != NULL) {
+    if ((ip = digest256map_get(desc->intro_points.map, key)) != NULL) {
       break;
     }
   } FOR_EACH_DESCRIPTOR_END;
@@ -414,7 +414,7 @@ service_desc_find_by_intro(const hs_service_t *service,
   helper_intro_build_index_key(ip, key);
 
   FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
-    if ((ip = digest256map_get(desc->intro_points.current, key)) != NULL) {
+    if ((ip = digest256map_get(desc->intro_points.map, key)) != NULL) {
       descp = desc;
       break;
     }
@@ -519,28 +519,21 @@ close_service_rp_circuits(hs_service_t *service)
 static void
 close_intro_circuits(hs_service_intropoints_t *intro_points)
 {
+  or_circuit_t *ocirc = NULL;
+
   tor_assert(intro_points);
 
-  for (int i = 0; i < 2; i++) {
-    digest256map_t *map;
-    or_circuit_t *ocirc = NULL;
-    /* Instead of code duplication, we'll do this trick to go over both map in
-     * one loop avoiding copy pasting code. */
-    (i == 0) ? (map = intro_points->current) : (map = intro_points->expiring);
-    if (!map) {
-      continue;
+  DIGEST256MAP_FOREACH(intro_points->map, key,
+                       hs_service_intro_point_t *, ip) {
+    ocirc = hs_circuitmap_get_intro_circ_v3_relay_side(
+                                           &ip->auth_key_kp.pubkey);
+    if (ocirc) {
+      hs_circuitmap_remove_circuit(TO_CIRCUIT(ocirc));
+      /* Reason is FINISHED because service has been removed and thus the
+       * circuit is considered old/uneeded. */
+      circuit_mark_for_close(TO_CIRCUIT(ocirc), END_CIRC_REASON_FINISHED);
     }
-    DIGEST256MAP_FOREACH(map, key, hs_service_intro_point_t *, ip) {
-      ocirc = hs_circuitmap_get_intro_circ_v3_relay_side(
-                                             &ip->auth_key_kp.pubkey);
-      if (ocirc) {
-        hs_circuitmap_remove_circuit(TO_CIRCUIT(ocirc));
-        /* Reason is FINISHED because service has been removed and thus the
-         * circuit is considered old/uneeded. */
-        circuit_mark_for_close(TO_CIRCUIT(ocirc), END_CIRC_REASON_FINISHED);
-      }
-    } DIGEST256MAP_FOREACH_END;
-  }
+  } DIGEST256MAP_FOREACH_END;
 }
 
 /* Close all introduction circuits for the given service. */
@@ -581,13 +574,10 @@ move_descriptor_intro_points(hs_service_descriptor_t *src,
   tor_assert(src);
   tor_assert(dst);
 
-  digest256map_free(dst->intro_points.current, service_intro_point_free_);
-  digest256map_free(dst->intro_points.expiring, service_intro_point_free_);
-  dst->intro_points.current = src->intro_points.current;
-  dst->intro_points.expiring = src->intro_points.expiring;
+  digest256map_free(dst->intro_points.map, service_intro_point_free_);
+  dst->intro_points.map = src->intro_points.map;
   /* Nullify the source. */
-  src->intro_points.current = NULL;
-  src->intro_points.expiring = NULL;
+  src->intro_points.map = NULL;
 }
 
 /* Move introduction points from the src service to the dst service. The
@@ -827,8 +817,7 @@ service_descriptor_free(hs_service_descriptor_t *desc)
   memwipe(&desc->signing_kp, 0, sizeof(desc->signing_kp));
   memwipe(&desc->blinded_kp, 0, sizeof(desc->blinded_kp));
   /* Cleanup all intro points. */
-  digest256map_free(desc->intro_points.current, service_intro_point_free_);
-  digest256map_free(desc->intro_points.expiring, service_intro_point_free_);
+  digest256map_free(desc->intro_points.map, service_intro_point_free_);
   tor_free(desc);
 }
 
@@ -839,8 +828,7 @@ service_descriptor_new(void)
   hs_service_descriptor_t *sdesc = tor_malloc_zero(sizeof(*sdesc));
   sdesc->desc = tor_malloc_zero(sizeof(hs_descriptor_t));
   /* Initialize the intro points map. */
-  sdesc->intro_points.current = digest256map_new();
-  sdesc->intro_points.expiring = digest256map_new();
+  sdesc->intro_points.map = digest256map_new();
   return sdesc;
 }
 
@@ -873,7 +861,7 @@ build_desc_intro_points(const hs_service_t *service,
   encrypted = &desc->desc->encrypted_data;
   signing_key = &desc->signing_kp.pubkey;
 
-  DIGEST256MAP_FOREACH(desc->intro_points.current, key,
+  DIGEST256MAP_FOREACH(desc->intro_points.map, key,
                        hs_service_intro_point_t *, ip) {
     hs_desc_intro_point_t *desc_ip = tor_malloc_zero(sizeof(*desc_ip));
 
@@ -1231,7 +1219,7 @@ pick_needed_intro_points(hs_service_t *service,
 
   /* Compute how many intro points we actually need to open. */
   num_needed_ip = service->config.num_intro_points -
-                  digest256map_size(desc->intro_points.current);
+                  digest256map_size(desc->intro_points.map);
   if (BUG(num_needed_ip < 0)) {
     /* Let's not make tor freak out here and just skip this. */
     goto done;
@@ -1245,15 +1233,13 @@ pick_needed_intro_points(hs_service_t *service,
    * The ones after the first config.num_intro_points will be converted to
    * 'General' internal circuits and then we'll drop them from the list of
    * intro points. */
-  if (digest256map_size(desc->intro_points.current) == 0) {
+  if (digest256map_size(desc->intro_points.map) == 0) {
     /* XXX: Should a consensus param control that value? */
     num_needed_ip += NUM_INTRO_POINTS_EXTRA;
   }
 
-  /* Build an exclude list of nodes of our intro point(s). The expiring intro
-   * points are OK to pick again because this is afterall a concept of round
-   * robin so they are considered valid nodes to pick again. */
-  DIGEST256MAP_FOREACH(desc->intro_points.current, key,
+  /* Build an exclude list of nodes of our intro point(s). */
+  DIGEST256MAP_FOREACH(desc->intro_points.map, key,
                        hs_service_intro_point_t *, ip) {
     smartlist_add(exclude_nodes, (void *) get_node_from_intro_point(ip));
   } DIGEST256MAP_FOREACH_END;
@@ -1276,7 +1262,7 @@ pick_needed_intro_points(hs_service_t *service,
                             INTRO_POINT_LIFETIME_MAX_SECONDS);
 
     /* Valid intro point object, add it to the descriptor current map. */
-    service_intro_point_add(desc->intro_points.current, ip);
+    service_intro_point_add(desc->intro_points.map, ip);
   }
 
   /* Success. */
@@ -1301,7 +1287,7 @@ update_service_descriptor(hs_service_t *service,
 
   /* Pick missing introduction point. The cast is to avoid gcc to freak out
    * with an unsigned comparaison. */
-  if ((unsigned int) digest256map_size(desc->intro_points.current) <
+  if ((unsigned int) digest256map_size(desc->intro_points.map) <
       service->config.num_intro_points) {
     unsigned int num = pick_needed_intro_points(service, desc, now);
     if (num != 0) {
@@ -1356,28 +1342,6 @@ intro_point_should_expire(const hs_service_intro_point_t *ip,
   return 1;
 }
 
-/* Go over the expiring map and remove any objects that don't have a circuit
- * associated to it. */
-static void
-clean_expiring_intro_points(hs_service_intropoints_t *intro_points)
-{
-  tor_assert(intro_points);
-
-  DIGEST256MAP_FOREACH_MODIFY(intro_points->expiring, key,
-                              hs_service_intro_point_t *, ip) {
-    /* XXX: Need a different call for legacy IP. */
-    origin_circuit_t *ocirc =
-      hs_circuitmap_get_intro_circ_v3_service_side(
-                                      (ed25519_public_key_t *) key);
-    if (ocirc) {
-      /* Not yet officially closed so leave it be. */
-      continue;
-    }
-    MAP_DEL_CURRENT(key);
-    service_intro_point_free(ip);
-  } DIGEST256MAP_FOREACH_END;
-}
-
 /* Go over the current map and remove any invalid objects. The conditions for
  * removal are:
  *    If the circuit doesn't exists anymore:
@@ -1385,8 +1349,7 @@ clean_expiring_intro_points(hs_service_intropoints_t *intro_points)
  *                          OR
  *      - The intro point maximum circuit retry count has been reached.
  *    Else if the circuit still exists:
- *      - The intro point has expired for which we move it to the expiring
- *        map and then close the circuit.
+ *      - The intro point has expired for which we close the circuit.
  * The intro point object can be kept for retry if the circuit is dead. */
 static void
 clean_current_intro_points(hs_service_intropoints_t *intro_points,
@@ -1396,7 +1359,7 @@ clean_current_intro_points(hs_service_intropoints_t *intro_points,
 
   /* Go over the current intro points we have, make sure they are still
    * valid and remove any of them that aren't. */
-  DIGEST256MAP_FOREACH_MODIFY(intro_points->current, key,
+  DIGEST256MAP_FOREACH_MODIFY(intro_points->map, key,
                               hs_service_intro_point_t *, ip) {
     const node_t *node = get_node_from_intro_point(ip);
     /* XXX: Need a different call for legacy IP. */
@@ -1420,7 +1383,7 @@ clean_current_intro_points(hs_service_intropoints_t *intro_points,
       /* We do have a valid circuit so only remove expiring intro points. */
       if (has_expired) {
         MAP_DEL_CURRENT(key);
-        service_intro_point_add(intro_points->expiring, ip);
+        /* After this, we won't handle any new cells coming on the circuit. */
         circuit_mark_for_close(TO_CIRCUIT(ocirc), END_CIRC_REASON_FINISHED);
         service_intro_point_free(ip);
         continue;
@@ -1429,8 +1392,7 @@ clean_current_intro_points(hs_service_intropoints_t *intro_points,
   } DIGEST256MAP_FOREACH_END;
 }
 
-/* For a given service, cleanup both current and expiring intro point for
- * each descriptor. */
+/* For a given service, cleanup intro points for each descriptor. */
 static void
 cleanup_intro_points(hs_service_t *service, time_t now)
 {
@@ -1441,11 +1403,6 @@ cleanup_intro_points(hs_service_t *service, time_t now)
     /* Cleanup current intro points based on certain conditions. See function
      * comments for the details. */
     clean_current_intro_points(&desc->intro_points, now);
-
-    /* Cleanup expiring intro points so we don't keep them at vitam eternam. We
-     * do that after the cleanup of the current intro points because some of
-     * them might have expired and thus moved to the expiring map. */
-    clean_expiring_intro_points(&desc->intro_points);
   } FOR_EACH_DESCRIPTOR_END;
 }
 
@@ -1497,8 +1454,7 @@ run_service_event(time_t now)
    * simply moving things around or removing uneeded elements. */
 
   FOR_EACH_SERVICE_BEGIN(service) {
-    /* Cleanup invalid intro points from the service descriptors' set. This
-     * function can move intro points to the expiring map. */
+    /* Cleanup invalid intro points from the service descriptors' set. */
     cleanup_intro_points(service, now);
 
     /* At this point, the service is now ready to go through the scheduled
@@ -1543,7 +1499,7 @@ launch_intro_point_circuits(hs_service_t *service, time_t now)
   /* For both descriptors, try to launch any missing introduction point
    * circuits using the current map. */
   FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
-    DIGEST256MAP_FOREACH(desc->intro_points.current, key,
+    DIGEST256MAP_FOREACH(desc->intro_points.map, key,
                          hs_service_intro_point_t *, ip) {
       extend_info_t *ei = NULL;
 

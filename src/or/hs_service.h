@@ -76,14 +76,9 @@ typedef struct hs_service_intropoints_t {
   /* Number of circuit we've launched during a single retry period. */
   unsigned int num_circuits_launched;
 
-  /* Contains the current hs_service_intro_point_t objects indexed by
-   * descriptor signing public key. */
-  digest256map_t *current;
-
-  /* Expiring list of introduction point object. It is added to this list when
-   * it expired and removed once we have a guarantee that no introduction are
-   * inflight on it. */
-  digest256map_t *expiring;
+  /* Contains the hs_service_intro_point_t objects indexed by descriptor
+   * signing public key. */
+  digest256map_t *map;
 } hs_service_intropoints_t;
 
 /* Representation of a service descriptor. */
