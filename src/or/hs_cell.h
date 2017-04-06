@@ -45,6 +45,8 @@ typedef struct hs_cell_introduce2_data_t {
   uint8_t rendezvous_cookie[REND_COOKIE_LEN];
   /* Client public key from the INTRODUCE2 encrypted section. */
   curve25519_public_key_t client_pk;
+  /* Replay cache of the introduction point. */
+  replaycache_t *replay_cache;
 } hs_cell_introduce2_data_t;
 
 /* Build cell API. */

@@ -9,6 +9,7 @@
 #include "or.h"
 #include "config.h"
 #include "rendservice.h"
+#include "replaycache.h"
 
 #include "hs_cell.h"
 #include "hs_ntor.h"
@@ -415,6 +416,7 @@ hs_cell_parse_introduce2(hs_cell_introduce2_data_t *data,
                          const hs_service_t *service)
 {
   int ret = -1;
+  time_t elapsed;
   uint8_t *decrypted = NULL;
   size_t encrypted_section_len;
   const uint8_t *encrypted_section;
@@ -432,8 +434,6 @@ hs_cell_parse_introduce2(hs_cell_introduce2_data_t *data,
     goto done;
   }
 
-  /* XXX: Add/Test replaycache. */
-
   log_info(LD_REND, "Received a valid INTRODUCE2 cell on circuit %u "
                     "for service %s. Parsing encrypted section.",
            TO_CIRCUIT(circ)->n_circ_id,
@@ -443,6 +443,15 @@ hs_cell_parse_introduce2(hs_cell_introduce2_data_t *data,
     get_introduce2_encrypted_section(cell_ptr, data->is_legacy);
   encrypted_section_len =
     get_introduce2_encrypted_section_len(cell_ptr, data->is_legacy);
+
+  /* Check our replay cache for this introduction point. */
+  if (replaycache_add_test_and_elapsed(data->replay_cache, encrypted_section,
+                                       encrypted_section_len, &elapsed)) {
+    log_warn(LD_REND, "Possible replay detected! An INTRODUCE2 cell with the"
+                      "same ENCRYPTED section was seen %ld seconds ago. "
+                      "Dropping cell.", elapsed);
+    goto done;
+  }
 
   /* Build the key material out of the key material found in the cell. */
   intro_keys = get_introduce2_key_material(data->auth_pk, data->enc_kp,
