@@ -71,8 +71,7 @@ helper_build_intro_point(const ed25519_keypair_t *blinded_kp,
                                  HS_DESC_CERT_LIFETIME,
                                  CERT_FLAG_INCLUDE_SIGNING_KEY);
     tt_assert(cross_cert);
-    ip->enc_key_cert.curve25519 = cross_cert;
-    ip->enc_key_type = HS_DESC_KEY_TYPE_CURVE25519;
+    ip->enc_key_cert = cross_cert;
   }
   intro_point = ip;
  done:
