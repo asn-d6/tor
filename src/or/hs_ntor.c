@@ -52,11 +52,11 @@
   } STMT_END
 
 /* Length of EXP(X,y) | EXP(X,b) | AUTH_KEY | B | X | Y | PROTOID */
-#define REND_SECRET_HS_INPUT_LEN CURVE25519_OUTPUT_LEN * 2 + \
-  ED25519_PUBKEY_LEN + CURVE25519_PUBKEY_LEN * 3 + PROTOID_LEN
+#define REND_SECRET_HS_INPUT_LEN (CURVE25519_OUTPUT_LEN * 2 + \
+  ED25519_PUBKEY_LEN + CURVE25519_PUBKEY_LEN * 3 + PROTOID_LEN)
 /* Length of auth_input = verify | AUTH_KEY | B | Y | X | PROTOID | "Server" */
-#define REND_AUTH_INPUT_LEN DIGEST256_LEN + ED25519_PUBKEY_LEN + \
-  CURVE25519_PUBKEY_LEN * 3 + PROTOID_LEN + SERVER_STR_LEN
+#define REND_AUTH_INPUT_LEN (DIGEST256_LEN + ED25519_PUBKEY_LEN + \
+  CURVE25519_PUBKEY_LEN * 3 + PROTOID_LEN + SERVER_STR_LEN)
 
 /** Helper function: Compute the last part of the HS ntor handshake which
  *  derives key material necessary to create and handle RENDEZVOUS1
@@ -143,12 +143,12 @@ get_rendezvous1_key_material(const uint8_t *rend_secret_hs_input,
 }
 
 /** Length of secret_input = EXP(B,x) | AUTH_KEY | X | B | PROTOID */
-#define INTRO_SECRET_HS_INPUT_LEN CURVE25519_OUTPUT_LEN + ED25519_PUBKEY_LEN +\
-  CURVE25519_PUBKEY_LEN + CURVE25519_PUBKEY_LEN + PROTOID_LEN
+#define INTRO_SECRET_HS_INPUT_LEN (CURVE25519_OUTPUT_LEN +ED25519_PUBKEY_LEN +\
+  CURVE25519_PUBKEY_LEN + CURVE25519_PUBKEY_LEN + PROTOID_LEN)
 /* Length of info = m_hsexpand | subcredential */
-#define INFO_BLOB_LEN M_HSEXPAND_LEN + DIGEST256_LEN
+#define INFO_BLOB_LEN (M_HSEXPAND_LEN + DIGEST256_LEN)
 /* Length of KDF input = intro_secret_hs_input | t_hsenc | info */
-#define KDF_INPUT_LEN INTRO_SECRET_HS_INPUT_LEN + T_HSENC_LEN + INFO_BLOB_LEN
+#define KDF_INPUT_LEN (INTRO_SECRET_HS_INPUT_LEN + T_HSENC_LEN + INFO_BLOB_LEN)
 
 /** Helper function: Compute the part of the HS ntor handshake that generates
  *  key material for creating and handling INTRODUCE1 cells. Function used
@@ -577,9 +577,9 @@ hs_ntor_client_rendezvous2_mac_is_good(
 }
 
 /* Input length to KDF for key expansion */
-#define NTOR_KEY_EXPANSION_KDF_INPUT_LEN DIGEST256_LEN + M_HSEXPAND_LEN
+#define NTOR_KEY_EXPANSION_KDF_INPUT_LEN (DIGEST256_LEN + M_HSEXPAND_LEN)
 /* Output length of KDF for key expansion */
-#define NTOR_KEY_EXPANSION_KDF_OUTPUT_LEN DIGEST256_LEN*3 + CIPHER256_KEY_LEN*2
+#define NTOR_KEY_EXPANSION_KDF_OUTPUT_LEN (DIGEST256_LEN*3+CIPHER256_KEY_LEN*2)
 
 /** Given the rendezvous key material in <b>hs_ntor_rend_cell_keys</b>, do the
  *  circuit key expansion as specified by section '4.2.1. Key expansion' and
