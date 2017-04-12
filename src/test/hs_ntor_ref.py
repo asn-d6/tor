@@ -72,6 +72,10 @@ T_HSVERIFY = PROTOID + ":hs_verify"
 T_HSMAC    = PROTOID + ":hs_mac"
 M_HSEXPAND = PROTOID + ":hs_key_expand"
 
+INTRO_SECRET_LEN = 161
+REND_SECRET_LEN = 225
+AUTH_INPUT_LEN = 199
+
 # Implements MAC(k,m) = H(htonll(len(k)) | k | m)
 def mac(k,m):
     def htonll(num):
@@ -87,11 +91,20 @@ def mac(k,m):
 
 # Functions that implement the modified HS ntor protocol
 
-"""As client compute key material for INTRODUCE cell"""
+"""As client compute key material for INTRODUCE cell as follows:
+
+  intro_secret_hs_input = EXP(B,x) | AUTH_KEY | X | B | PROTOID
+  info = m_hsexpand | subcredential
+  hs_keys = KDF(intro_secret_hs_input | t_hsenc | info, S_KEY_LEN+MAC_LEN)
+  ENC_KEY = hs_keys[0:S_KEY_LEN]
+  MAC_KEY = hs_keys[S_KEY_LEN:S_KEY_LEN+MAC_KEY_LEN]
+"""
 def intro2_ntor_client(intro_auth_pubkey_str, intro_enc_pubkey,
                        client_ephemeral_enc_pubkey, client_ephemeral_enc_privkey, subcredential):
+
     dh_result = client_ephemeral_enc_privkey.get_shared_key(intro_enc_pubkey, hash_nil)
     secret =  dh_result + intro_auth_pubkey_str + client_ephemeral_enc_pubkey.serialize() + intro_enc_pubkey.serialize() + PROTOID
+    assert(len(secret) == INTRO_SECRET_LEN)
     info = M_HSEXPAND + subcredential
 
     kdf = sha3.SHAKE256()
@@ -112,10 +125,18 @@ def client_part1(intro_auth_pubkey_str, intro_enc_pubkey,
 
     return enc_key, mac_key
 
-"""As service compute key material for INTRODUCE cell"""
+"""As service compute key material for INTRODUCE cell as follows:
+
+  intro_secret_hs_input = EXP(X,b) | AUTH_KEY | X | B | PROTOID
+  info = m_hsexpand | subcredential
+  hs_keys = KDF(intro_secret_hs_input | t_hsenc | info, S_KEY_LEN+MAC_LEN)
+  HS_DEC_KEY = hs_keys[0:S_KEY_LEN]
+  HS_MAC_KEY = hs_keys[S_KEY_LEN:S_KEY_LEN+MAC_KEY_LEN]
+"""
 def intro2_ntor_service(intro_auth_pubkey_str, client_enc_pubkey, service_enc_privkey, service_enc_pubkey, subcredential):
     dh_result = service_enc_privkey.get_shared_key(client_enc_pubkey, hash_nil)
     secret = dh_result + intro_auth_pubkey_str + client_enc_pubkey.serialize() + service_enc_pubkey.serialize() + PROTOID
+    assert(len(secret) == INTRO_SECRET_LEN)
     info = M_HSEXPAND + subcredential
 
     kdf = sha3.SHAKE256()
@@ -127,9 +148,21 @@ def intro2_ntor_service(intro_auth_pubkey_str, client_enc_pubkey, service_enc_pr
 
     return enc_key, mac_key
 
-"""As service compute key material for INTRODUCE and REDNEZVOUS cells"""
+"""As service compute key material for INTRODUCE and REDNEZVOUS cells.
+
+  Use intro2_ntor_service() to calculate the INTRODUCE key material, and use
+  the following computations to do the RENDEZVOUS ones:
+
+      rend_secret_hs_input = EXP(X,y) | EXP(X,b) | AUTH_KEY | B | X | Y | PROTOID
+      NTOR_KEY_SEED = MAC(rend_secret_hs_input, t_hsenc)
+      verify = MAC(rend_secret_hs_input, t_hsverify)
+      auth_input = verify | AUTH_KEY | B | Y | X | PROTOID | "Server"
+      AUTH_INPUT_MAC = MAC(auth_input, t_hsmac)
+"""
 def service_part1(intro_auth_pubkey_str, client_enc_pubkey, intro_enc_privkey, intro_enc_pubkey, subcredential):
     intro_enc_key, intro_mac_key = intro2_ntor_service(intro_auth_pubkey_str, client_enc_pubkey, intro_enc_privkey, intro_enc_pubkey, subcredential)
+    assert(intro_enc_key)
+    assert(intro_mac_key)
 
     service_ephemeral_privkey = PrivateKey()
     service_ephemeral_pubkey = service_ephemeral_privkey.get_public()
@@ -137,38 +170,39 @@ def service_part1(intro_auth_pubkey_str, client_enc_pubkey, intro_enc_privkey, i
     dh_result1 = service_ephemeral_privkey.get_shared_key(client_enc_pubkey, hash_nil)
     dh_result2 = intro_enc_privkey.get_shared_key(client_enc_pubkey, hash_nil)
     rend_secret_hs_input = dh_result1 + dh_result2 + intro_auth_pubkey_str + intro_enc_pubkey.serialize() + client_enc_pubkey.serialize() + service_ephemeral_pubkey.serialize() + PROTOID
+    assert(len(rend_secret_hs_input) == REND_SECRET_LEN)
 
     ntor_key_seed = mac(rend_secret_hs_input, T_HSENC)
     verify = mac(rend_secret_hs_input, T_HSVERIFY)
     auth_input = verify + intro_auth_pubkey_str + intro_enc_pubkey.serialize() + service_ephemeral_pubkey.serialize() + client_enc_pubkey.serialize() + PROTOID + "Server"
+    assert(len(auth_input) == AUTH_INPUT_LEN)
     auth_input_mac = mac(auth_input, T_HSMAC)
 
-    assert(intro_enc_key)
-    assert(intro_mac_key)
     assert(ntor_key_seed)
     assert(auth_input_mac)
     assert(service_ephemeral_pubkey)
 
     return intro_enc_key, intro_mac_key, ntor_key_seed, auth_input_mac, service_ephemeral_pubkey
 
-"""As client compute key material for rendezvous cells"""
+"""As client compute key material for rendezvous cells as follows:
+
+  rend_secret_hs_input = EXP(Y,x) | EXP(B,x) | AUTH_KEY | B | X | Y | PROTOID
+  NTOR_KEY_SEED = MAC(ntor_secret_input, t_hsenc)
+  verify = MAC(ntor_secret_input, t_hsverify)
+  auth_input = verify | AUTH_KEY | B | Y | X | PROTOID | "Server"
+  AUTH_INPUT_MAC = MAC(auth_input, t_hsmac)
+"""
 def client_part2(intro_auth_pubkey_str, client_ephemeral_enc_pubkey, client_ephemeral_enc_privkey,
                  intro_enc_pubkey, service_ephemeral_rend_pubkey):
-    """
-    We need to compute:
-      rend_secret_hs_input = EXP(Y,x) | EXP(B,x) | AUTH_KEY | B | X | Y | PROTOID
-      NTOR_KEY_SEED = MAC(ntor_secret_input, t_hsenc)
-      verify = MAC(ntor_secret_input, t_hsverify)
-      auth_input = verify | AUTH_KEY | B | Y | X | PROTOID | "Server"
-      AUTH_INPUT_MAC = MAC(auth_input, t_hsmac)
-    """
     dh_result1 = client_ephemeral_enc_privkey.get_shared_key(service_ephemeral_rend_pubkey, hash_nil)
     dh_result2 = client_ephemeral_enc_privkey.get_shared_key(intro_enc_pubkey, hash_nil)
     rend_secret_hs_input = dh_result1 + dh_result2 + intro_auth_pubkey_str + intro_enc_pubkey.serialize() + client_ephemeral_enc_pubkey.serialize() + service_ephemeral_rend_pubkey.serialize() + PROTOID
+    assert(len(rend_secret_hs_input) == REND_SECRET_LEN)
 
     ntor_key_seed = mac(rend_secret_hs_input, T_HSENC)
     verify = mac(rend_secret_hs_input, T_HSVERIFY)
     auth_input = verify + intro_auth_pubkey_str + intro_enc_pubkey.serialize() + service_ephemeral_rend_pubkey.serialize() + client_ephemeral_enc_pubkey.serialize() + PROTOID + "Server"
+    assert(len(auth_input) == AUTH_INPUT_LEN)
     auth_input_mac = mac(auth_input, T_HSMAC)
 
     assert(ntor_key_seed)
