@@ -14,6 +14,7 @@
 #include "circuitlist.h"
 #include "circuituse.h"
 #include "config.h"
+#include "directory.h"
 #include "main.h"
 #include "networkstatus.h"
 #include "nodelist.h"
@@ -1060,6 +1061,7 @@ build_service_descriptor(hs_service_t *service, time_t now,
   tor_assert(desc_out);
 
   desc = service_descriptor_new();
+  desc->time_period_num = time_period_num;
 
   /* Create the needed keys so we can setup the descriptor content. */
   if (build_service_desc_keys(service, desc, time_period_num) < 0) {
@@ -1591,6 +1593,74 @@ run_build_circuit_event(time_t now)
   } FOR_EACH_SERVICE_END;
 }
 
+/* Encode and sign the service descriptor desc and upload it to the
+ * responsible hidden service directories. If for_next_period is true, the set
+ * of directories are selected using the next hsdir_index. This does nothing
+ * if PublishHidServDescriptors is false. */
+static void
+upload_descriptor(const hs_service_t *service, hs_service_descriptor_t *desc,
+                  int for_next_period)
+{
+  char *encoded_desc = NULL;
+  smartlist_t *responsible_dirs = NULL;
+  hs_conn_identifier_t ident = {0};
+
+  tor_assert(service);
+  tor_assert(desc);
+
+  /* Let's avoid doing that if tor is configured to not publish. */
+  if (!get_options()->PublishHidServDescriptors) {
+    goto end;
+  }
+
+  /* First of all, we'll encode the descriptor. This should NEVER fail but
+   * just in case, let's make sure we have an actual usable descriptor. */
+  if (BUG(hs_desc_encode_descriptor(desc->desc, &desc->signing_kp,
+                                    &encoded_desc) < 0)) {
+    goto end;
+  }
+
+  /* Get our list of responsible HSDir. */
+  responsible_dirs = smartlist_new();
+  /* The parameter 0 means that we aren't a client so tell the function to use
+   * the spread store consensus paremeter. */
+  hs_get_responsible_hsdirs(&desc->blinded_kp.pubkey, desc->time_period_num,
+                            for_next_period, 0, responsible_dirs);
+  /* Setup the connection identifier. */
+  ed25519_pubkey_copy(&ident.identity_pk, &service->keys.identity_pk);
+
+  /* For each responsible HSDir we have, initiate an upload command. */
+  SMARTLIST_FOREACH_BEGIN(responsible_dirs, const node_t *, hsdir) {
+    char version_str[sizeof(service->version)] = {0};
+    /* This is our resource when uploading which is used to construct the URL
+     * with the version number: "/tor/hs/<version>/publish". */
+    tor_snprintf(version_str, sizeof(version_str), "%u", service->version);
+
+    /* Build the directory request for this HSDir. */
+    directory_request_t *dir_req =
+      directory_request_new(DIR_PURPOSE_UPLOAD_HSDESC);
+    directory_request_set_routerstatus(dir_req, hsdir->rs);
+    directory_request_set_indirection(dir_req, DIRIND_ANONYMOUS);
+    directory_request_set_resource(dir_req, version_str);
+    directory_request_set_payload(dir_req, encoded_desc,
+                                  strlen(encoded_desc));
+    /* The ident object is copied over the directory connection object once
+     * the directory request is initiated. */
+    directory_request_set_hs_ident(dir_req, &ident);
+
+    /* Initiate the directory request to the hsdir.*/
+    directory_initiate_request(dir_req);
+    directory_request_free(dir_req);
+
+    /* XXX: Inform control port of the upload event (#20699). */
+  } SMARTLIST_FOREACH_END(hsdir);
+
+ end:
+  smartlist_free(responsible_dirs);
+  tor_free(encoded_desc);
+  return;
+}
+
 /* Scheduled event run from the main loop. Try to upload the descriptor for
  * each service. */
 static void
@@ -1605,10 +1675,35 @@ run_upload_descriptor_event(time_t now)
 
   /* Run v3+ check. */
   FOR_EACH_SERVICE_BEGIN(service) {
-    /* XXX: Upload if needed the descriptor(s). Update next upload time. */
-    /* XXX: Build the descriptor intro points list with
-     * build_desc_intro_points() once we have enough circuit opened. */
-    build_desc_intro_points(service, NULL, now);
+    FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
+      int for_next_period = 0;
+
+      /* Check if all our introduction circuit have been established. If not,
+       * skip else check if we should upload the descriptor. */
+      if (desc->num_established_intro_circ !=
+          service->config.num_intro_points) {
+        continue;
+      }
+      /* Is it the right time to upload? */
+      if (desc->next_upload_time > now) {
+        continue;
+      }
+      /* At this point, we have to upload the descriptor so start by building
+       * the intro points descriptor section which we are now sure to be
+       * accurate because all circuits have been established. */
+      build_desc_intro_points(service, desc, now);
+
+      /* If the service is in the overlap period and this descriptor is the
+       * next one, it has to be uploaded for the next time period meaning
+       * we'll use the next node_t hsdir_index to pick the HSDirs. */
+      if (desc == service->desc_next) {
+        for_next_period = 1;
+      }
+      upload_descriptor(service, desc, for_next_period);
+
+      /* Set the next upload time for this descriptor. */
+      desc->next_upload_time = (now + service->config.descriptor_post_period);
+    } FOR_EACH_DESCRIPTOR_END;
   } FOR_EACH_SERVICE_END;
 }
 

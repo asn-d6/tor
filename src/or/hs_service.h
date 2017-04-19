@@ -104,6 +104,9 @@ typedef struct hs_service_descriptor_t {
   /* The number of introduction circuit that have been established for this
    * descriptor. */
   unsigned int num_established_intro_circ;
+
+  /* The time period number this descriptor has been created for. */
+  uint64_t time_period_num;
 } hs_service_descriptor_t;
 
 /* Service key material. */
