@@ -987,13 +987,6 @@ hs_get_responsible_hsdirs(const ed25519_public_key_t *blinded_pk,
     }
     while (n_added < n_to_add) {
       node_t *node = smartlist_get(sorted_nodes, idx);
-      if (!node_has_descriptor(node)) {
-        /* Do not upload to an HSDir we don't have a descriptor for. */
-        log_info(LD_REND, "Missing descriptor for HSDir %s. Not uploading "
-                          "descriptor. We'll try later once we have it.",
-                 safe_str_client(node_describe(node)));
-        continue;
-      }
       /* If the node has already been selected which is possible between
        * replicas, the specification says to skip over. */
       if (!smartlist_contains(responsible_dirs, node)) {

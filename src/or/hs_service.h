@@ -103,6 +103,17 @@ typedef struct hs_service_descriptor_t {
 
   /* The time period number this descriptor has been created for. */
   uint64_t time_period_num;
+
+  /* True iff we have missing intro points for this descriptor because we
+   * couldn't pick any nodes. */
+  unsigned int missing_intro_points : 1;
+
+  /* List of hidden service directories node_t object to which we couldn't
+   * upload this descriptor because we didn't have its router descriptor at
+   * the time. If this list is non-empty, only the relays in this list are
+   * re-tried to upload this descriptor when our directory information have
+   * been updated. */
+  smartlist_t *hsdir_missing_info;
 } hs_service_descriptor_t;
 
 /* Service key material. */
@@ -232,6 +243,7 @@ void hs_service_free(hs_service_t *service);
 void hs_service_stage_services(const smartlist_t *service_list);
 int hs_service_load_all_keys(void);
 
+void hs_service_dir_info_changed(void);
 void hs_service_run_scheduled_events(time_t now);
 void hs_service_circuit_has_opened(origin_circuit_t *circ);
 int hs_service_receive_intro_established(origin_circuit_t *circ,
