@@ -184,6 +184,8 @@ purpose_needs_anonymity(uint8_t dir_purpose, uint8_t router_purpose,
     case DIR_PURPOSE_HAS_FETCHED_RENDDESC_V2:
     case DIR_PURPOSE_UPLOAD_RENDDESC_V2:
     case DIR_PURPOSE_FETCH_RENDDESC_V2:
+    case DIR_PURPOSE_FETCH_HSDESC:
+    case DIR_PURPOSE_UPLOAD_HSDESC:
       return 1;
     case DIR_PURPOSE_SERVER:
     default:
@@ -242,6 +244,10 @@ dir_conn_purpose_to_string(int purpose)
       return "hidden-service v2 descriptor fetch";
     case DIR_PURPOSE_UPLOAD_RENDDESC_V2:
       return "hidden-service v2 descriptor upload";
+    case DIR_PURPOSE_FETCH_HSDESC:
+      return "hidden-service descriptor fetch";
+    case DIR_PURPOSE_UPLOAD_HSDESC:
+      return "hidden-service descriptor upload";
     case DIR_PURPOSE_FETCH_MICRODESC:
       return "microdescriptor fetch";
     }
@@ -986,8 +992,10 @@ struct directory_request_t {
   size_t payload_len;
   /** Value to send in an if-modified-since header, or 0 for none. */
   time_t if_modified_since;
-  /** Hidden-service-specific information */
+  /** Hidden-service-specific information v2. */
   const rend_data_t *rend_query;
+  /** Hidden-service-specific information for v3+. */
+  const hs_conn_identifier_t *hs_ident;
   /** Used internally to directory.c: gets informed when the attempt to
    * connect to the directory succeeds or fails, if that attempt bears on the
    * directory's usability as a directory guard. */
@@ -1201,6 +1209,21 @@ directory_request_set_rend_query(directory_request_t *req,
   }
   req->rend_query = query;
 }
+/**
+ * Set an object containing HS connection identifier to be associated with
+ * this request. Note that only an alias to <b>ident</b> is stored, so the
+ * <b>ident</b> object must outlive the request.
+ */
+void
+directory_request_set_hs_ident(directory_request_t *req,
+                               const hs_conn_identifier_t *ident)
+{
+  if (ident) {
+    tor_assert(req->dir_purpose == DIR_PURPOSE_FETCH_HSDESC ||
+               req->dir_purpose == DIR_PURPOSE_UPLOAD_HSDESC);
+  }
+  req->hs_ident = ident;
+}
 /** Set a static circuit_guard_state_t object to affliate with the request in
  * <b>req</b>.  This object will receive notification when the attempt to
  * connect to the guard either succeeds or fails. */
@@ -1322,6 +1345,7 @@ directory_initiate_request,(directory_request_t *request))
   const dir_indirection_t indirection = request->indirection;
   const char *resource = request->resource;
   const rend_data_t *rend_query = request->rend_query;
+  const hs_conn_identifier_t *hs_ident = request->hs_ident;
   circuit_guard_state_t *guard_state = request->guard_state;
 
   tor_assert(or_addr_port->port || dir_addr_port->port);
@@ -1409,8 +1433,16 @@ directory_initiate_request,(directory_request_t *request))
   conn->dirconn_direct = !anonymized_connection;
 
   /* copy rendezvous data, if any */
-  if (rend_query)
+  if (rend_query) {
+    /* We can't have both v2 and v3+ identifier. */
+    tor_assert(!hs_ident);
     conn->rend_data = rend_data_dup(rend_query);
+  }
+  if (hs_ident) {
+    /* We can't have both v2 and v3+ identifier. */
+    tor_assert(!rend_query);
+    conn->hs_ident = hs_conn_identifier_dup(hs_ident);
+  }
 
   if (!anonymized_connection && !use_begindir) {
     /* then we want to connect to dirport directly */
@@ -1750,6 +1782,11 @@ directory_send_command(dir_connection_t *conn,
       httpcommand = "POST";
       url = tor_strdup("/tor/rendezvous2/publish");
       break;
+    case DIR_PURPOSE_UPLOAD_HSDESC:
+      tor_assert(resource);
+      tor_assert(payload);
+      httpcommand = "POST";
+      tor_asprintf(&url, "/tor/hs/%s/publish", resource);
     default:
       tor_assert(0);
       return;
@@ -2727,6 +2764,9 @@ connection_dir_client_reached_eof(dir_connection_t *conn)
         break;
     }
   }
+
+  /* XXX: Handle DIR_PURPOSE_UPLOAD_HSDESC for control port (#20699). */
+
   tor_free(body); tor_free(headers); tor_free(reason);
   return 0;
 }

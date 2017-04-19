@@ -939,6 +939,15 @@ hs_get_responsible_hsdirs(const ed25519_public_key_t *blinded_pk,
   smartlist_free(sorted_nodes);
 }
 
+/* For the given connection identifier src, return a newly allocated copy. */
+hs_conn_identifier_t *
+hs_conn_identifier_dup(const hs_conn_identifier_t *src)
+{
+  hs_conn_identifier_t *ident = tor_malloc_zero(sizeof(*ident));
+  memcpy(ident, src, sizeof(*ident));
+  return ident;
+}
+
 /* Initialize the entire HS subsytem. This is called in tor_init() before any
  * torrc options are loaded. Only for >= v3. */
 void

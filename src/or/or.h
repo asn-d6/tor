@@ -421,7 +421,11 @@ typedef enum {
 #define DIR_PURPOSE_FETCH_RENDDESC_V2 18
 /** A connection to a directory server: download a microdescriptor. */
 #define DIR_PURPOSE_FETCH_MICRODESC 19
-#define DIR_PURPOSE_MAX_ 19
+/** A connetion to a hidden service directory: upload a descriptor. */
+#define DIR_PURPOSE_UPLOAD_HSDESC 20
+/** A connetion to a hidden service directory: fetch a descriptor. */
+#define DIR_PURPOSE_FETCH_HSDESC 21
+#define DIR_PURPOSE_MAX_ 21
 
 /** True iff <b>p</b> is a purpose corresponding to uploading
  * data to a directory server. */

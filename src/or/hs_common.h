@@ -212,6 +212,8 @@ void hs_get_responsible_hsdirs(const ed25519_public_key_t *blinded_pk,
                                uint64_t time_period_num, int is_next_period,
                                int is_client, smartlist_t *responsible_dirs);
 
+hs_conn_identifier_t *hs_conn_identifier_dup(const hs_conn_identifier_t *src);
+
 #ifdef HS_COMMON_PRIVATE
 
 #ifdef TOR_UNIT_TESTS
