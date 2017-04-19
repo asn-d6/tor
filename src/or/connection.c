@@ -629,6 +629,7 @@ connection_free_(connection_t *conn)
   if (conn->type == CONN_TYPE_DIR) {
     dir_connection_t *dir_conn = TO_DIR_CONN(conn);
     tor_free(dir_conn->requested_resource);
+    tor_free(dir_conn->hs_ident);
 
     tor_compress_free(dir_conn->compress_state);
     if (dir_conn->spool) {
