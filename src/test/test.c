@@ -1215,6 +1215,7 @@ struct testgroup_t testgroups[] = {
   { "hs_cell/", hs_cell_tests },
   { "hs_config/", hs_config_tests },
   { "hs_descriptor/", hs_descriptor },
+  { "hs_ntor/", hs_ntor_tests },
   { "hs_service/", hs_service_tests },
   { "hs_intropoint/", hs_intropoint_tests },
   { "introduce/", introduce_tests },
