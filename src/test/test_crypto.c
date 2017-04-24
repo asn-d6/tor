@@ -2170,6 +2170,9 @@ test_crypto_ed25519_simple(void *arg)
   tt_int_op(0, OP_EQ, ed25519_public_key_generate(&pub1, &sec1));
   tt_int_op(0, OP_EQ, ed25519_public_key_generate(&pub2, &sec1));
 
+  tt_int_op(ed25519_validate_pubkey(&pub1), OP_EQ, 0);
+  tt_int_op(ed25519_validate_pubkey(&pub2), OP_EQ, 0);
+
   tt_mem_op(pub1.pubkey, OP_EQ, pub2.pubkey, sizeof(pub1.pubkey));
   tt_assert(ed25519_pubkey_eq(&pub1, &pub2));
   tt_assert(ed25519_pubkey_eq(&pub1, &pub1));
