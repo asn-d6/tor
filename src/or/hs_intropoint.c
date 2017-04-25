@@ -112,6 +112,12 @@ verify_establish_intro_cell(const trn_cell_establish_intro_t *cell,
     ed25519_public_key_t auth_key;
     get_auth_key_from_cell(&auth_key, RELAY_COMMAND_ESTABLISH_INTRO, cell);
 
+    /* Validate received ed25519 pubkey */
+    if (ed25519_validate_pubkey(&auth_key) < 0) {
+      log_warn(LD_PROTOCOL, "Bad key in ESTABLISH_INTRO");
+      return -1;
+    }
+
     const size_t sig_msg_len = cell->end_sig_fields - msg;
     int sig_mismatch = ed25519_checksig_prefixed(&sig_struct,
                                                  msg, sig_msg_len,
