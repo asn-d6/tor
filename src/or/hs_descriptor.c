@@ -1253,6 +1253,19 @@ cert_is_valid(tor_cert_t *cert, uint8_t type, const char *log_obj_type)
     log_warn(LD_REND, "Signing key is NOT included for %s.", log_obj_type);
     goto err;
   }
+
+  /* Validate signing key (we just checked it's there) */
+  if (ed25519_validate_pubkey(&cert->signing_key) < 0) {
+    log_warn(LD_REND, "Malicious signing pubkey for %s", log_obj_type);
+    goto err;
+  }
+
+  /* Validate signed key */
+  if (ed25519_validate_pubkey(&cert->signed_key) < 0) {
+      log_warn(LD_REND, "Malicious signed pubkey for %s", log_obj_type);
+      goto err;
+  }
+
   /* The following will not only check if the signature matches but also the
    * expiration date and overall validity. */
   if (tor_cert_checksig(cert, &cert->signing_key, time(NULL)) < 0) {

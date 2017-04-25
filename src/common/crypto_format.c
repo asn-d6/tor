@@ -189,7 +189,16 @@ int
 ed25519_public_from_base64(ed25519_public_key_t *pkey,
                            const char *input)
 {
-  return digest256_from_base64((char*)pkey->pubkey, input);
+  tor_assert(pkey);
+  tor_assert(input);
+
+  /* First parse the base64'ed pubkey */
+  if (digest256_from_base64((char*)pkey->pubkey, input) < 0) {
+    return -1;
+  }
+
+  /* then validate the pubkey */
+  return ed25519_validate_pubkey(pkey);
 }
 
 /** Encode the public key <b>pkey</b> into the buffer at <b>output</b>,
