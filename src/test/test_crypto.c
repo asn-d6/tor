@@ -2845,30 +2845,30 @@ test_crypto_ed25519_validation(void *arg)
   int retval;
   ed25519_public_key_t pub1;
 
-  /* See https://lists.torproject.org/pipermail/tor-dev/2017-April/012226.html
-     for a list of bad points in ed25519. */
+  /* See https://lists.torproject.org/pipermail/tor-dev/2017-April/012230.html
+     for a list of points with torsion components in ed25519. */
 
-  {
+  { /* Point with torsion component (order 8l) */
     const char badkey[] =
-      "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05";
+      "300ef2e64e588e1df55b48e4da0416ffb64cc85d5b00af6463d5cc6c2b1c185e";
     retval = base16_decode((char*)pub1.pubkey, sizeof(pub1.pubkey),
                            badkey, strlen(badkey));
     tt_int_op(retval, OP_EQ, sizeof(pub1.pubkey));
     tt_int_op(ed25519_validate_pubkey(&pub1), OP_EQ, -1);
   }
 
-  { /* This is the point (0,-1) */
+  { /* Point with torsion component (order 4l) */
     const char badkey[] =
-      "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f";
+      "f43e3a046db8749164c6e69b193f1e942c7452e7d888736f40b98093d814d5e7";
     retval = base16_decode((char*)pub1.pubkey, sizeof(pub1.pubkey),
                            badkey, strlen(badkey));
     tt_int_op(retval, OP_EQ, sizeof(pub1.pubkey));
     tt_int_op(ed25519_validate_pubkey(&pub1), OP_EQ, -1);
   }
 
-  { /* This is the point (1,0) */
+  { /* Point with torsion component (order 2l) */
     const char badkey[] =
-      "0000000000000000000000000000000000000000000000000000000000000080";
+      "c9fff3af0471c28e33e98c2043e44f779d0427b1e37c521a6bddc011ed1869af";
     retval = base16_decode((char*)pub1.pubkey, sizeof(pub1.pubkey),
                            badkey, strlen(badkey));
     tt_int_op(retval, OP_EQ, sizeof(pub1.pubkey));
@@ -2884,10 +2884,12 @@ test_crypto_ed25519_validation(void *arg)
     tt_int_op(ed25519_validate_pubkey(&pub1), OP_EQ, -1);
   }
 
-  { /* This is a legitimate point we will generate right now */
-    ed25519_secret_key_t sec1;
-    tt_int_op(0, OP_EQ, ed25519_secret_key_generate(&sec1, 0));
-    tt_int_op(0, OP_EQ, ed25519_public_key_generate(&pub1, &sec1));
+  { /* This one is a good key */
+    const char goodkey[] =
+      "4ba2e44760dff4c559ef3c38768c1c14a8a54740c782c8d70803e9d6e3ad8794";
+    retval = base16_decode((char*)pub1.pubkey, sizeof(pub1.pubkey),
+                           goodkey, strlen(goodkey));
+    tt_int_op(retval, OP_EQ, sizeof(pub1.pubkey));
     tt_int_op(ed25519_validate_pubkey(&pub1), OP_EQ, 0);
   }
 
