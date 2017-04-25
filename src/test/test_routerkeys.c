@@ -587,8 +587,11 @@ test_routerkeys_cross_certify_tap(void *args)
   char buf[128];
   int n;
 
-  tt_int_op(0, ==, ed25519_public_from_base64(&master_key,
-                               "IAlreadyWroteTestsForRouterdescsUsingTheseX"));
+  { /* Generate dummy ed25519 pubkey */
+    ed25519_secret_key_t sk;
+    tt_int_op(0, OP_EQ, ed25519_secret_key_generate(&sk, 0));
+    tt_int_op(0, OP_EQ, ed25519_public_key_generate(&master_key, &sk));
+  }
 
   cc = make_tap_onion_key_crosscert(onion_key,
                                     &master_key,
@@ -625,8 +628,12 @@ test_routerkeys_rsa_ed_crosscert(void *arg)
   ssize_t cc_len;
   time_t expires_in = 1470846177;
 
-  tt_int_op(0, OP_EQ, ed25519_public_from_base64(&ed,
-                        "ThisStringCanContainAnythingSoNoKeyHereNowX"));
+  { /* Generate dummy ed25519 pubkey */
+    ed25519_secret_key_t sk;
+    tt_int_op(0, OP_EQ, ed25519_secret_key_generate(&sk, 0));
+    tt_int_op(0, OP_EQ, ed25519_public_key_generate(&ed, &sk));
+  }
+
   cc_len = tor_make_rsa_ed25519_crosscert(&ed, rsa, expires_in, &cc);
 
   tt_int_op(cc_len, OP_GT, 0);

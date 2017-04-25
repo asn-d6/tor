@@ -2448,12 +2448,6 @@ test_crypto_ed25519_encode(void *arg)
   tt_int_op(0, OP_EQ, ed25519_signature_from_base64(&sig2, buf));
   tt_mem_op(sig1.sig, OP_EQ, sig2.sig, ED25519_SIG_LEN);
 
-  /* Test known value. */
-  tt_int_op(0, OP_EQ, ed25519_public_from_base64(&pk,
-                             "lVIuIctLjbGZGU5wKMNXxXlSE3cW4kaqkqm04u6pxvM"));
-  test_memeq_hex(pk.pubkey,
-         "95522e21cb4b8db199194e7028c357c57952137716e246aa92a9b4e2eea9c6f3");
-
  done:
   tor_free(mem_op_hex_tmp);
 }
