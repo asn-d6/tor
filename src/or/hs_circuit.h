@@ -86,5 +86,14 @@ int hs_circ_handle_introduce2(const hs_service_t *service,
                               const uint8_t *subcredential,
                               const uint8_t *payload, size_t payload_len);
 
+/* e2e rend circuit api */
+
+int hs_circuit_setup_e2e_rend_circ(origin_circuit_t *circ,
+                           const uint8_t *ntor_key_seed,
+                           int is_service_side);
+
+int hs_circuit_setup_e2e_rend_circ_legacy_client(origin_circuit_t *circ,
+                                                const uint8_t *rend_cell_body);
+
 #endif /* TOR_HS_CIRCUIT_H */
 
