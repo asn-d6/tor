@@ -109,11 +109,13 @@ static origin_circuit_t *
 helper_create_origin_circuit(int purpose, int flags)
 {
   origin_circuit_t *circ = NULL;
+  crypt_path_t *cpath_first = tor_malloc_zero(sizeof(crypt_path_t));
+  crypt_path_t *cpath_next = tor_malloc_zero(sizeof(crypt_path_t));
 
   circ = origin_circuit_init(purpose, flags);
   tt_assert(circ);
-  circ->cpath = tor_malloc_zero(sizeof(crypt_path_t));
-  circ->cpath->prev = tor_malloc_zero(sizeof(crypt_path_t));
+  onion_append_to_cpath(&circ->cpath, cpath_first);
+  onion_append_to_cpath(&circ->cpath, cpath_next);
   /* Random nonce. */
   crypto_rand(circ->cpath->prev->rend_circ_nonce, DIGEST_LEN);
   /* Create a default HS identifier. */
@@ -639,7 +641,6 @@ test_intro_circuit_opened(void *arg)
   teardown_capture_of_logs();
 
  done:
-  tor_free(circ->cpath->prev);  /* Avoid memleak. */
   circuit_free(TO_CIRCUIT(circ));
   hs_free_all();
   UNMOCK(circuit_mark_for_close_);
@@ -711,7 +712,6 @@ test_intro_established(void *arg)
   tt_u64_op(service->desc_current->num_established_intro_circ, OP_EQ, 1);
 
  done:
-  tor_free(circ->cpath->prev);  /* Avoid memleak. */
   circuit_free(TO_CIRCUIT(circ));
   hs_free_all();
   UNMOCK(circuit_mark_for_close_);
@@ -752,7 +752,6 @@ test_rdv_circuit_opened(void *arg)
   tt_int_op(TO_CIRCUIT(circ)->purpose, OP_EQ, CIRCUIT_PURPOSE_S_REND_JOINED);
 
  done:
-  tor_free(circ->cpath->prev);  /* Avoid memleak. */
   circuit_free(TO_CIRCUIT(circ));
   hs_free_all();
   UNMOCK(circuit_mark_for_close_);
@@ -824,7 +823,6 @@ test_introduce2(void *arg)
   tt_u64_op(ip->introduce2_count, OP_EQ, 0);
 
  done:
-  tor_free(circ->cpath->prev);  /* Avoid memleak. */
   circuit_free(TO_CIRCUIT(circ));
   hs_free_all();
   UNMOCK(circuit_mark_for_close_);
@@ -905,7 +903,6 @@ test_service_event(void *arg)
 
  done:
   hs_circuitmap_remove_circuit(TO_CIRCUIT(circ));
-  tor_free(circ->cpath->prev);  /* Avoid memleak. */
   circuit_free(TO_CIRCUIT(circ));
   hs_free_all();
   UNMOCK(circuit_mark_for_close_);
