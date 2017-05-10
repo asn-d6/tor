@@ -788,9 +788,8 @@ finalize_rend_circuit(origin_circuit_t *circ, crypt_path_t *hop,
 
   /* All is well. Extend the circuit. */
   hop->state = CPATH_STATE_OPEN;
-  /* set the windows to default. these are the windows
-   * that the client thinks the service has.
-   */
+  /* Set the windows to default. These are the windows that the client thinks
+   * the service has. */
   hop->package_window = circuit_initial_package_window();
   hop->deliver_window = CIRCWINDOW_START;
 
@@ -835,7 +834,7 @@ hs_circuit_setup_e2e_rend_circ(origin_circuit_t *circ,
 
   crypt_path_t *hop = get_rend_cpath(ntor_key_seed, is_service_side);
   if (!hop) {
-    log_warn(LD_GENERAL, "Couldn't get v3 cpath.");
+    log_warn(LD_REND, "Couldn't get v3 cpath (%d).", is_service_side);
     return -1;
   }
 

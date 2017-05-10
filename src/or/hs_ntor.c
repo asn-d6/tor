@@ -579,10 +579,10 @@ hs_ntor_client_rendezvous2_mac_is_good(
 /* Input length to KDF for key expansion */
 #define NTOR_KEY_EXPANSION_KDF_INPUT_LEN (DIGEST256_LEN + M_HSEXPAND_LEN)
 
-/** Given the rendezvous key material in <b>hs_ntor_rend_cell_keys</b>, do the
- *  circuit key expansion as specified by section '4.2.1. Key expansion' and
- *  place the keys in <b>keys_out</b> (which must be of size
- *  HS_NTOR_KEY_EXPANSION_KDF_OUT_LEN). */
+/** Given the rendezvous key seed in <b>ntor_key_seed</b> (of size
+ *  DIGEST256_LEN), do the circuit key expansion as specified by section
+ *  '4.2.1. Key expansion' and place the keys in <b>keys_out</b> (which must be
+ *  of size HS_NTOR_KEY_EXPANSION_KDF_OUT_LEN). */
 void
 hs_ntor_circuit_key_expansion(const uint8_t *ntor_key_seed, uint8_t *keys_out)
 {
