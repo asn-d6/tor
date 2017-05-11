@@ -1323,11 +1323,11 @@ circuit_extend(cell_t *cell, circuit_t *circ)
 
 /** Initialize cpath-\>{f|b}_{crypto|digest} from the key material in key_data.
  *
- * If <b>is_next_gen</b> is set, this cpath will be used for next gen hidden
+ * If <b>is_hs_v3</b> is set, this cpath will be used for next gen hidden
  * service circuits and <b>key_data</b> must be at least
  * HS_NTOR_KEY_EXPANSION_KDF_OUT_LEN bytes in length.
  *
- * If <b>is_next_gen</b> is not set, key_data must contain CPATH_KEY_MATERIAL
+ * If <b>is_hs_v3</b> is not set, key_data must contain CPATH_KEY_MATERIAL
  * bytes, which are used as follows:
  *   - 20 to initialize f_digest
  *   - 20 to initialize b_digest
@@ -1338,7 +1338,7 @@ circuit_extend(cell_t *cell, circuit_t *circ)
  */
 int
 circuit_init_cpath_crypto(crypt_path_t *cpath, const char *key_data,
-                          int reverse, int is_next_gen)
+                          int reverse, int is_hs_v3)
 {
   crypto_digest_t *tmp_digest;
   crypto_cipher_t *tmp_crypto;
@@ -1352,7 +1352,7 @@ circuit_init_cpath_crypto(crypt_path_t *cpath, const char *key_data,
 
   /* If we are using this cpath for next gen onion services use SHA3-256,
      otherwise use good ol' SHA1 */
-  if (is_next_gen) {
+  if (is_hs_v3) {
     digest_len = DIGEST256_LEN;
     cipher_key_len = CIPHER256_KEY_LEN;
     cpath->f_digest = crypto_digest256_new(DIGEST_SHA3_256);

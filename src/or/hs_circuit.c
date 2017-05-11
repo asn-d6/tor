@@ -834,7 +834,8 @@ hs_circuit_setup_e2e_rend_circ(origin_circuit_t *circ,
 
   crypt_path_t *hop = get_rend_cpath(ntor_key_seed, is_service_side);
   if (!hop) {
-    log_warn(LD_REND, "Couldn't get v3 cpath (%d).", is_service_side);
+    log_warn(LD_REND, "Couldn't get v3 %s cpath!",
+             is_service_side ? "service-side" : "client-side");
     return -1;
   }
 
