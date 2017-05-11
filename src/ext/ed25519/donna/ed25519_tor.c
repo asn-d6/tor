@@ -347,9 +347,9 @@ void
 ed25519_donna_scalarmult_with_group_order(unsigned char *out,
                                           const unsigned char *pubkey)
 {
-  static const bignum256modm zero = { 0 };
+  static const bignum256modm ALIGN(16) zero = { 0 };
   unsigned char pkcopy[32];
-  ge25519 Point, Result;
+  ge25519 ALIGN(16) Point, Result;
 
   /* No "ge25519_unpack", negate the public key and unpack it back.
    * See ed25519_donna_blind_public_key() */
