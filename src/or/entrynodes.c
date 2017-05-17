@@ -1547,6 +1547,42 @@ sample_reachable_filtered_entry_guards(guard_selection_t *gs,
   return result;
 }
 
+static void
+log_primary_guards(const guard_selection_t *gs)
+{
+  networkstatus_t *ns = networkstatus_get_live_consensus(approx_time());
+
+  int n = smartlist_len(gs->primary_entry_guards);
+  log_warn(LD_GUARD, "Primary guards list (%d):", n);
+
+
+  if (!ns) {
+    log_warn(LD_GENERAL, "Primaries but no consensus");
+  }
+
+  SMARTLIST_FOREACH_BEGIN(gs->primary_entry_guards, entry_guard_t *, g) {
+    int is_in_consensus = 0;
+    int is_running = 0;
+
+    if (ns) {
+      const routerstatus_t *rs = networkstatus_vote_find_entry(ns, g->identity);
+      is_in_consensus = rs ? 1 : 0;
+      if (rs) {
+        is_running = rs->is_flagged_running ? 1 : 0;
+      }
+    }
+
+    log_warn(LD_GUARD, "  %d/%d: %s%s%s%s%s%s%s",
+             g_sl_idx+1, n, entry_guard_describe(g),
+             g->bridge_addr ? " (BRIDGE) " : "",
+             g->confirmed_idx >= 0 ? " (confirmed)" : "",
+             is_in_consensus ? " (listed)" : " (NOT listed)",
+             is_running ? " (running)" : " (NOT running)",
+             guard_has_descriptor(g) ? " (w/ descriptor)" : " (NO descriptor)",
+             g->is_filtered_guard ? "" : " (excluded by filter)");
+  } SMARTLIST_FOREACH_END(g);
+}
+
 /**
  * Helper: compare two entry_guard_t by their confirmed_idx values.
  * Used to sort the confirmed list.
@@ -1715,15 +1751,8 @@ entry_guards_update_primary(guard_selection_t *gs)
   }
 
   if (any_change) {
-    log_info(LD_GUARD, "Primary entry guards have changed. "
-             "New primary guard list is: ");
-    int n = smartlist_len(new_primary_guards);
-    SMARTLIST_FOREACH_BEGIN(new_primary_guards, entry_guard_t *, g) {
-      log_info(LD_GUARD, "  %d/%d: %s%s%s",
-               g_sl_idx+1, n, entry_guard_describe(g),
-               g->confirmed_idx >= 0 ? " (confirmed)" : "",
-               g->is_filtered_guard ? "" : " (excluded by filter)");
-    } SMARTLIST_FOREACH_END(g);
+    log_info(LD_GUARD, "Primary entry guards have changed.");
+    log_primary_guards(gs);
   }
 
   smartlist_free(old_primary_guards);
@@ -3349,6 +3378,7 @@ guards_retry_optimistic(const or_options_t *options)
   return 1;
 }
 
+
 /**
  * Return true iff we know enough directory information to construct
  * circuits through all of the primary guards we'd currently use.
@@ -3379,6 +3409,12 @@ guard_selection_have_enough_dir_info_to_build_circuits(guard_selection_t *gs)
     if (n_considered >= num_primary_to_check)
       break;
   } SMARTLIST_FOREACH_END(guard);
+
+  /* debug #21969 */
+  if (n_missing_descriptors) {
+    log_warn(LD_GENERAL, "Missing primary guard descriptors! Debugging for #21969:");
+    log_primary_guards(gs);
+  }
 
   return n_missing_descriptors == 0;
 }
