@@ -86,6 +86,7 @@ typedef struct hs_ident_edge_conn_t {
 hs_ident_circuit_t *hs_ident_circuit_new(
                              const ed25519_public_key_t *identity_pk);
 void hs_ident_circuit_free(hs_ident_circuit_t *ident);
+hs_ident_circuit_t *hs_ident_circuit_dup(const hs_ident_circuit_t *src);
 
 /* Directory connection identifier API. */
 hs_ident_dir_conn_t *hs_ident_dir_conn_dup(const hs_ident_dir_conn_t *src);
