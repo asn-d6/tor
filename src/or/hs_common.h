@@ -214,6 +214,14 @@ void hs_get_responsible_hsdirs(const ed25519_public_key_t *blinded_pk,
                                uint64_t time_period_num, int is_next_period,
                                int is_client, smartlist_t *responsible_dirs);
 
+time_t hs_hsdir_requery_period(const or_options_t *options);
+time_t hs_lookup_last_hid_serv_request(routerstatus_t *hs_dir,
+                                       const char *desc_id_base32,
+                                       time_t now, int set);
+void hs_clean_last_hid_serv_requests(time_t now);
+void hs_purge_hid_serv_from_last_hid_serv_requests(const char *desc_id);
+void hs_purge_last_hid_serv_requests(void);
+
 int hs_set_conn_addr_port(const smartlist_t *ports, edge_connection_t *conn);
 
 #ifdef HS_COMMON_PRIVATE
@@ -227,6 +235,7 @@ int hs_set_conn_addr_port(const smartlist_t *ports, edge_connection_t *conn);
 
 #ifdef TOR_UNIT_TESTS
 
+STATIC strmap_t *get_last_hid_serv_requests(void);
 STATIC uint64_t get_time_period_length(void);
 
 #endif /* TOR_UNIT_TESTS */
