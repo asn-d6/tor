@@ -218,6 +218,13 @@ int hs_set_conn_addr_port(const smartlist_t *ports, edge_connection_t *conn);
 
 #ifdef HS_COMMON_PRIVATE
 
+/** The period for which a hidden service directory cannot be queried for
+ * the same descriptor ID again. */
+#define REND_HID_SERV_DIR_REQUERY_PERIOD (15 * 60)
+/** Test networks generate a new consensus every 5 or 10 seconds.
+ * So allow them to requery HSDirs much faster. */
+#define REND_HID_SERV_DIR_REQUERY_PERIOD_TESTING (5)
+
 #ifdef TOR_UNIT_TESTS
 
 STATIC uint64_t get_time_period_length(void);
