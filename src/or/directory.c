@@ -2539,6 +2539,9 @@ connection_dir_client_reached_eof(dir_connection_t *conn)
     case DIR_PURPOSE_UPLOAD_HSDESC:
       rv = handle_response_upload_hsdesc(conn, &args);
       break;
+    case DIR_PURPOSE_FETCH_HSDESC:
+      rv = handle_response_fetch_hsdesc_v3(conn, &args);
+      break;
     default:
       tor_assert_nonfatal_unreached();
       rv = -1;
@@ -3079,6 +3082,53 @@ handle_response_upload_signatures(dir_connection_t *conn,
   }
   /* return 0 in all cases, since we don't want to mark any
    * dirservers down just because they don't like us. */
+
+  return 0;
+}
+
+/**
+ * Handler function: processes a response to a request for a v3 hidden service
+ * descriptor.
+ **/
+STATIC int
+handle_response_fetch_hsdesc_v3(dir_connection_t *conn,
+                                const response_handler_args_t *args)
+{
+  const int status_code = args->status_code;
+  const char *reason = args->reason;
+  const char *body = args->body;
+  const size_t body_len = args->body_len;
+
+  tor_assert(conn->hs_ident);
+
+  log_info(LD_REND,"Received v3 hsdesc (body size %d, status %d (%s))",
+           (int)body_len, status_code, escaped(reason));
+
+  switch (status_code) {
+  case 200:
+    {
+      /* We got something: Try storing it in the cache. */
+      int retval;
+      retval = hs_cache_store_as_client(body, &conn->hs_ident->identity_pk);
+      if (retval < 0) { /* Store failed */
+        log_warn(LD_REND, "Failed to store HS desc");
+      } else { /* Store succeded */
+        log_warn(LD_REND, "Stored HS desc!");
+      }
+      break;
+    }
+  case 404:
+    /* Not found. We need to retry */
+    log_warn(LD_REND, "No HS desc found");
+    /* TODO: Inform the control port */
+    break;
+  case 400:
+    log_warn(LD_REND, "HSdir rejected our query...");
+    break;
+  default:
+    log_warn(LD_REND, "HSDir failed us with %d", status_code);
+    break;
+  }
 
   return 0;
 }
