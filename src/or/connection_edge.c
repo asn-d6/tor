@@ -1397,6 +1397,9 @@ connection_ap_handle_onion(entry_connection_t *conn,
                            socks_request_t *socks,
                            origin_circuit_t *circ)
 {
+  time_t now = approx_time();
+  connection_t *base_conn = ENTRY_TO_CONN(conn);
+
   /* If .onion address requests are disabled, refuse the request */
   if (!conn->entry_cfg.onion_traffic) {
     log_warn(LD_APP, "Onion address %s requested from a port with .onion "
