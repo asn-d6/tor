@@ -8,6 +8,7 @@
 
 #define CONTROL_PRIVATE
 #define CIRCUITBUILD_PRIVATE
+#define RENDCOMMON_PRIVATE
 #define RENDSERVICE_PRIVATE
 
 #include "or.h"
@@ -123,6 +124,30 @@ node_describe_longname_by_id_replacement(const char *id_digest)
   } else {
     return STR_HSDIR_NONE_EXIST_LONGNAME;
   }
+}
+
+/** Test that we can parse a hardcoded v2 HS desc. */
+static void
+test_hs_parse_static_v2_desc(void *arg)
+{
+  int ret;
+  rend_encoded_v2_service_descriptor_t desc;
+
+  (void) arg;
+
+  /* Test an obviously not parseable string */
+  desc.desc_str = tor_strdup("ceci n'est pas un HS descriptor");
+  ret = rend_desc_v2_is_parsable(&desc);
+  tt_int_op(ret, OP_EQ, 0);
+  tor_free(desc.desc_str);
+
+  /* Test an actual descriptor */
+  desc.desc_str = tor_strdup(hs_desc_content);
+  ret = rend_desc_v2_is_parsable(&desc);
+  tt_int_op(ret, OP_EQ, 1);
+  tor_free(desc.desc_str);
+
+ done: ;
 }
 
 /** Make sure each hidden service descriptor async event generation
@@ -940,6 +965,8 @@ test_prune_services_on_reload(void *arg)
 
 struct testcase_t hs_tests[] = {
   { "hs_rend_data", test_hs_rend_data, TT_FORK,
+    NULL, NULL },
+  { "hs_parse_static_v2_desc", test_hs_parse_static_v2_desc, TT_FORK,
     NULL, NULL },
   { "hs_desc_event", test_hs_desc_event, TT_FORK,
     NULL, NULL },
