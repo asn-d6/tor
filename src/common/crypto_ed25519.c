@@ -59,8 +59,8 @@ typedef struct {
   int (*pubkey_from_curve25519_pubkey)(unsigned char *, const unsigned char *,
                                        int);
 
-  void (*ed25519_scalarmult_with_group_order)(unsigned char *,
-                                              const unsigned char *);
+  int (*ed25519_scalarmult_with_group_order)(unsigned char *,
+                                             const unsigned char *);
 } ed25519_impl_t;
 
 /** The Ref10 Ed25519 implementation. This one is pure C and lightly
@@ -774,7 +774,8 @@ ed25519_point_is_identity_element(const uint8_t *point)
   return tor_memeq(point, ed25519_identity, sizeof(ed25519_identity));
 }
 
-/** Validate <b>pubkey</b> to ensure that it has no torsion component. */
+/** Validate <b>pubkey</b> to ensure that it has no torsion component.
+ *  Return 0 if <b>pubkey</b> is valid, else return -1. */
 int
 ed25519_validate_pubkey(const ed25519_public_key_t *pubkey)
 {
@@ -789,7 +790,12 @@ ed25519_validate_pubkey(const ed25519_public_key_t *pubkey)
   /* For any point on the curve, doing l*point should give the identity element
    * (where l is the group order). Do the computation and check that the
    * identity element is returned. */
-  get_ed_impl()->ed25519_scalarmult_with_group_order(result, pubkey->pubkey);
+  if (get_ed_impl()->ed25519_scalarmult_with_group_order(result,
+                                                         pubkey->pubkey) < 0) {
+    log_warn(LD_CRYPTO, "ed25519 group order scalarmult failed\n");
+    return -1;
+  }
+
   if (!ed25519_point_is_identity_element(result)) {
     log_warn(LD_CRYPTO, "ed25519 validation failed\n");
     return -1;

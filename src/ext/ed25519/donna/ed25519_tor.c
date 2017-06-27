@@ -343,7 +343,7 @@ ed25519_donna_pubkey_from_curve25519_pubkey(unsigned char *out,
 /* Do the scalar multiplication of <b>pubkey</b> with the group order
  * <b>modm_m</b>.  Place the result in <b>out</b> which must be at least 32
  * bytes long. */
-void
+int
 ed25519_donna_scalarmult_with_group_order(unsigned char *out,
                                           const unsigned char *pubkey)
 {
@@ -355,17 +355,16 @@ ed25519_donna_scalarmult_with_group_order(unsigned char *out,
    * See ed25519_donna_blind_public_key() */
   memcpy(pkcopy, pubkey, 32);
   pkcopy[31] ^= (1<<7);
-  ge25519_unpack_negative_vartime(&Point, pkcopy);
+  if (!ge25519_unpack_negative_vartime(&Point, pkcopy)) {
+    return -1; /* error: bail out */
+  }
 
   /* There is no regular scalarmult function so we have to do:
    * Result = l*P + 0*B */
   ge25519_double_scalarmult_vartime(&Result, &Point, modm_m, zero);
   ge25519_pack(out, &Result);
 
-  /* Cleanup */
-  memwipe(pkcopy, 0, sizeof(pkcopy));
-  memwipe(&Point, 0, sizeof(Point));
-  memwipe(&Result, 0, sizeof(Result));
+  return 0;
 }
 
 #include "test-internals.c"
