@@ -300,15 +300,15 @@ service_free_all(void)
  * used to index that intro point in the descriptor map. The key_out MUST at
  * least be of size DIGEST256_LEN. */
 static void
-helper_intro_build_index_key(const hs_service_intro_point_t *ip,
+helper_intro_build_index_key(const void *key, unsigned int is_legacy,
                              uint8_t *key_out)
 {
-  tor_assert(ip);
+  tor_assert(key);
   tor_assert(key_out);
 
-  if (ip->base.is_only_legacy) {
+  if (is_legacy) {
     char digest[DIGEST_LEN];
-    if (BUG(crypto_pk_get_digest(ip->legacy_key, digest) < 0)) {
+    if (BUG(crypto_pk_get_digest((crypto_pk_t *) key, digest) < 0)) {
       return; // LCOV_EXCL_LINE
     }
     /* Build a 32 byte key from the RSA 20 byte digest. */
@@ -316,8 +316,24 @@ helper_intro_build_index_key(const hs_service_intro_point_t *ip,
   } else {
     /* In this case, we use the authentication public key as defined by
      * proposal 224. The curve25519 key is only used for encryption. */
-    memcpy(key_out, ip->auth_key_kp.pubkey.pubkey, DIGEST256_LEN);
+    memcpy(key_out, (uint8_t *) key, DIGEST256_LEN);
   }
+}
+
+static void
+helper_intro_build_index_key_by_ip(const hs_service_intro_point_t *ip,
+                                   uint8_t *key_out)
+{
+  const void *key;
+  tor_assert(ip);
+  tor_assert(key_out);
+
+  if (ip->base.is_only_legacy) {
+    key = ip->legacy_key;
+  } else {
+    key = ip->auth_key_kp.pubkey.pubkey;
+  }
+  helper_intro_build_index_key(key, ip->base.is_only_legacy, key_out);
 }
 
 /* Free a given service intro point object. */
@@ -377,7 +393,7 @@ service_intro_point_add(digest256map_t *map, hs_service_intro_point_t *ip)
   tor_assert(map);
   tor_assert(ip);
 
-  helper_intro_build_index_key(ip, key);
+  helper_intro_build_index_key_by_ip(ip, key);
   digest256map_set(map, key, ip);
   memwipe(key, 0, sizeof(key));
 }
@@ -393,7 +409,7 @@ service_intro_point_remove(const hs_service_t *service,
   tor_assert(service);
   tor_assert(ip);
 
-  helper_intro_build_index_key(ip, key);
+  helper_intro_build_index_key_by_ip(ip, key);
 
   /* Trying all descriptors. */
   FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
@@ -419,16 +435,7 @@ service_intro_point_find(const hs_service_t *service, const void *auth_key,
   tor_assert(service);
   tor_assert(auth_key);
 
-  if (is_legacy) {
-    char digest[DIGEST_LEN];
-    if (BUG(crypto_pk_get_digest((crypto_pk_t *) auth_key, digest) < 0)) {
-      goto end;
-    }
-    /* Build a 32 byte key from the RSA 20 byte digest. */
-    crypto_digest256((char *) key, digest, sizeof(digest), DIGEST_SHA256);
-  } else {
-    memcpy(key, (uint8_t *) auth_key, sizeof(key));
-  }
+  helper_intro_build_index_key(auth_key, is_legacy, key);
 
   /* Trying all descriptors. */
   FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
@@ -436,7 +443,7 @@ service_intro_point_find(const hs_service_t *service, const void *auth_key,
       break;
     }
   } FOR_EACH_DESCRIPTOR_END;
- end:
+
   memwipe(key, 0, sizeof(key));
   return ip;
 }
@@ -477,7 +484,7 @@ service_desc_find_by_intro(const hs_service_t *service,
   tor_assert(service);
   tor_assert(ip);
 
-  helper_intro_build_index_key(ip, key);
+  helper_intro_build_index_key_by_ip(ip, key);
 
   FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
     if ((ip = digest256map_get(desc->intro_points.map, key)) != NULL) {
