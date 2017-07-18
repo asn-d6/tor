@@ -232,6 +232,10 @@ void hs_purge_last_hid_serv_requests(void);
 
 int hs_set_conn_addr_port(const smartlist_t *ports, edge_connection_t *conn);
 
+extend_info_t *hs_get_extend_info_from_lspecs(const smartlist_t *lspecs,
+                                  const curve25519_public_key_t *onion_key,
+                                  int direct_conn);
+
 #ifdef HS_COMMON_PRIVATE
 
 /** The period for which a hidden service directory cannot be queried for
