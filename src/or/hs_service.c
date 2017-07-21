@@ -1650,6 +1650,24 @@ cleanup_intro_points(hs_service_t *service, time_t now)
   } FOR_EACH_DESCRIPTOR_END;
 }
 
+/** We just entered overlap period and we need to rotate our <b>service</b>
+ *  descriptors */
+static void
+rotate_service_descriptors(hs_service_t *service)
+{
+  if (service->desc_current) {
+    /* Close all IP circuits for the descriptor. */
+    close_intro_circuits(&service->desc_current->intro_points);
+    /* We don't need this one anymore, we won't serve any clients coming with
+     * this service descriptor. */
+    service_descriptor_free(service->desc_current);
+  }
+  /* The next one become the current one and emptying the next will trigger
+   * a descriptor creation for it. */
+  service->desc_current = service->desc_next;
+  service->desc_next = NULL;
+}
+
 /* Rotate descriptors for each service if needed. If we are just entering
  * the overlap period, rotate them that is point the previous descriptor to
  * the current and cleanup the previous one. A non existing current
@@ -1671,20 +1689,11 @@ rotate_all_descriptors(time_t now)
      * it in order to make sure we don't rotate at next check. */
     service->state.in_overlap_period = 1;
 
-    /* Rotate the descriptors. Having no next descriptor will trigger a build
-     * for it using the next time period. */
-
-    if (service->desc_current) {
-      /* Close all IP circuits for the descriptor. */
-      close_intro_circuits(&service->desc_current->intro_points);
-      /* We don't need this one anymore, we won't serve any clients coming with
-       * this service descriptor. */
-      service_descriptor_free(service->desc_current);
+    /* If we have a next descriptor lined up, rotate the descriptors so that it
+     * becomes current. */
+    if (service->desc_next) {
+      rotate_service_descriptors(service);
     }
-    /* The next one become the current one and emptying the next will trigger
-     * a descriptor creation for it. */
-    service->desc_current = service->desc_next;
-    service->desc_next = NULL;
     log_info(LD_REND, "We've just entered the overlap period. Service %s "
                       "descriptors have been rotated!",
              safe_str_client(service->onion_address));
