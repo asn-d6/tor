@@ -3104,9 +3104,11 @@ handle_response_fetch_hsdesc_v3(dir_connection_t *conn,
       retval = hs_cache_store_as_client(body, &conn->hs_ident->identity_pk);
       if (retval < 0) { /* Store failed */
         log_warn(LD_REND, "Failed to store HS desc");
+        /* XXX: Note down the failed attempt. And unattached any streams. */
       } else { /* Store succeded */
         log_warn(LD_REND, "Stored HS desc!");
         conn->base_.purpose = DIR_PURPOSE_HAS_FETCHED_HSDESC;
+        hs_client_desc_has_arrived(conn->hs_ident);
       }
       break;
     }

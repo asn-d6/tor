@@ -23,6 +23,7 @@
 #include "circuitlist.h"
 #include "circuituse.h"
 #include "circpathbias.h"
+#include "connection.h"
 
 /* A v3 HS circuit successfully connected to the hidden service. Update the
  * stream state at <b>hs_conn_ident</b> appropriately. */
@@ -514,5 +515,46 @@ hs_client_receive_rendezvous_acked(origin_circuit_t *circ,
  err:
   circuit_mark_for_close(TO_CIRCUIT(circ), END_CIRC_REASON_TORPROTOCOL);
   return -1;
+}
+
+/* This is called when a descriptor has arrived following a fetch request and
+ * has been stored in the client cache. Every entry connection that matches
+ * the service identity key in the ident will get attached to the hidden
+ * service circuit. */
+void
+hs_client_desc_has_arrived(const hs_ident_dir_conn_t *ident)
+{
+  time_t now = time(NULL);
+  smartlist_t *conns = NULL;
+
+  tor_assert(ident);
+
+  conns = connection_list_by_type_state(CONN_TYPE_AP,
+                                        AP_CONN_STATE_RENDDESC_WAIT);
+  SMARTLIST_FOREACH_BEGIN(conns, connection_t *, base_conn) {
+    entry_connection_t *entry_conn = TO_ENTRY_CONN(base_conn);
+    const edge_connection_t *edge_conn = ENTRY_TO_EDGE_CONN(entry_conn);
+
+    /* Only consider the entry connections that matches the service for which
+     * we just fetched its descriptor. */
+    if (!edge_conn->hs_ident ||
+        !ed25519_pubkey_eq(&ident->identity_pk,
+                           &edge_conn->hs_ident->identity_pk)) {
+      continue;
+    }
+    assert_connection_ok(base_conn, now);
+
+    log_info(LD_REND, "Descriptor has arrived. Launching circuits.");
+
+    /* Restart their timeout values, so they get a fair shake at connecting to
+     * the hidden service. XXX: Improve comment on why this is needed. */
+    base_conn->timestamp_created = now;
+    base_conn->timestamp_lastread = now;
+    base_conn->timestamp_lastwritten = now;
+    /* Change connection's state into waiting for a circuit. */
+    base_conn->state = AP_CONN_STATE_CIRCUIT_WAIT;
+
+    connection_ap_mark_as_pending_circuit(entry_conn);
+  } SMARTLIST_FOREACH_END(base_conn);
 }
 
