@@ -25,6 +25,7 @@
 #include "circuituse.h"
 #include "circpathbias.h"
 #include "connection.h"
+#include "hs_ntor.h"
 
 /* A v3 HS circuit successfully connected to the hidden service. Update the
  * stream state at <b>hs_conn_ident</b> appropriately. */
@@ -611,6 +612,14 @@ hs_client_send_introduce1(origin_circuit_t *intro_circ,
     goto perm_err;
   }
 
+  /* Cell sent. Copy the introduction point encryption key in the rendezvous
+   * circuit identifier so we can compute the ntor keys when we receive the
+   * RENDEZVOUS2 cell. */
+  memcpy(&rend_circ->hs_ident->intro_enc_pk, &ip->enc_key,
+         sizeof(intro_circ->hs_ident->intro_enc_pk));
+  ed25519_pubkey_copy(&rend_circ->hs_ident->intro_auth_pk,
+                      &intro_circ->hs_ident->intro_auth_pk);
+
   /* Now, we wait for an ACK or NAK on this circuit. */
   circuit_change_purpose(TO_CIRCUIT(intro_circ),
                          CIRCUIT_PURPOSE_C_INTRODUCE_ACK_WAIT);
@@ -796,6 +805,99 @@ hs_client_receive_introduce_ack(origin_circuit_t *circ,
   /* For path bias: This circuit was used successfully. NACK or ACK counts. */
   pathbias_mark_use_success(circ);
 
+ end:
+  return ret;
+}
+
+static int
+handle_rendezvous2(origin_circuit_t *circ, const uint8_t *payload,
+                   size_t payload_len)
+{
+  int ret = -1;
+  curve25519_public_key_t server_pk = {0};
+  uint8_t auth_mac[DIGEST256_LEN] = {0};
+  uint8_t handshake_info[sizeof(server_pk) + sizeof(auth_mac)] = {0};
+  hs_ntor_rend_cell_keys_t keys;
+  const hs_ident_circuit_t *ident;
+
+  tor_assert(circ);
+  tor_assert(payload);
+
+  /* Make things easier. */
+  ident = circ->hs_ident;
+  tor_assert(ident);
+
+  /* XXX Handle legacy intro point. */
+
+  if (hs_cell_parse_rendezvous2(payload, payload_len, handshake_info,
+                                sizeof(handshake_info)) < 0) {
+    goto err;
+  }
+  /* Get from the handshake info the SERVER_PK and AUTH_MAC. */
+  memcpy(&server_pk, handshake_info, sizeof(server_pk));
+  memcpy(auth_mac, handshake_info + sizeof(server_pk), sizeof(auth_mac));
+
+  /* Generate the handshake info. */
+  if (hs_ntor_client_get_rendezvous1_keys(&ident->intro_auth_pk,
+                                          &ident->rendezvous_client_kp,
+                                          &ident->intro_enc_pk, &server_pk,
+                                          &keys) < 0) {
+    log_info(LD_REND, "Unable to compute the rendezvous keys.");
+    goto err;
+  }
+
+  /* Critical check, make sure that the MAC matches what we got with what we
+   * computed just above. */
+  if (!hs_ntor_client_rendezvous2_mac_is_good(&keys, auth_mac)) {
+    log_info(LD_REND, "Invalid MAC in RENDEZVOUS2. Rejecting cell.");
+    goto err;
+  }
+
+  /* Setup the e2e encryption on the circuit and finalize its state. */
+  if (hs_circuit_setup_e2e_rend_circ(circ, keys.ntor_key_seed,
+                                     sizeof(keys.ntor_key_seed), 0) < 0) {
+    log_info(LD_REND, "Unable to setup the e2e encryption.");
+    goto err;
+  }
+  /* Success. Hidden service connection finalized! */
+  ret = 0;
+  goto end;
+
+ err:
+  circuit_mark_for_close(TO_CIRCUIT(circ), END_CIRC_REASON_TORPROTOCOL);
+ end:
+  memwipe(&keys, 0, sizeof(keys));
+  return ret;
+}
+
+/* Called when get a RENDEZVOUS2 cell on the rendezvous circuit circ.  Return
+ * 0 on success else a negative value is returned. The circuit will be closed
+ * on error. */
+int
+hs_client_receive_rendezvous2(origin_circuit_t *circ,
+                              const uint8_t *payload, size_t payload_len)
+{
+  int ret = -1;
+
+  tor_assert(circ);
+  tor_assert(payload);
+
+  /* Circuit can possibly be in both state because we could receive a
+   * RENDEZVOUS2 cell before the INTRODUCE_ACK has been received. */
+  if (TO_CIRCUIT(circ)->purpose != CIRCUIT_PURPOSE_C_REND_READY &&
+      TO_CIRCUIT(circ)->purpose != CIRCUIT_PURPOSE_C_REND_READY_INTRO_ACKED) {
+    log_warn(LD_PROTOCOL, "Unexpected RENDEZVOUS2 cell on circuit %u. "
+                          "Closing circuit.",
+             (unsigned int) TO_CIRCUIT(circ)->n_circ_id);
+    circuit_mark_for_close(TO_CIRCUIT(circ), END_CIRC_REASON_TORPROTOCOL);
+    goto end;
+  }
+
+  log_info(LD_REND, "Got RENDEZVOUS2 cell from hidden service.");
+
+  ret = (circ->hs_ident) ? handle_rendezvous2(circ, payload, payload_len) :
+                           rend_client_receive_rendezvous(circ, payload,
+                                                          payload_len);
  end:
   return ret;
 }

@@ -1362,8 +1362,13 @@ circuit_detach_stream(circuit_t *circ, edge_connection_t *conn)
        * number of streams on the circuit associated with the rend service.
        */
       if (circ->purpose == CIRCUIT_PURPOSE_S_REND_JOINED) {
-        tor_assert(origin_circ->rend_data);
-        origin_circ->rend_data->nr_streams--;
+        if (origin_circ->rend_data) {
+          origin_circ->rend_data->nr_streams--;
+        } else if (origin_circ->hs_ident) {
+          origin_circ->hs_ident->num_rdv_streams--;
+        } else {
+          tor_assert_nonfatal_unreached();
+        }
       }
       return;
     }
