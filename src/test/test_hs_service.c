@@ -43,6 +43,7 @@
 #include "hs_service.h"
 #include "main.h"
 #include "rendservice.h"
+#include "statefile.h"
 
 /* Trunnel */
 #include "hs/cell_establish_intro.h"
@@ -1196,8 +1197,16 @@ test_build_update_descriptors(void *arg)
   UNMOCK(hs_overlap_mode_is_active);
 }
 
+static or_state_t *dummy_state = NULL;
+
+static or_state_t *
+get_or_state_replacement(void)
+{
+  return dummy_state;
+}
+
 static void
-test_upload_desctriptors(void *arg)
+test_upload_descriptors(void *arg)
 {
   int ret;
   time_t now = time(NULL);
@@ -1208,6 +1217,10 @@ test_upload_desctriptors(void *arg)
 
   hs_init();
   MOCK(hs_overlap_mode_is_active, mock_hs_overlap_mode_is_active_true);
+  MOCK(get_or_state,
+       get_or_state_replacement);
+
+  dummy_state = tor_malloc_zero(sizeof(or_state_t));
 
   /* Create a service with no descriptor. It's added to the global map. */
   service = hs_service_new(get_options());
@@ -1340,7 +1353,7 @@ struct testcase_t hs_service_tests[] = {
     NULL, NULL },
   { "build_update_descriptors", test_build_update_descriptors, TT_FORK,
     NULL, NULL },
-  { "upload_desctriptors", test_upload_desctriptors, TT_FORK,
+  { "upload_descriptors", test_upload_descriptors, TT_FORK,
     NULL, NULL },
   { "revision_counter_state", test_revision_counter_state, TT_FORK,
     NULL, NULL },
