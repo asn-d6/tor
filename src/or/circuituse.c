@@ -2742,6 +2742,7 @@ connection_ap_handshake_attach_circuit(entry_connection_t *conn)
                  (unsigned)introcirc->base_.n_circ_id,
                  (unsigned)rendcirc->base_.n_circ_id,
                  conn_age);
+        /* ASN let's put this v2/v3 logic in a function! */
         if (introcirc->rend_data) {
           /* v2 service. */
           ret = rend_client_send_introduction(introcirc, rendcirc);
