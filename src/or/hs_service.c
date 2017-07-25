@@ -72,6 +72,8 @@ static const char *address_tld = "onion";
  * loading keys requires that we are an actual running tor process. */
 static smartlist_t *hs_service_staging_list;
 
+static void set_descriptor_revision_counter(hs_descriptor_t *hs_desc);
+
 /* Helper: Function to compare two objects in the service map. Return 1 if the
  * two service have the same master public identity key. */
 static inline int
@@ -1284,6 +1286,9 @@ build_service_descriptor(hs_service_t *service, time_t now,
     goto err;
   }
 
+  /* Set the revision counter for this descriptor */
+  set_descriptor_revision_counter(desc->desc);
+
   /* Let's make sure that we've created a descriptor that can actually be
    * encoded properly. This function also checks if the encoded output is
    * decodable after. */
@@ -2096,10 +2101,10 @@ get_rev_counter_for_service(ed25519_public_key_t *blinded_pubkey)
   return final_rev_counter;
 }
 
-/** Set the revision counter in <b>hs_desc</b>, using the state file to find
- *  the current counter value if it exists. Also update our state as needed. */
+/** Update the value of the revision counter for <b>hs_desc</b> and save it on
+    our state file. */
 static void
-set_descriptor_revision_counter(hs_descriptor_t *hs_desc)
+update_descriptor_revision_counter(hs_descriptor_t *hs_desc)
 {
   /* Find stored rev counter if it exists */
   uint64_t rev_counter =
@@ -2115,6 +2120,18 @@ set_descriptor_revision_counter(hs_descriptor_t *hs_desc)
   hs_desc->plaintext_data.revision_counter = rev_counter;
 
   update_revision_counters_in_state();
+}
+
+/** Set the revision counter in <b>hs_desc</b>, using the state file to find
+ *  the current counter value if it exists. */
+static void
+set_descriptor_revision_counter(hs_descriptor_t *hs_desc)
+{
+  /* Find stored rev counter if it exists */
+  uint64_t rev_counter =
+    get_rev_counter_for_service(&hs_desc->plaintext_data.blinded_pubkey);
+
+  hs_desc->plaintext_data.revision_counter = rev_counter;
 }
 
 /* Encode and sign the service descriptor desc and upload it to the
@@ -2173,8 +2190,8 @@ upload_descriptor_to_all(const hs_service_t *service,
               safe_str_client(service->onion_address), fmt_next_time);
   }
 
-  /* Set the revision counter in this descriptor */
-  set_descriptor_revision_counter(desc->desc);
+  /* Update the revision counter of this descriptor */
+  update_descriptor_revision_counter(desc->desc);
 
   smartlist_free(responsible_dirs);
   return;
