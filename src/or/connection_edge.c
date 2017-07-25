@@ -3067,10 +3067,10 @@ begin_cell_parse(const cell_t *cell, begin_cell_t *bcell,
   return 0;
 }
 
-/** For the given <b>circ</b> and the edge connection <b>conn</b>, setup setup
- * the connection, attach it to the circ and connect it. Return 0 on success
- * or END_CIRC_AT_ORIGIN if we can't find the requested hidden service port
- * where the caller should close the circuit. */
+/** For the given <b>circ</b> and the edge connection <b>conn</b>, setup the
+ * connection, attach it to the circ and connect it. Return 0 on success or
+ * END_CIRC_AT_ORIGIN if we can't find the requested hidden service port where
+ * the caller should close the circuit. */
 static int
 handle_hs_exit_conn(circuit_t *circ, edge_connection_t *conn)
 {

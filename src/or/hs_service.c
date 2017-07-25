@@ -467,8 +467,8 @@ service_desc_find_by_intro(const hs_service_t *service,
   tor_assert(ip);
 
   FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
-    if ((ip = digest256map_get(desc->intro_points.map,
-                               ip->auth_key_kp.pubkey.pubkey)) != NULL) {
+    if (digest256map_get(desc->intro_points.map,
+                         ip->auth_key_kp.pubkey.pubkey)) {
       descp = desc;
       break;
     }
