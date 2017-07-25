@@ -3581,6 +3581,7 @@ sandbox_init_filter(void)
       /* steals references */
       sandbox_cfg_allow_open_filename(&cfg, file_name);
       sandbox_cfg_allow_open_filename(&cfg, tmp_name);
+      tor_free(file_name);
     });
     SMARTLIST_FOREACH(dirs, char *, dir, {
       /* steals reference */
