@@ -1660,6 +1660,29 @@ route_len_for_purpose(uint8_t purpose, extend_info_t *exit_ei)
   int routelen = DEFAULT_ROUTE_LEN;
   int known_purpose = 0;
 
+  if (circuit_purpose_needs_vanguards(purpose)) {
+    /* Clients want an extra hop for rends to avoid linkability.
+     * Services want it for intro points to avoid publishing their
+     * layer3 guards.
+     * Ex: C - G - L2 - L3 - R
+     *     S - G - L2 - L3 - I
+     */
+    if (purpose == CIRCUIT_PURPOSE_C_ESTABLISH_REND ||
+        purpose == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO)
+      return routelen+1;
+
+    /* Clients want two extra hops when using layer3 guards,
+     * to avoid linkability. Services want to avoid trivially
+     * exposing their layer3 guards.
+     *
+     * Ex: C - G - L2 - L3 - M - I
+     *     S - G - L2 - L3 - M - R
+     */
+    if (purpose == CIRCUIT_PURPOSE_S_CONNECT_REND ||
+        purpose == CIRCUIT_PURPOSE_C_INTRODUCING)
+      return routelen+2;
+  }
+
   if (!exit_ei)
     return routelen;
 
@@ -2124,6 +2147,73 @@ pick_rendezvous_node(router_crn_flags_t flags)
   return router_choose_random_node(NULL, options->ExcludeNodes, flags);
 }
 
+/*
+ * Helper function to pick a configured restricted middle node
+ * (either HSLayer2Guards or HSLayer3Guards).
+ *
+ * Make sure that the node we chose is alive, and not excluded,
+ * and return it.
+ *
+ * The exclude_set is a routerset of nodes that the selected node
+ * must not match, and the exclude_list is a simple list of nodes
+ * that the selected node must not be in. Either or both may be
+ * NULL.
+ *
+ * Return NULL if no usable nodes could be found. */
+static const node_t *
+pick_restricted_middle_node(router_crn_flags_t flags,
+                               routerset_t *pick_from,
+                               routerset_t *exclude_set,
+                               smartlist_t *exclude_list)
+{
+  const node_t *middle_node = NULL;
+  const int need_desc = (flags & CRN_NEED_DESC) != 0;
+
+  smartlist_t *whitelisted_live_middles = smartlist_new();
+  smartlist_t *all_live_nodes = smartlist_new();
+
+  tor_assert(pick_from);
+
+  /* Add all running nodes to all_live_nodes */
+  router_add_running_nodes_to_smartlist(all_live_nodes,
+                                        0, 0, 0,
+                                        need_desc,
+                                        0, 0);
+
+  /* Filter all_live_nodes to only add live *and* whitelisted middles
+   * to the list whitelisted_live_middles. */
+  SMARTLIST_FOREACH_BEGIN(all_live_nodes, node_t *, live_node) {
+    if (routerset_contains_node(pick_from, live_node)) {
+      smartlist_add(whitelisted_live_middles, live_node);
+    }
+  } SMARTLIST_FOREACH_END(live_node);
+
+  /* Honor ExcludeNodes */
+  if (exclude_set) {
+    routerset_subtract_nodes(whitelisted_live_middles, exclude_set);
+  }
+
+  if (exclude_list) {
+    smartlist_subtract(whitelisted_live_middles, exclude_list);
+  }
+
+  /* Now pick randomly amongst the whitelisted nodes. No need to waste
+     time doing bandwidth load balancing, for most use cases
+     'whitelisted_live_middles' contains a single OR anyway. */
+  middle_node = smartlist_choose(whitelisted_live_middles);
+
+  if (!middle_node) {
+    static ratelim_t pinned_warning_limit = RATELIM_INIT(300);
+    log_fn_ratelim(&pinned_warning_limit, LOG_WARN, LD_CIRC,
+            "Could not find a middle node that fits the restricted guard set");
+  }
+
+  smartlist_free(whitelisted_live_middles);
+  smartlist_free(all_live_nodes);
+
+  return middle_node;
+}
+
 /** Return a pointer to a suitable router to be the exit node for the
  * circuit of purpose <b>purpose</b> that we're about to build (or NULL
  * if no router is suitable).
@@ -2411,6 +2501,60 @@ cpath_get_n_hops(crypt_path_t **head_ptr)
 
 #endif /* defined(TOR_UNIT_TESTS) */
 
+/**
+ * Build a list of nodes to exclude from the choice of this middle
+ * hop, based on already chosen nodes.
+ *
+ * XXX: At present, this function does not exclude any nodes from
+ * the vanguard circuits. See
+ * https://trac.torproject.org/projects/tor/ticket/24487
+ */
+static smartlist_t *
+build_middle_exclude_list(uint8_t purpose,
+                          cpath_build_state_t *state,
+                          crypt_path_t *head,
+                          int cur_len)
+{
+  smartlist_t *excluded;
+  const node_t *r;
+  crypt_path_t *cpath;
+  int i;
+
+  excluded = smartlist_new();
+
+  /* Add the exit to the exclude list (note that the exit/last hop is always
+   * chosen first in circuit_establish_circuit()). */
+  if ((r = build_state_get_exit_node(state))) {
+    nodelist_add_node_and_family(excluded, r);
+  }
+
+  /* XXX: We don't apply any other previously selected node restrictions for
+   * vanguards, and allow nodes to be reused for those hop positions in the
+   * same circuit. This is because after many rotations, you get to learn
+   * inner guard nodes through the nodes that are not selected for outer
+   * hops.
+   *
+   * The alternative is building the circuit in reverse. Reverse calls to
+   * onion_extend_cpath() (ie: select outer hops first) would then have the
+   * property that you don't gain information about inner hops by observing
+   * outer ones. See https://trac.torproject.org/projects/tor/ticket/24487
+   * for this.
+   *
+   * (Note further that we can and do still exclude the exit in the block
+   * above, because it is chosen first in circuit_establish_circuit()..) */
+  if (circuit_purpose_needs_vanguards(purpose)) {
+    return excluded;
+  }
+
+  for (i = 0, cpath = head; cpath && i < cur_len; ++i, cpath=cpath->next) {
+    if ((r = node_get_by_id(cpath->extend_info->identity_digest))) {
+      nodelist_add_node_and_family(excluded, r);
+    }
+  }
+
+  return excluded;
+}
+
 /** A helper function used by onion_extend_cpath(). Use <b>purpose</b>
  * and <b>state</b> and the cpath <b>head</b> (currently populated only
  * to length <b>cur_len</b> to decide a suitable middle hop for a
@@ -2423,9 +2567,7 @@ choose_good_middle_server(uint8_t purpose,
                           crypt_path_t *head,
                           int cur_len)
 {
-  int i;
-  const node_t *r, *choice;
-  crypt_path_t *cpath;
+  const node_t *choice;
   smartlist_t *excluded;
   const or_options_t *options = get_options();
   router_crn_flags_t flags = CRN_NEED_DESC;
@@ -2434,20 +2576,32 @@ choose_good_middle_server(uint8_t purpose,
 
   log_debug(LD_CIRC, "Contemplating intermediate hop #%d: random choice.",
             cur_len+1);
-  excluded = smartlist_new();
-  if ((r = build_state_get_exit_node(state))) {
-    nodelist_add_node_and_family(excluded, r);
-  }
-  for (i = 0, cpath = head; i < cur_len; ++i, cpath=cpath->next) {
-    if ((r = node_get_by_id(cpath->extend_info->identity_digest))) {
-      nodelist_add_node_and_family(excluded, r);
-    }
-  }
+
+  excluded = build_middle_exclude_list(purpose, state, head, cur_len);
 
   if (state->need_uptime)
     flags |= CRN_NEED_UPTIME;
   if (state->need_capacity)
     flags |= CRN_NEED_CAPACITY;
+
+  /** If a hidden service wants a specific middle node for the second
+      hop, pin this node now. */
+  if (options->HSLayer2Guards && circuit_purpose_is_hidden_service(purpose) &&
+      cur_len == 1) {
+    log_debug(LD_GENERAL, "Picking a sticky layer2 node");
+    return pick_restricted_middle_node(flags, options->HSLayer2Guards,
+                                       options->ExcludeNodes,
+                                       excluded);
+  }
+
+  if (options->HSLayer3Guards && circuit_purpose_is_hidden_service(purpose) &&
+      cur_len == 2) {
+    log_debug(LD_GENERAL, "Picking a sticky layer3 node");
+    return pick_restricted_middle_node(flags, options->HSLayer3Guards,
+                                       options->ExcludeNodes,
+                                       excluded);
+  }
+
   choice = router_choose_random_node(excluded, options->ExcludeNodes, flags);
   smartlist_free(excluded);
   return choice;

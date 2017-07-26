@@ -1854,6 +1854,47 @@ have_enough_path_info(int need_exit)
     return router_have_consensus_path() != CONSENSUS_PATH_UNKNOWN;
 }
 
+/**
+ * Tell us if a circuit is a hidden service circuit.
+ */
+int
+circuit_purpose_is_hidden_service(uint8_t purpose)
+{
+   /* Client-side purpose */
+   if (purpose >= CIRCUIT_PURPOSE_C_INTRODUCING &&
+       purpose <= CIRCUIT_PURPOSE_C_REND_JOINED) {
+     return 1;
+   }
+
+   /* Service-side purpose */
+   if (purpose >= CIRCUIT_PURPOSE_S_ESTABLISH_INTRO &&
+       purpose <= CIRCUIT_PURPOSE_S_REND_JOINED) {
+     return 1;
+   }
+
+   return 0;
+}
+
+/**
+ * Return true if this circuit purpose should use vanguards
+ * or pinned Layer2 or Layer3 guards.
+ */
+int
+circuit_purpose_needs_vanguards(uint8_t purpose)
+{
+  const or_options_t *options = get_options();
+
+  /* Only hidden service circuits use vanguards */
+  if (!circuit_purpose_is_hidden_service(purpose))
+    return 0;
+
+  /* Pinned middles are effectively vanguards */
+  if (options->HSLayer2Guards || options->HSLayer2Guards)
+    return 1;
+
+  return 0;
+}
+
 /** Launch a new circuit with purpose <b>purpose</b> and exit node
  * <b>extend_info</b> (or NULL to select a random exit node).  If flags
  * contains CIRCLAUNCH_NEED_UPTIME, choose among routers with high uptime.  If
@@ -1890,6 +1931,7 @@ circuit_launch_by_extend_info(uint8_t purpose,
 
   if ((extend_info || purpose != CIRCUIT_PURPOSE_C_GENERAL) &&
       purpose != CIRCUIT_PURPOSE_TESTING &&
+      !circuit_purpose_needs_vanguards(purpose) &&
       !onehop_tunnel && !need_specific_rp) {
     /* see if there are appropriate circs available to cannibalize. */
     /* XXX if we're planning to add a hop, perhaps we want to look for
