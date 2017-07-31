@@ -2429,12 +2429,8 @@ hs_desc_intro_point_free(hs_desc_intro_point_t *ip)
   }
   tor_cert_free(ip->auth_key_cert);
   tor_cert_free(ip->enc_key_cert);
-  if (ip->legacy.key) {
-    crypto_pk_free(ip->legacy.key);
-  }
-  if (ip->legacy.cert.encoded) {
-    tor_free(ip->legacy.cert.encoded);
-  }
+  crypto_pk_free(ip->legacy.key);
+  tor_free(ip->legacy.cert.encoded);
   tor_free(ip);
 }
 
