@@ -260,6 +260,7 @@ void hs_service_lists_fnames_for_sandbox(smartlist_t *file_list,
                                          smartlist_t *dir_list);
 int hs_service_set_conn_addr_port(const origin_circuit_t *circ,
                                   edge_connection_t *conn);
+void hs_hsdir_routers_changed(void);
 
 void hs_service_dir_info_changed(void);
 void hs_service_run_scheduled_events(time_t now);

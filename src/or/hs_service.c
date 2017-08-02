@@ -2166,6 +2166,9 @@ upload_descriptor_to_all(const hs_service_t *service,
     upload_descriptor_to_hsdir(service, desc, hsdir_node);
   } SMARTLIST_FOREACH_END(hsdir_rs);
 
+  log_info(LD_GENERAL, "Finished uploading HS descs (missing %d descriptors)",
+           count_missing_descriptors());
+
   /* Set the next upload time for this descriptor. Even if we are configured
    * to not upload, we still want to follow the right cycle of life for this
    * descriptor. */
@@ -2221,6 +2224,11 @@ should_service_upload_descriptor(const hs_service_t *service,
 
   /* Is it the right time to upload? */
   if (desc->next_upload_time > now) {
+    goto cannot;
+  }
+
+  /* Don't upload desc if we don't have a live consensus */
+  if (!networkstatus_get_live_consensus(now)) {
     goto cannot;
   }
 
@@ -2548,6 +2556,26 @@ service_add_fnames_to_list(const hs_service_t *service, smartlist_t *list)
 /* ========== */
 /* Public API */
 /* ========== */
+
+/* We just received a new batch of descriptors which might affect the shape of
+ * the HSDir hash ring. Signal that we should re-upload our HS descriptors. */
+void
+hs_hsdir_routers_changed(void)
+{
+  time_t now = approx_time();
+
+  /* We could be call but failing to have enough directory information to
+   * build a circuit, avoid going further. */
+  if (!hs_service_map || !router_have_minimum_dir_info()) {
+    return;
+  }
+
+  FOR_EACH_SERVICE_BEGIN(service) {
+    FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
+      desc->next_upload_time = now;
+    } FOR_EACH_DESCRIPTOR_END;
+  } FOR_EACH_SERVICE_END;
+}
 
 /* Return the number of service we have configured and usable. */
 unsigned int

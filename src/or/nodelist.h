@@ -132,6 +132,7 @@ MOCK_DECL(consensus_path_type_t, router_have_consensus_path, (void));
 void router_dir_info_changed(void);
 const char *get_dir_info_status_string(void);
 int count_loading_descriptors_progress(void);
+int count_missing_descriptors(void);
 
 #endif
 

@@ -1778,6 +1778,7 @@ router_dir_info_changed(void)
 {
   need_to_update_have_min_dir_info = 1;
   rend_hsdir_routers_changed();
+  hs_hsdir_routers_changed();
 }
 
 /** Return a string describing what we're missing before we have enough
@@ -1786,6 +1787,28 @@ const char *
 get_dir_info_status_string(void)
 {
   return dir_info_status;
+}
+
+/** Return the number of relays for which we are missing descriptors based on
+ *  the list of relays in the current live consensus. */
+int
+count_missing_descriptors(void)
+{
+  time_t now = approx_time();
+  int num_relays, num_relays_with_descriptors;
+  networkstatus_t *ns = networkstatus_get_live_consensus(now);
+  if (!ns) {
+    return 0;
+  }
+
+  count_usable_descriptors(&num_relays_with_descriptors, &num_relays,
+                           NULL, ns, now, NULL, 0);
+
+  if (BUG(num_relays_with_descriptors > num_relays)) {
+    return 0;
+  }
+
+  return num_relays - num_relays_with_descriptors;
 }
 
 /** Iterate over the servers listed in <b>consensus</b>, and count how many of
