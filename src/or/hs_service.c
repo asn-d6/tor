@@ -2189,6 +2189,63 @@ upload_descriptor_to_all(const hs_service_t *service,
   return;
 }
 
+/** Here is the logic of how services reupload their HS descriptors to make
+ *  sure that they always have the most accurate view of the HSDir hash ring.
+ *
+ *  After bootup, we initially upload our descriptor as soon as we have enough
+ *  dirinfo to establish a circuit (see should_service_upload_descriptor()).
+ *
+ *  After that initial upload, when we receive fresh router descriptors, we
+ *  check if those new descs brought us very close to having all the
+ *  descriptors of the network: If we are now missing just very very few
+ *  descriptors, we go ahead and republish our descriptor since it's likely
+ *  that the HSDir hash ring will have changed and we don't want to cause
+ *  reachability failures (see got_enough_new_router_descs_for_reupload()).
+ */
+
+/** We avoid re-uploading HS descriptors if we are missing more than
+ *  TOLERATE_N_MISSING_DESCS descriptors, since we might calculate the wrong
+ *  responsible HSDir set. */
+#define TOLERATE_N_MISSING_DESCS 10
+
+/* This function gets called everytime we receive new descriptors. Check if we
+ * received enough new dirinfo that we need to re-upload our HS descriptors
+ * (since the HSDir hash ring has changed drastically). Return True if we
+ * should reupload our HS descriptor, else return False.  */
+/* XXXX do the same on the client-side */
+static int
+got_enough_new_router_descs_for_reupload(void)
+{
+  int n_missing_descs;
+  time_t now = approx_time();
+  networkstatus_t *ns = networkstatus_get_live_consensus(now);
+  if (!ns) {
+    log_warn(LD_GENERAL, "Not uploading desc without a live consensus");
+    return 0;
+  }
+
+  /* We only reupload our HS descriptor if we just received enough
+   * microdescriptors to put us very close to full visibility of the whole
+   * network. We want to reupload our HS descriptor when we receive all the
+   * descriptors so that we have a more accurate picture of the hash ring. */
+
+  /* Get number of missing descs */
+  n_missing_descs = count_missing_descriptors();
+
+  /* Check if we are missing more than the threshold */
+  if (n_missing_descs > TOLERATE_N_MISSING_DESCS) {
+    log_info(LD_GENERAL, "Not uploading desc because missing %d descs",
+             n_missing_descs);
+    return 0;
+  }
+
+  /* Yes! We have almost all descriptors: reupload descriptor. */
+  log_info(LD_GENERAL, "Marking descriptor for reupload (%d missing descs).",
+           n_missing_descs);
+
+  return 1;
+}
+
 /* Return 1 if the given descriptor from the given service can be uploaded
  * else return 0 if it can not. */
 static int
@@ -2229,6 +2286,11 @@ should_service_upload_descriptor(const hs_service_t *service,
 
   /* Don't upload desc if we don't have a live consensus */
   if (!networkstatus_get_live_consensus(now)) {
+    goto cannot;
+  }
+
+  /* Do we know enough router descriptors? */
+  if (!router_have_minimum_dir_info()) {
     goto cannot;
   }
 
@@ -2560,18 +2622,29 @@ service_add_fnames_to_list(const hs_service_t *service, smartlist_t *list)
 /* We just received a new batch of descriptors which might affect the shape of
  * the HSDir hash ring. Signal that we should re-upload our HS descriptors. */
 void
-hs_hsdir_routers_changed(void)
+hs_hsdir_set_changed_consider_reupload(void)
 {
   time_t now = approx_time();
 
-  /* We could be call but failing to have enough directory information to
-   * build a circuit, avoid going further. */
-  if (!hs_service_map || !router_have_minimum_dir_info()) {
+  /* Check if HS subsystem is initialized */
+  if (!hs_service_map) {
     return;
   }
 
+  /* Basic test: If we have not bootstrapped 100% yet, no point in even trying
+     to upload descriptor. */
+  if (!router_have_minimum_dir_info()) {
+    return;
+  }
+
+  log_info(LD_GENERAL, "Received new descriptors. Set of HSdirs changed.");
+
   FOR_EACH_SERVICE_BEGIN(service) {
     FOR_EACH_DESCRIPTOR_BEGIN(service, desc) {
+      /* Check if the new descriptors make it worth reuploading our desc */
+      if (!got_enough_new_router_descs_for_reupload()) {
+        continue;
+      }
       desc->next_upload_time = now;
     } FOR_EACH_DESCRIPTOR_END;
   } FOR_EACH_SERVICE_END;

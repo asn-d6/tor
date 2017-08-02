@@ -331,6 +331,8 @@ microdescs_add_list_to_cache(microdesc_cache_t *cache,
       SMARTLIST_FOREACH(added, microdesc_t *, md, nodelist_add_microdesc(md));
   }
 
+  log_info(LD_GENERAL, "Just added %d mds", smartlist_len(added));
+
   if (smartlist_len(added))
     router_dir_info_changed();
 
