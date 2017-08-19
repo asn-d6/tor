@@ -1177,12 +1177,6 @@ test_build_update_descriptors(void *arg)
   UNMOCK(hs_overlap_mode_is_active);
 }
 
-static int
-mock_router_have_minimum_dir_info(void)
-{
-  return 1;
-}
-
 static void
 test_upload_descriptors(void *arg)
 {
