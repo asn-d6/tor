@@ -1371,10 +1371,10 @@ get_last_hid_serv_requests(void)
 }
 
 /** Look up the last request time to hidden service directory <b>hs_dir</b>
- * for descriptor request key <b>req_key_str</b>. If <b>set</b> is non-zero,
- * assign the current time <b>now</b> and return that. Otherwise, return the
- * most recent request time, or 0 if no such request has been sent before.
- */
+ * for descriptor request key <b>req_key_str</b> which is the descriptor ID
+ * for a v2 service or the blinded key for v3. If <b>set</b> is non-zero,
+ * assign the current time <b>now</b> and return that.  Otherwise, return the
+ * most recent request time, or 0 if no such request has been sent before. */
 time_t
 hs_lookup_last_hid_serv_request(routerstatus_t *hs_dir,
                                 const char *req_key_str,
