@@ -736,7 +736,7 @@ handle_rendezvous2(origin_circuit_t *circ, const uint8_t *payload,
   int ret = -1;
   curve25519_public_key_t server_pk;
   uint8_t auth_mac[DIGEST256_LEN] = {0};
-  uint8_t handshake_info[sizeof(server_pk) + sizeof(auth_mac)] = {0};
+  uint8_t handshake_info[CURVE25519_PUBKEY_LEN + sizeof(auth_mac)] = {0};
   hs_ntor_rend_cell_keys_t keys;
   const hs_ident_circuit_t *ident;
 
