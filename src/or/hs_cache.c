@@ -397,14 +397,18 @@ cache_client_desc_new(const char *desc_str,
 static void
 cache_client_desc_free(hs_cache_client_descriptor_t *desc)
 {
+  size_t entry_size = 0;
+
   if (desc == NULL) {
     return;
   }
+  entry_size = cache_get_client_entry_size(desc);
   hs_descriptor_free(desc->desc);
   memwipe(&desc->key, 0, sizeof(desc->key));
   memwipe(desc->encoded_desc, 0, strlen(desc->encoded_desc));
   tor_free(desc->encoded_desc);
   tor_free(desc);
+  rend_cache_decrement_allocation(entry_size);
 }
 
 /** Helper function: Use by the free all function to clear the client cache */
@@ -608,7 +612,6 @@ cache_store_as_client(hs_cache_client_descriptor_t *client_desc)
     }
     /* Remove old entry. Make space for the new one! */
     remove_v3_desc_as_client(cache_entry);
-    rend_cache_decrement_allocation(cache_get_client_entry_size(cache_entry));
     cache_client_desc_free(cache_entry);
   }
 
@@ -649,8 +652,6 @@ cache_clean_v3_as_client(time_t now)
     bytes_removed += entry_size;
     /* Entry is not in the cache anymore, destroy it. */
     cache_client_desc_free(entry);
-    /* Update our cache entry allocation size for the OOM. */
-    rend_cache_decrement_allocation(entry_size);
     /* Logging. */
     {
       char key_b64[BASE64_DIGEST256_LEN + 1];
