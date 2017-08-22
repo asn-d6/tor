@@ -401,6 +401,8 @@ cache_client_desc_free(hs_cache_client_descriptor_t *desc)
     return;
   }
   hs_descriptor_free(desc->desc);
+  memwipe(&desc->key, 0, sizeof(desc->key));
+  memwipe(desc->encoded_desc, 0, strlen(desc->encoded_desc));
   tor_free(desc->encoded_desc);
   tor_free(desc);
 }
