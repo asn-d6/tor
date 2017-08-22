@@ -1125,9 +1125,11 @@ hs_circ_send_establish_rendezvous(origin_circuit_t *circ)
     /* Circuit has been marked for close */
     log_warn(LD_REND, "Unable to send ESTABLISH_RENDEZVOUS cell on "
                       "circuit %u", TO_CIRCUIT(circ)->n_circ_id);
+    memwipe(cell, 0, cell_len);
     goto err;
   }
 
+  memwipe(cell, 0, cell_len);
   return 0;
  err:
   return -1;
