@@ -42,7 +42,7 @@ flag_all_conn_wait_desc(const ed25519_public_key_t *service_identity_pk)
 
   SMARTLIST_FOREACH_BEGIN(conns, connection_t *, conn) {
     edge_connection_t *edge_conn;
-    if (!CONN_IS_EDGE(conn)) {
+    if (BUG(!CONN_IS_EDGE(conn))) {
       continue;
     }
     edge_conn = TO_EDGE_CONN(conn);
