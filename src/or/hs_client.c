@@ -172,7 +172,7 @@ fetch_v3_desc(const ed25519_public_key_t *onion_identity_pk)
 
   hsdir_rs = pick_hsdir_v3(onion_identity_pk);
   if (!hsdir_rs) {
-    log_warn(LD_GENERAL, "Didn't pick any v3 hsdirs... Failing.");
+    log_info(LD_REND, "Couldn't pick a v3 hsdir.");
     return 0;
   }
 
