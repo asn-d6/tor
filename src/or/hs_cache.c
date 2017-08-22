@@ -574,7 +574,7 @@ cache_client_intro_state_clean(time_t cutoff,
   DIGEST256MAP_FOREACH_MODIFY(cache->intro_points, key,
                               hs_cache_intro_state_t *, entry) {
     if (entry->created_ts <= cutoff) {
-      tor_free(entry);
+      cache_intro_state_free(entry);
       MAP_DEL_CURRENT(key);
     }
   } DIGEST256MAP_FOREACH_END;
