@@ -786,7 +786,7 @@ hs_client_note_connection_attempt_succeeded(const edge_connection_t *conn)
  * service_identity_pk, decode the descriptor and set the desc pointer with a
  * newly allocated descriptor object.
  *
- * Return 0 on success else a negative value. */
+ * Return 0 on success else a negative value and desc is set to NULL. */
 int
 hs_client_decode_descriptor(const char *desc_str,
                             const ed25519_public_key_t *service_identity_pk,
