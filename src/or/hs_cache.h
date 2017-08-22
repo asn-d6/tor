@@ -104,10 +104,11 @@ typedef struct hs_cache_client_descriptor_t {
   /* When was this entry created. Used to expire entries. */
   time_t created_ts;
 
-  /* The cached descriptor */
+  /* The cached descriptor, this object is the owner. It can't be NULL. A
+   * cache object without a valid descriptor is not possible. */
   hs_descriptor_t *desc;
 
-  /* Encoded descriptor in string form. */
+  /* Encoded descriptor in string form. Can't be NULL. */
   char *encoded_desc;
 } hs_cache_client_descriptor_t;
 
