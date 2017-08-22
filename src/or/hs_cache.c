@@ -321,7 +321,7 @@ hs_cache_clean_as_dir(time_t now)
 
 /********************** Client-side HS cache ******************/
 
-/* Client-side HS descriptor cache. Map indexed by blinded key. */
+/* Client-side HS descriptor cache. Map indexed by service identity key. */
 static digest256map_t *hs_cache_v3_client;
 
 /* Client-side introduction point state cache. Map indexed by service public
