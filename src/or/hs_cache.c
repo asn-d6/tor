@@ -334,7 +334,7 @@ static void
 remove_v3_desc_as_client(const hs_cache_client_descriptor_t *desc)
 {
   tor_assert(desc);
-  digest256map_remove(hs_cache_v3_client, desc->key);
+  digest256map_remove(hs_cache_v3_client, desc->key.pubkey);
 }
 
 /* Store a given descriptor in our cache. */
@@ -342,7 +342,7 @@ static void
 store_v3_desc_as_client(hs_cache_client_descriptor_t *desc)
 {
   tor_assert(desc);
-  digest256map_set(hs_cache_v3_client, desc->key, desc);
+  digest256map_set(hs_cache_v3_client, desc->key.pubkey, desc);
 }
 
 /* Query our cache and return the entry or NULL if not found. */
@@ -384,7 +384,7 @@ cache_client_desc_new(const char *desc_str,
 
   /* All is good: make a cache object for this descriptor */
   client_desc = tor_malloc_zero(sizeof(hs_cache_client_descriptor_t));
-  memcpy(&client_desc->key, service_identity_pk->pubkey, ED25519_PUBKEY_LEN);
+  ed25519_pubkey_copy(&client_desc->key, service_identity_pk);
   client_desc->created_ts = approx_time();
   client_desc->desc = desc;
   client_desc->encoded_desc = tor_strdup(desc_str);
@@ -594,7 +594,7 @@ cache_store_as_client(hs_cache_client_descriptor_t *client_desc)
 
   /* Check if we already have a descriptor from this HS in cache. If we do,
    * check if this descriptor is newer than the cached one */
-  cache_entry = lookup_v3_desc_as_client(client_desc->key);
+  cache_entry = lookup_v3_desc_as_client(client_desc->key.pubkey);
   if (cache_entry != NULL) {
     /* If we have an entry in our cache that has a revision counter greater
      * than the one we just fetched, discard the one we fetched. */

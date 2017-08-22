@@ -99,7 +99,7 @@ void hs_cache_client_intro_state_clean(time_t now);
 /** Represents a locally cached HS descriptor on a hidden service client. */
 typedef struct hs_cache_client_descriptor_t {
   /* This object is indexed using the service identity public key */
-  uint8_t key[ED25519_PUBKEY_LEN];
+  ed25519_public_key_t key;
 
   /* When was this entry created. Used to expire entries. */
   time_t created_ts;
