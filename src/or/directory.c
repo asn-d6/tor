@@ -3123,7 +3123,7 @@ handle_response_fetch_hsdesc_v3(dir_connection_t *conn,
   case 404:
     /* Not there. We'll retry when connection_about_to_close_connection()
      * tries to clean this conn up. */
-    log_warn(LD_REND, "Fetching hidden service v3 descriptor not found: "
+    log_info(LD_REND, "Fetching hidden service v3 descriptor not found: "
                       "Retrying at another directory.");
     /* TODO: Inform the control port */
     break;
