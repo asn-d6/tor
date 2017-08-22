@@ -3423,8 +3423,8 @@ refetch_hsdesc_if_needed(dir_connection_t *dir_conn)
    * mark that refetching is unnecessary.) */
   if (conn->purpose == DIR_PURPOSE_FETCH_RENDDESC_V2 &&
       dir_conn->rend_data &&
-      strlen(rend_data_get_address(dir_conn->rend_data)) ==
-             REND_SERVICE_ID_LEN_BASE32) {
+      rend_valid_v2_service_id(
+           rend_data_get_address(dir_conn->rend_data))) {
     rend_client_refetch_v2_renddesc(dir_conn->rend_data);
   }
 
