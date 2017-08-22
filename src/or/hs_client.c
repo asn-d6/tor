@@ -752,8 +752,8 @@ handle_rendezvous2(origin_circuit_t *circ, const uint8_t *payload,
     goto err;
   }
   /* Get from the handshake info the SERVER_PK and AUTH_MAC. */
-  memcpy(&server_pk, handshake_info, sizeof(server_pk));
-  memcpy(auth_mac, handshake_info + sizeof(server_pk), sizeof(auth_mac));
+  memcpy(&server_pk, handshake_info, CURVE25519_PUBKEY_LEN);
+  memcpy(auth_mac, handshake_info + CURVE25519_PUBKEY_LEN, sizeof(auth_mac));
 
   /* Generate the handshake info. */
   if (hs_ntor_client_get_rendezvous1_keys(&ident->intro_auth_pk,
