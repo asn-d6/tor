@@ -1476,7 +1476,7 @@ connection_ap_handle_onion(entry_connection_t *conn,
     rend_cache_lookup_result = rend_cache_lookup_entry(onion_address,-1,
                                                        &entry);
     if (!rend_cache_lookup_result && entry) {
-      descriptor_is_usable =rend_client_any_intro_points_usable(entry) ? 1 : 0;
+      descriptor_is_usable = rend_client_any_intro_points_usable(entry);
     }
   } else { /* it's a v3 hidden service */
     tor_assert(addresstype == ONION_V3_HOSTNAME);
