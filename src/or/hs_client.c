@@ -917,12 +917,18 @@ hs_client_circuit_has_opened(origin_circuit_t *circ)
    * identifier hs_ident. Can't be both. */
   switch (TO_CIRCUIT(circ)->purpose) {
   case CIRCUIT_PURPOSE_C_INTRODUCING:
-    (circ->hs_ident) ? client_intro_circ_has_opened(circ) :
-                       rend_client_introcirc_has_opened(circ);
+    if (circ->hs_ident) {
+      client_intro_circ_has_opened(circ);
+    } else {
+      rend_client_introcirc_has_opened(circ);
+    }
     break;
   case CIRCUIT_PURPOSE_C_ESTABLISH_REND:
-    (circ->hs_ident) ? client_rendezvous_circ_has_opened(circ) :
-                       rend_client_rendcirc_has_opened(circ);
+    if (circ->hs_ident) {
+      client_rendezvous_circ_has_opened(circ);
+    } else {
+      rend_client_rendcirc_has_opened(circ);
+    }
     break;
   default:
     tor_assert_nonfatal_unreached();
