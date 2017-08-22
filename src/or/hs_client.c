@@ -792,6 +792,7 @@ hs_client_decode_descriptor(const char *desc_str,
                             const ed25519_public_key_t *service_identity_pk,
                             hs_descriptor_t **desc)
 {
+  int ret;
   uint8_t subcredential[DIGEST256_LEN];
   ed25519_public_key_t blinded_pubkey;
 
@@ -808,7 +809,9 @@ hs_client_decode_descriptor(const char *desc_str,
   }
 
   /* Parse descriptor */
-  if (hs_desc_decode_descriptor(desc_str, subcredential, desc) < 0) {
+  ret = hs_desc_decode_descriptor(desc_str, subcredential, desc);
+  memwipe(subcredential, 0, sizeof(subcredential));
+  if (ret < 0) {
     log_warn(LD_GENERAL, "Could not parse received descriptor as client");
     goto err;
   }
