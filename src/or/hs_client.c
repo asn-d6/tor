@@ -575,11 +575,13 @@ close_or_reextend_intro_circ(origin_circuit_t *intro_circ)
 
  close:
   /* Change the intro circuit purpose before so we don't report an intro point
-   * failure again triggering an extra descriptor fetch. */
-
-  circuit_change_purpose(TO_CIRCUIT(intro_circ),
-                         CIRCUIT_PURPOSE_C_INTRODUCE_ACKED);
-  circuit_mark_for_close(TO_CIRCUIT(intro_circ), END_CIRC_REASON_FINISHED);
+   * failure again triggering an extra descriptor fetch. The circuit can
+   * already be closed on failure to re-extend. */
+  if (!TO_CIRCUIT(intro_circ)->marked_for_close) {
+    circuit_change_purpose(TO_CIRCUIT(intro_circ),
+                           CIRCUIT_PURPOSE_C_INTRODUCE_ACKED);
+    circuit_mark_for_close(TO_CIRCUIT(intro_circ), END_CIRC_REASON_FINISHED);
+  }
   /* Close the related rendezvous circuit. */
   rend_circ = hs_circuitmap_get_rend_circ_client_side(
                                      intro_circ->hs_ident->rendezvous_cookie);
