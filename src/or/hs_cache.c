@@ -343,6 +343,8 @@ remove_v3_desc_as_client(const hs_cache_client_descriptor_t *desc)
 {
   tor_assert(desc);
   digest256map_remove(hs_cache_v3_client, desc->key.pubkey);
+  /* Update cache size with this entry for the OOM handler. */
+  rend_cache_decrement_allocation(cache_get_client_entry_size(desc));
 }
 
 /* Store a given descriptor in our cache. */
@@ -399,18 +401,14 @@ cache_client_desc_new(const char *desc_str,
 static void
 cache_client_desc_free(hs_cache_client_descriptor_t *desc)
 {
-  size_t entry_size = 0;
-
   if (desc == NULL) {
     return;
   }
-  entry_size = cache_get_client_entry_size(desc);
   hs_descriptor_free(desc->desc);
   memwipe(&desc->key, 0, sizeof(desc->key));
   memwipe(desc->encoded_desc, 0, strlen(desc->encoded_desc));
   tor_free(desc->encoded_desc);
   tor_free(desc);
-  rend_cache_decrement_allocation(entry_size);
 }
 
 /** Helper function: Use by the free all function to clear the client cache */
@@ -651,6 +649,9 @@ cache_clean_v3_as_client(time_t now)
     bytes_removed += entry_size;
     /* Entry is not in the cache anymore, destroy it. */
     cache_client_desc_free(entry);
+    /* Update our OOM. We didn't use the remove() function because we are in
+     * a loop so we have to explicitely decrement. */
+    rend_cache_decrement_allocation(entry_size);
     /* Logging. */
     {
       char key_b64[BASE64_DIGEST256_LEN + 1];
