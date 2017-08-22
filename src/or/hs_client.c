@@ -112,6 +112,11 @@ directory_launch_v3_desc_fetch(const ed25519_public_key_t *onion_identity_pk,
            safe_str_client(base64_blinded_pubkey),
            safe_str_client(routerstatus_describe(hsdir)));
 
+  /* Cleanup memory. */
+  memwipe(&blinded_pubkey, 0, sizeof(blinded_pubkey));
+  memwipe(base64_blinded_pubkey, 0, sizeof(base64_blinded_pubkey));
+  memwipe(&hs_conn_dir_ident, 0, sizeof(hs_conn_dir_ident));
+
   return 1;
 }
 
