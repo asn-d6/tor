@@ -39,7 +39,7 @@ typedef struct hs_cell_introduce1_data_t {
   const crypto_pk_t *legacy_key;
   /* Introduction point authentication public key. */
   const ed25519_public_key_t *auth_pk;
-  /* Introduction point encryption keypair. */
+  /* Introduction point encryption public key. */
   const curve25519_public_key_t *enc_pk;
   /* Subcredentials of the service. */
   const uint8_t *subcredential;
