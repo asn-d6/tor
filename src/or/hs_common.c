@@ -1458,7 +1458,7 @@ hs_purge_hid_serv_from_last_hid_serv_requests(const char *req_key_str)
     }
 
     /* Check if the tracked request matches our request key */
-    if (!strcmpend(key, req_key_str)) {
+    if (tor_memeq(key, req_key_str, strlen(key))) {
       iter = strmap_iter_next_rmv(last_hid_serv_requests, iter);
       tor_free(val);
     } else {
