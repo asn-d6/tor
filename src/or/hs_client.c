@@ -179,8 +179,10 @@ fetch_v3_desc(const ed25519_public_key_t *onion_identity_pk)
   return directory_launch_v3_desc_fetch(onion_identity_pk, hsdir_rs);
 }
 
-/* Make sure that the given origin circuit circ is a valid correct
- * introduction circuit. This asserts on validation failure. */
+/* Make sure that the given v3 origin circuit circ is a valid correct
+ * introduction circuit. This will BUG() on any problems and hard assert if
+ * the anonymity of the circuit is not ok. Return 0 on success else -1 where
+ * the circuit should be mark for closed immediately. */
 static int
 intro_circ_is_ok(const origin_circuit_t *circ)
 {
