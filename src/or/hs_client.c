@@ -325,7 +325,7 @@ send_introduce1(origin_circuit_t *intro_circ,
                               desc->subcredential) < 0) {
     /* Unable to send the cell, the intro circuit has been marked for close so
      * this is a permanent error. */
-    tor_assert_nonfatal(!TO_CIRCUIT(intro_circ)->marked_for_close);
+    tor_assert_nonfatal(TO_CIRCUIT(intro_circ)->marked_for_close);
     goto perm_err;
   }
 
