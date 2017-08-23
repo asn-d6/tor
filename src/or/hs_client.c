@@ -321,8 +321,9 @@ send_introduce1(origin_circuit_t *intro_circ,
   /* Send the INTRODUCE1 cell. */
   if (hs_circ_send_introduce1(intro_circ, rend_circ, ip,
                               desc->subcredential) < 0) {
-    /* Unable to send the cell, both circuits have been closed, this is a
-     * permanent error. */
+    /* Unable to send the cell, the intro circuit has been marked for close so
+     * this is a permanent error. */
+    tor_assert_nonfatal(!TO_CIRCUIT(intro_circ)->marked_for_close);
     goto perm_err;
   }
 
