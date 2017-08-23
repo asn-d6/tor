@@ -763,8 +763,10 @@ test_hid_serv_request_tracker(void *arg)
 
   /* Try deleting entries with a dummy key. Check that our previous requests
    * are still there */
+  tor_capture_bugs_(1);
   hs_purge_hid_serv_from_last_hid_serv_requests("a");
   tt_int_op(strmap_size(request_tracker),OP_EQ, 2);
+  tor_end_capture_bugs_();
 
   /* Try another dummy key. Check that requests are still there */
   {
