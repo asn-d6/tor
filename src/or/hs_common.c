@@ -1450,9 +1450,17 @@ hs_purge_hid_serv_from_last_hid_serv_requests(const char *req_key_str)
     void *val;
     strmap_iter_get(iter, &key, &val);
 
-    /* Do basic length check (both should be nul-terminated strings here) */
-    if (strlen(key) < strlen(req_key_str)) {
-      log_warn(LD_GENERAL, "Got request shorter than key");
+    /* XXX: The use of REND_DESC_ID_V2_LEN_BASE32 is very wrong in terms of
+     * semantic, see #23305. */
+
+    /* Length check on the strings we are about to compare. The "key" contains
+     * both the base32 HSDir identity digest and the requested key at the
+     * directory. The "req_key_str" can either be a base32 descriptor ID or a
+     * base64 blinded key which should be the second part of "key". BUG on
+     * this check because both strings are internally controlled so this
+     * should never happen. */
+    if (BUG((strlen(req_key_str) + REND_DESC_ID_V2_LEN_BASE32) <
+            strlen(key))) {
       iter = strmap_iter_next(last_hid_serv_requests, iter);
       continue;
     }
