@@ -75,7 +75,7 @@ static smartlist_t *hs_service_staging_list;
 /** True if the list of available router descriptors might have changed which
  *  might result in an altered hash ring. Check if the hash ring changed and
  *  reupload if needed */
-static int consider_republishing_rend_descriptors = 0;
+static int consider_republishing_hs_descriptors = 0;
 
 static void set_descriptor_revision_counter(hs_descriptor_t *hs_desc);
 
@@ -2435,7 +2435,7 @@ run_upload_descriptor_event(time_t now)
 
       /* If we were asked to re-examine the hash ring, and it changed, then
          schedule an upload */
-      if (consider_republishing_rend_descriptors &&
+      if (consider_republishing_hs_descriptors &&
           service_desc_hsdirs_changed(service, desc)) {
         service_desc_schedule_upload(desc, now, 0);
       }
@@ -2469,7 +2469,7 @@ run_upload_descriptor_event(time_t now)
   } FOR_EACH_SERVICE_END;
 
   /* We are done considering whether to republish rend descriptors */
-  consider_republishing_rend_descriptors = 0;
+  consider_republishing_hs_descriptors = 0;
 }
 
 /* Called when the introduction point circuit is done building and ready to be
@@ -2807,8 +2807,8 @@ service_desc_hsdirs_changed(const hs_service_t *service,
 void
 hs_hsdir_set_changed_consider_reupload(void)
 {
-  log_info(LD_GENERAL, "New descs arrived. Consider reuploading descriptor");
-  consider_republishing_rend_descriptors = 1;
+  log_info(LD_REND, "New dirinfo arrived: consider reuploading descriptor");
+  consider_republishing_hs_descriptors = 1;
 }
 
 /* Return the number of service we have configured and usable. */
