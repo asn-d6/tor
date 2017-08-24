@@ -1721,7 +1721,7 @@ rotate_service_descriptors(hs_service_t *service)
 
 /** Return true if <b>service</b> **just** entered overlap mode. */
 static int
-service_just_entered_overlap_mode(hs_service_t *service,
+service_just_entered_overlap_mode(const hs_service_t *service,
                                   int overlap_mode_is_active)
 {
   if (overlap_mode_is_active && !service->state.in_overlap_period) {
@@ -1733,7 +1733,7 @@ service_just_entered_overlap_mode(hs_service_t *service,
 
 /** Return true if <b>service</b> **just** left overlap mode. */
 static int
-service_just_left_overlap_mode(hs_service_t *service,
+service_just_left_overlap_mode(const hs_service_t *service,
                                int overlap_mode_is_active)
 {
   if (!overlap_mode_is_active && service->state.in_overlap_period) {
