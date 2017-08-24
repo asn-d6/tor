@@ -473,7 +473,8 @@ hs_circuitmap_register_rend_circ_client_side(origin_circuit_t *or_circ,
   circuit_t *circ = TO_CIRCUIT(or_circ);
   { /* Basic circ purpose sanity checking */
     tor_assert_nonfatal(circ->purpose == CIRCUIT_PURPOSE_C_REND_READY ||
-                    circ->purpose == CIRCUIT_PURPOSE_C_REND_READY_INTRO_ACKED);
+               circ->purpose == CIRCUIT_PURPOSE_C_REND_READY_INTRO_ACKED ||
+               circ->purpose == CIRCUIT_PURPOSE_C_ESTABLISH_REND);
   }
 
   hs_circuitmap_register_circuit(circ, HS_TOKEN_REND_CLIENT_SIDE,
