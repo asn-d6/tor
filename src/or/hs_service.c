@@ -2391,9 +2391,12 @@ service_desc_hsdirs_changed(const hs_service_t *service,
   smartlist_sort_strings(b64_responsible_dirs);
 
   /* Check whether the set of HSDirs changed */
-  if (!smartlist_strings_eq(b64_responsible_dirs, desc->previous_hsdirs)) {
-    log_info(LD_GENERAL, "Received new dirinfo and set of hsdirs changed!");
-    retval = 1;
+ if (!smartlist_strings_eq(b64_responsible_dirs, desc->previous_hsdirs)) {
+   char *previous = smartlist_join_strings(desc->previous_hsdirs, ", ", 0, NULL);
+   char *new = smartlist_join_strings(b64_responsible_dirs, ", ", 0, NULL);
+   log_info(LD_GENERAL, "Received new dirinfo and set of hsdirs changed [%s] vs [%s]!",
+            previous, new);
+   retval = 1;
   } else {
     log_debug(LD_GENERAL, "No change in hsdir set!");
   }
