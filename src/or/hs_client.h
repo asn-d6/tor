@@ -46,5 +46,15 @@ extend_info_t *hs_client_get_random_intro_from_edge(
 
 int hs_client_reextend_intro_circuit(origin_circuit_t *circ);
 
+#ifdef HS_CLIENT_PRIVATE
+
+STATIC extend_info_t *
+client_get_random_intro(const ed25519_public_key_t *service_pk);
+
+STATIC extend_info_t *
+desc_intro_point_to_extend_info(const hs_desc_intro_point_t *ip);
+
+#endif
+
 #endif /* TOR_HS_CLIENT_H */
 
