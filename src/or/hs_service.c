@@ -2389,8 +2389,11 @@ service_desc_hsdirs_changed(const hs_service_t *service,
     char b64_digest[BASE64_DIGEST_LEN+1] = {0};
     digest_to_base64(b64_digest, hsdir_rs->identity_digest);
 
+    log_warn(LD_GENERAL, "[!] Checking new responsible hsdir: %s", b64_digest);
+
     if (!smartlist_contains_string(desc->previous_hsdirs, b64_digest)) {
       should_reupload = 1;
+      log_warn(LD_GENERAL, "\t Found new responsible hsdir: %s", b64_digest);
       break;
     }
   } SMARTLIST_FOREACH_END(hsdir_rs);
