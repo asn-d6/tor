@@ -274,3 +274,49 @@ hs_helper_desc_equal(const hs_descriptor_t *desc1,
   tor_free(addr2);
 }
 
+link_specifier_t *
+hs_helper_new_link_specifier(int want_v4, int want_v6, int want_legacy,
+                             int want_ed25519)
+{
+  tor_addr_t addr;
+  link_specifier_t *lspec = link_specifier_new();
+  tt_assert(lspec);
+
+  if (want_v4) {
+    int family = tor_addr_parse(&addr, "1.2.3.4");
+    tt_int_op(family, OP_EQ, AF_INET);
+    link_specifier_set_ls_type(lspec, LS_IPV4);
+    link_specifier_set_un_ipv4_addr(lspec, tor_addr_to_ipv4h(&addr));
+    link_specifier_set_un_ipv4_port(lspec, 42);
+    link_specifier_set_ls_len(lspec, 6);
+  } else if (want_v6) {
+    int family = tor_addr_parse(&addr, "2600::01");
+    tt_int_op(family, OP_EQ, AF_INET6);
+    link_specifier_set_ls_type(lspec, LS_IPV6);
+    const uint8_t *in6_addr = tor_addr_to_in6_addr8(&addr);
+    uint8_t *ipv6_array = link_specifier_getarray_un_ipv6_addr(lspec);
+    memcpy(ipv6_array, in6_addr,
+           link_specifier_getlen_un_ipv6_addr(lspec));
+    link_specifier_set_un_ipv6_port(lspec, 42);
+    link_specifier_set_ls_len(lspec, 18);
+  } else if (want_legacy) {
+    size_t legacy_id_len = link_specifier_getlen_un_legacy_id(lspec);
+    uint8_t *legacy_id_array = link_specifier_getarray_un_legacy_id(lspec);
+    link_specifier_set_ls_type(lspec, LS_LEGACY_ID);
+    memset(legacy_id_array, '\x42', legacy_id_len);
+    link_specifier_set_ls_len(lspec, legacy_id_len);
+  } else if (want_ed25519) {
+    size_t ed25519_id_len = link_specifier_getlen_un_ed25519_id(lspec);
+    uint8_t *ed25519_id_array = link_specifier_getarray_un_ed25519_id(lspec);
+    link_specifier_set_ls_type(lspec, LS_ED25519_ID);
+    memset(ed25519_id_array, '\x43', ed25519_id_len);
+    link_specifier_set_ls_len(lspec, ed25519_id_len);
+  } else {
+    /* With no specific type requested, send back an uninitialized object. */
+    link_specifier_set_ls_type(lspec, UINT8_MAX);
+  }
+
+ done:
+  return lspec;
+}
+

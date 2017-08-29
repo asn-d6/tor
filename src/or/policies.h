@@ -130,10 +130,11 @@ addr_policy_result_t compare_tor_addr_to_short_policy(
 
 #ifdef POLICIES_PRIVATE
 STATIC void append_exit_policy_string(smartlist_t **policy, const char *more);
-STATIC int fascist_firewall_allows_address(const tor_addr_t *addr,
+MOCK_DECL(STATIC int,
+          fascist_firewall_allows_address,(const tor_addr_t *addr,
                                            uint16_t port,
                                            smartlist_t *firewall_policy,
-                                           int pref_only, int pref_ipv6);
+                                           int pref_only, int pref_ipv6));
 STATIC const tor_addr_port_t * fascist_firewall_choose_address(
                                           const tor_addr_port_t *a,
                                           const tor_addr_port_t *b,

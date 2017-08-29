@@ -392,11 +392,11 @@ addr_policy_permits_address(uint32_t addr, uint16_t port,
  *    - if pref_only is true and pref_ipv6 is false.
  *
  * Return false if addr is NULL or tor_addr_is_null(), or if port is 0. */
-STATIC int
-fascist_firewall_allows_address(const tor_addr_t *addr,
+MOCK_IMPL(STATIC int,
+fascist_firewall_allows_address,(const tor_addr_t *addr,
                                 uint16_t port,
                                 smartlist_t *firewall_policy,
-                                int pref_only, int pref_ipv6)
+                                int pref_only, int pref_ipv6))
 {
   const or_options_t *options = get_options();
   const int client_mode = !server_mode(options);

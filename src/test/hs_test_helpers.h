@@ -21,5 +21,9 @@ void
 hs_helper_get_subcred_from_identity_keypair(ed25519_keypair_t *signing_kp,
                                             uint8_t *subcred_out);
 
+link_specifier_t *hs_helper_new_link_specifier(int want_v4, int want_v6,
+                                               int want_legacy,
+                                               int want_ed25519);
+
 #endif /* TOR_HS_TEST_HELPERS_H */
 

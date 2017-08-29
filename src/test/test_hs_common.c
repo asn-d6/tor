@@ -10,6 +10,7 @@
 #define HS_CLIENT_PRIVATE
 #define HS_SERVICE_PRIVATE
 #define NODELIST_PRIVATE
+#define POLICIES_PRIVATE
 
 #include "test.h"
 #include "test_helpers.h"
@@ -29,6 +30,11 @@
 #include "circuitlist.h"
 #include "shared_random.h"
 #include "util.h"
+#include "circuitbuild.h"
+#include "policies.h"
+
+/* Trunnel */
+#include "ed25519_cert.h"
 
 /** Test the validation of HS v3 addresses */
 static void
@@ -1771,6 +1777,152 @@ test_client_service_hsdir_set_sync(void *arg)
   hs_free_all();
 }
 
+/* Mock function. Always true. */
+static int
+mock_fascist_firewall_allows_address_true(const tor_addr_t *addr,
+                                          uint16_t port,
+                                          smartlist_t *firewall_policy,
+                                          int pref_only, int pref_ipv6)
+{
+  (void) addr;
+  (void) port;
+  (void) firewall_policy;
+  (void) pref_only;
+  (void) pref_ipv6;
+  return 1;
+}
+
+/* Mock function. Always false. */
+static int
+mock_fascist_firewall_allows_address_false(const tor_addr_t *addr,
+                                           uint16_t port,
+                                           smartlist_t *firewall_policy,
+                                           int pref_only, int pref_ipv6)
+{
+  (void) addr;
+  (void) port;
+  (void) firewall_policy;
+  (void) pref_only;
+  (void) pref_ipv6;
+  return 0;
+}
+
+static void
+test_extend_info_from_lspecs(void *arg)
+{
+  extend_info_t *ei = NULL;
+  link_specifier_t *lspec = NULL;
+  smartlist_t *lspecs = smartlist_new();
+  const uint8_t *legacy_id_ptr = NULL;
+  const uint8_t *ed25519_id_ptr = NULL;
+  tor_addr_t ipv4_addr;
+  uint16_t ipv4_port;
+  tor_addr_t ipv6_addr;
+  uint16_t ipv6_port;
+
+  (void) arg;
+
+  /* First test with an empty list. */
+  ei = hs_get_extend_info_from_lspecs(lspecs, NULL, 0);
+  tt_assert(ei == NULL);
+
+  /* Get an IPv4. */
+  lspec = hs_helper_new_link_specifier(1, 0, 0, 0);
+  tt_assert(lspec);
+  smartlist_add(lspecs, lspec);
+  tt_int_op(link_specifier_get_ls_type(lspec), OP_EQ, LS_IPV4);
+  tor_addr_from_ipv4h(&ipv4_addr, link_specifier_get_un_ipv4_addr(lspec));
+  ipv4_port = link_specifier_get_un_ipv4_port(lspec);
+
+  /* An IPv4 alone is not enough. */
+  ei = hs_get_extend_info_from_lspecs(lspecs, NULL, 0);
+  tt_assert(ei == NULL);
+
+  /* Get a legacy ID. */
+  lspec = hs_helper_new_link_specifier(0, 0, 1, 0);
+  tt_assert(lspec);
+  smartlist_add(lspecs, lspec);
+  tt_int_op(link_specifier_get_ls_type(lspec), OP_EQ, LS_LEGACY_ID);
+  legacy_id_ptr = link_specifier_getconstarray_un_legacy_id(lspec);
+
+  /* We now have the two mandatory link specifier for tor to extend to. */
+  ei = hs_get_extend_info_from_lspecs(lspecs, NULL, 0);
+  tt_assert(ei);
+  tt_mem_op(ei->identity_digest, OP_EQ, legacy_id_ptr, DIGEST_LEN);
+  tt_mem_op(&ei->addr, OP_EQ, &ipv4_addr, sizeof(ipv4_addr));
+  tt_int_op(ei->port, OP_EQ, ipv4_port);
+
+  /* So far so good. Let's add an ed25519 identity. */
+  extend_info_free(ei);
+  lspec = hs_helper_new_link_specifier(0, 0, 0, 1);
+  tt_assert(lspec);
+  smartlist_add(lspecs, lspec);
+  tt_int_op(link_specifier_get_ls_type(lspec), OP_EQ, LS_ED25519_ID);
+  ed25519_id_ptr = link_specifier_getconstarray_un_ed25519_id(lspec);
+
+  /* Now testing with all the link specifier except an IPv6. */
+  ei = hs_get_extend_info_from_lspecs(lspecs, NULL, 0);
+  tt_assert(ei);
+  tt_mem_op(ei->identity_digest, OP_EQ, legacy_id_ptr, DIGEST_LEN);
+  tt_mem_op(&ei->addr, OP_EQ, &ipv4_addr, sizeof(ipv4_addr));
+  tt_int_op(ei->port, OP_EQ, ipv4_port);
+  tt_mem_op(&ei->ed_identity, OP_EQ, ed25519_id_ptr, ED25519_PUBKEY_LEN);
+
+  /* Add an IPv6 to it. */
+  extend_info_free(ei);
+  lspec = hs_helper_new_link_specifier(0, 1, 0, 0);
+  tt_assert(lspec);
+  smartlist_add(lspecs, lspec);
+  tt_int_op(link_specifier_get_ls_type(lspec), OP_EQ, LS_IPV6);
+  tor_addr_from_ipv6_bytes(&ipv6_addr,
+      (const char *) link_specifier_getconstarray_un_ipv6_addr(lspec));
+  ipv6_port = link_specifier_get_un_ipv6_port(lspec);
+
+  /* End a junk one which should be ignored. */
+  lspec = hs_helper_new_link_specifier(0, 0, 0, 0);
+  tt_assert(lspec);
+  smartlist_add(lspecs, lspec);
+
+  /* Now testing with all the link specifiers. IPv4 should be prefered. */
+  ei = hs_get_extend_info_from_lspecs(lspecs, NULL, 0);
+  tt_assert(ei);
+  tt_mem_op(ei->identity_digest, OP_EQ, legacy_id_ptr, DIGEST_LEN);
+  tt_mem_op(&ei->addr, OP_EQ, &ipv4_addr, sizeof(ipv4_addr));
+  tt_int_op(ei->port, OP_EQ, ipv4_port);
+  tt_mem_op(&ei->ed_identity, OP_EQ, ed25519_id_ptr, ED25519_PUBKEY_LEN);
+
+  /* Now in a direct connection IPv6 should be prefered if allowed by our
+   * firewall which we mock. */
+  extend_info_free(ei);
+  MOCK(fascist_firewall_allows_address,
+       mock_fascist_firewall_allows_address_true);
+  ei = hs_get_extend_info_from_lspecs(lspecs, NULL, 1);
+  UNMOCK(fascist_firewall_allows_address);
+  tt_assert(ei);
+  tt_mem_op(ei->identity_digest, OP_EQ, legacy_id_ptr, DIGEST_LEN);
+  tt_mem_op(&ei->addr, OP_EQ, &ipv6_addr, sizeof(ipv6_addr));
+  tt_int_op(ei->port, OP_EQ, ipv6_port);
+  tt_mem_op(&ei->ed_identity, OP_EQ, ed25519_id_ptr, ED25519_PUBKEY_LEN);
+
+  /* Now in a direct connection but our fascist firewall won't allow the
+   * IPv6 address. */
+  extend_info_free(ei);
+  MOCK(fascist_firewall_allows_address,
+       mock_fascist_firewall_allows_address_false);
+  ei = hs_get_extend_info_from_lspecs(lspecs, NULL, 1);
+  UNMOCK(fascist_firewall_allows_address);
+  tt_assert(ei);
+  tt_mem_op(ei->identity_digest, OP_EQ, legacy_id_ptr, DIGEST_LEN);
+  tt_mem_op(&ei->addr, OP_EQ, &ipv4_addr, sizeof(ipv4_addr));
+  tt_int_op(ei->port, OP_EQ, ipv4_port);
+  tt_mem_op(&ei->ed_identity, OP_EQ, ed25519_id_ptr, ED25519_PUBKEY_LEN);
+
+ done:
+  SMARTLIST_FOREACH(lspecs, link_specifier_t *, ls, link_specifier_free(ls));
+  smartlist_free(lspecs);
+  extend_info_free(ei);
+}
+
 struct testcase_t hs_common_tests[] = {
   { "build_address", test_build_address, TT_FORK,
     NULL, NULL },
@@ -1797,6 +1949,8 @@ struct testcase_t hs_common_tests[] = {
   { "client_service_hsdir_set_sync", test_client_service_hsdir_set_sync,
     TT_FORK, NULL, NULL },
   { "hs_indexes", test_hs_indexes, TT_FORK,
+    NULL, NULL },
+  { "extend_info_from_lspecs", test_extend_info_from_lspecs, TT_FORK,
     NULL, NULL },
 
   END_OF_TESTCASES
