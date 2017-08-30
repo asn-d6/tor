@@ -2156,7 +2156,8 @@ pick_rendezvous_node(router_crn_flags_t flags)
  */
 static const node_t *
 choose_good_exit_server(uint8_t purpose,
-                        int need_uptime, int need_capacity, int is_internal)
+                        int need_uptime, int need_capacity, int is_internal,
+                        int need_hs_v3)
 {
   const or_options_t *options = get_options();
   router_crn_flags_t flags = CRN_NEED_DESC;
@@ -2164,6 +2165,8 @@ choose_good_exit_server(uint8_t purpose,
     flags |= CRN_NEED_UPTIME;
   if (need_capacity)
     flags |= CRN_NEED_CAPACITY;
+  if (need_hs_v3)
+    flags |= CRN_RENDEZVOUS_V3;
 
   switch (purpose) {
     case CIRCUIT_PURPOSE_C_GENERAL:
@@ -2289,7 +2292,8 @@ onion_pick_cpath_exit(origin_circuit_t *circ, extend_info_t *exit_ei)
   } else { /* we have to decide one */
     const node_t *node =
       choose_good_exit_server(circ->base_.purpose, state->need_uptime,
-                              state->need_capacity, state->is_internal);
+                              state->need_capacity, state->is_internal,
+                              (circ->hs_ident != NULL));
     if (!node) {
       log_warn(LD_CIRC,"Failed to choose an exit server");
       return -1;
