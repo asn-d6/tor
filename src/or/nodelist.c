@@ -203,8 +203,8 @@ node_set_hsdir_index(node_t *node, const networkstatus_t *ns)
   /* Get the current and next time period number, we might use them both. We
    * use the valid_after time of the consensus because we use that time to
    * detect if we are in the overlap period or not. */
-  current_time_period_num = hs_get_time_period_num(ns->valid_after);
-  next_time_period_num = hs_get_next_time_period_num(ns->valid_after);
+  current_time_period_num = hs_get_time_period_num(0);
+  next_time_period_num = hs_get_next_time_period_num(0);
 
   if (hs_overlap_mode_is_active(ns, now)) {
     /* We are in overlap mode, this means that our consensus has just cycled
