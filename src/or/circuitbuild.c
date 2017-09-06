@@ -2277,7 +2277,7 @@ warn_if_last_router_excluded(origin_circuit_t *circ,
  * If <b>is_hs_v3_rp_circuit</b> is set, then this exit should be suitable to
  * be used as an HS v3 rendezvous point.
  *
- * Return 0 if ok, -1 if circuit should be closed. *
+ * Return 0 if ok, -1 if circuit should be closed. */
 static int
 onion_pick_cpath_exit(origin_circuit_t *circ, extend_info_t *exit_ei,
                       int is_hs_v3_rp_circuit)
