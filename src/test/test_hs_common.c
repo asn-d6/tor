@@ -465,7 +465,7 @@ test_desc_reupload_logic(void *arg)
   }
 
   /* Now let's upload our desc to all hsdirs */
-  upload_descriptor_to_all(service, desc, 0);
+  upload_descriptor_to_all(service, desc);
   /* Check that previous hsdirs were populated */
   tt_int_op(smartlist_len(desc->previous_hsdirs), OP_EQ, 6);
 
@@ -503,7 +503,7 @@ test_desc_reupload_logic(void *arg)
   tt_int_op(smartlist_len(desc->previous_hsdirs), OP_EQ, 6);
 
   /* Now order another upload and see that we keep having 6 prev hsdirs */
-  upload_descriptor_to_all(service, desc, 0);
+  upload_descriptor_to_all(service, desc);
   /* Check that previous hsdirs were populated */
   tt_int_op(smartlist_len(desc->previous_hsdirs), OP_EQ, 6);
 
@@ -536,7 +536,7 @@ test_desc_reupload_logic(void *arg)
   tt_int_op(smartlist_len(desc->previous_hsdirs), OP_EQ, 0);
 
   /* Now reupload again: see that the prev hsdir set got populated again. */
-  upload_descriptor_to_all(service, desc, 0);
+  upload_descriptor_to_all(service, desc);
   tt_int_op(smartlist_len(desc->previous_hsdirs), OP_EQ, 6);
 
  done:

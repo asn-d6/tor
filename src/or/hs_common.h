@@ -201,7 +201,7 @@ time_t hs_get_start_time_of_next_time_period(time_t now);
 
 link_specifier_t *hs_link_specifier_dup(const link_specifier_t *lspec);
 
-MOCK_DECL(int, hs_overlap_mode_is_active,
+MOCK_DECL(int, hs_in_new_time_period,
           (const networkstatus_t *consensus, time_t now));
 
 uint8_t *hs_get_current_srv(uint64_t time_period_num,

@@ -1029,7 +1029,7 @@ hs_build_blinded_keypair(const ed25519_keypair_t *kp,
 /* Return true if overlap mode is active given the date in consensus. If
  * consensus is NULL, then we use the latest live consensus we can find. */
 MOCK_IMPL(int,
-hs_overlap_mode_is_active, (const networkstatus_t *consensus, time_t now))
+hs_in_new_time_period, (const networkstatus_t *consensus, time_t now))
 {
   time_t valid_after;
   time_t srv_start_time, tp_start_time;
@@ -1050,10 +1050,10 @@ hs_overlap_mode_is_active, (const networkstatus_t *consensus, time_t now))
   tp_start_time = hs_get_start_time_of_next_time_period(srv_start_time);
 
   if (valid_after >= srv_start_time && valid_after < tp_start_time) {
-    return 1;
+    return 0;
   }
 
-  return 0;
+  return 1;
 }
 
 /* Return 1 if any virtual port in ports needs a circuit with good uptime.
@@ -1257,7 +1257,7 @@ node_has_hsdir_index(const node_t *node)
  * node. All of this makes it a bit CPU intensive so use it wisely. */
 void
 hs_get_responsible_hsdirs(const ed25519_public_key_t *blinded_pk,
-                          uint64_t time_period_num, int is_next_period,
+                          uint64_t time_period_num, int is_new_tp,
                           int is_client, smartlist_t *responsible_dirs)
 {
   smartlist_t *sorted_nodes;
@@ -1305,7 +1305,7 @@ hs_get_responsible_hsdirs(const ed25519_public_key_t *blinded_pk,
   if (is_client) {
     smartlist_sort(sorted_nodes, compare_node_fetch_hsdir_index);
     cmp_fct = compare_digest_to_fetch_hsdir_index;
-  } else if (is_next_period) {
+  } else if (is_new_tp) {
     smartlist_sort(sorted_nodes, compare_node_store_second_hsdir_index);
     cmp_fct = compare_digest_to_store_second_hsdir_index;
   } else {

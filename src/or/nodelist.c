@@ -207,7 +207,7 @@ node_set_hsdir_index(node_t *node, const networkstatus_t *ns)
   current_time_period_num = hs_get_time_period_num(0);
   next_time_period_num = hs_get_next_time_period_num(0);
 
-  if (hs_overlap_mode_is_active(ns, now)) {
+  if (!hs_in_new_time_period(ns, now)) {
 
     fetch_tp = current_time_period_num;
     fetch_srv = hs_get_previous_srv(fetch_tp, ns);
