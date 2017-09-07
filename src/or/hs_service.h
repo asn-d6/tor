@@ -229,8 +229,7 @@ typedef struct hs_service_t {
 
   /* Current descriptor. */
   hs_service_descriptor_t *desc_current;
-  /* Next descriptor that we need for the overlap period for which we have to
-   * keep two sets of opened introduction point circuits. */
+  /* Next descriptor. */
   hs_service_descriptor_t *desc_next;
 
   /* XXX: Credential (client auth.) #20700. */
