@@ -1721,9 +1721,17 @@ cleanup_intro_points(hs_service_t *service, time_t now)
 static void
 set_rotation_time(hs_service_t *service, time_t now)
 {
+  time_t valid_after;
+  const networkstatus_t *ns = networkstatus_get_live_consensus(now);
+  if (ns) {
+    valid_after = ns->valid_after;
+  } else {
+    valid_after = now;
+  }
+
   tor_assert(service);
   service->state.next_rotation_time =
-    sr_state_get_start_time_of_current_protocol_run(now) +
+    sr_state_get_start_time_of_current_protocol_run(valid_after) +
     sr_state_get_protocol_run_duration();
 
   {
