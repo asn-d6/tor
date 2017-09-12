@@ -14,6 +14,7 @@
 #include "hs_cache.h"
 #include "rendcache.h"
 #include "directory.h"
+#include "networkstatus.h"
 #include "connection.h"
 #include "proto_http.h"
 
@@ -433,6 +434,15 @@ test_hsdir_revision_counter_check(void *arg)
   tor_free(published_desc_str);
 }
 
+static networkstatus_t mock_ns;
+
+static networkstatus_t *
+mock_networkstatus_get_live_consensus(time_t now)
+{
+  (void) now;
+  return &mock_ns;
+}
+
 /** Test that we can store HS descriptors in the client HS cache. */
 static void
 test_client_cache(void *arg)
@@ -449,6 +459,17 @@ test_client_cache(void *arg)
 
   /* Initialize HSDir cache subsystem */
   init_test();
+
+  MOCK(networkstatus_get_live_consensus,
+       mock_networkstatus_get_live_consensus);
+
+  /* Set consensus time */
+  parse_rfc1123_time("Sat, 26 Oct 1985 13:00:00 UTC",
+                           &mock_ns.valid_after);
+  parse_rfc1123_time("Sat, 26 Oct 1985 14:00:00 UTC",
+                           &mock_ns.fresh_until);
+  parse_rfc1123_time("Sat, 26 Oct 1985 16:00:00 UTC",
+                           &mock_ns.valid_until);
 
   /* Generate a valid descriptor with normal values. */
   {
@@ -478,12 +499,37 @@ test_client_cache(void *arg)
   retval = handle_response_fetch_hsdesc_v3(conn, args);
   tt_int_op(retval, == , 0);
 
-  /* fetch the descriptor and make sure it's there */
+  /* Progress time a bit and attempt to clean cache: our desc should not be
+   * cleaned since we still in the same TP. */
   {
+    parse_rfc1123_time("Sat, 27 Oct 1985 02:00:00 UTC",
+                       &mock_ns.valid_after);
+    parse_rfc1123_time("Sat, 27 Oct 1985 03:00:00 UTC",
+                       &mock_ns.fresh_until);
+    parse_rfc1123_time("Sat, 27 Oct 1985 05:00:00 UTC",
+                       &mock_ns.valid_until);
+    cache_clean_v3_as_client();
+
+    /* fetch the descriptor and make sure it's there */
     hs_cache_client_descriptor_t *cached_desc = NULL;
     cached_desc = lookup_v3_desc_as_client(signing_kp.pubkey.pubkey);
     tt_assert(cached_desc);
     tt_str_op(cached_desc->encoded_desc, OP_EQ, published_desc_str);
+  }
+
+  /* Progress time to next TP and check that desc was cleaned */
+  {
+    parse_rfc1123_time("Sat, 27 Oct 1985 12:00:00 UTC",
+                       &mock_ns.valid_after);
+    parse_rfc1123_time("Sat, 27 Oct 1985 13:00:00 UTC",
+                       &mock_ns.fresh_until);
+    parse_rfc1123_time("Sat, 27 Oct 1985 15:00:00 UTC",
+                       &mock_ns.valid_until);
+    cache_clean_v3_as_client();
+
+    hs_cache_client_descriptor_t *cached_desc = NULL;
+    cached_desc = lookup_v3_desc_as_client(signing_kp.pubkey.pubkey);
+    tt_assert(!cached_desc);
   }
 
  done:
