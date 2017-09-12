@@ -609,7 +609,6 @@ cache_store_as_client(hs_cache_client_descriptor_t *client_desc)
      * than the one we just fetched, discard the one we fetched. */
     if (BUG(cache_entry->desc->plaintext_data.revision_counter >
             client_desc->desc->plaintext_data.revision_counter)) {
-      log_info(LD_REND, "We already have fresher descriptor. Ignoring.");
       cache_client_desc_free(client_desc);
       goto done;
     }
