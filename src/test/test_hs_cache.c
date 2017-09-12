@@ -451,7 +451,7 @@ test_client_cache(void *arg)
   ed25519_keypair_t signing_kp;
   hs_descriptor_t *published_desc = NULL;
   char *published_desc_str = NULL;
-
+  uint8_t wanted_subcredential[DIGEST256_LEN];
   response_handler_args_t *args = NULL;
   dir_connection_t *conn = NULL;
 
@@ -480,6 +480,8 @@ test_client_cache(void *arg)
     retval = hs_desc_encode_descriptor(published_desc, &signing_kp,
                                        &published_desc_str);
     tt_int_op(retval, OP_EQ, 0);
+    memcpy(wanted_subcredential, published_desc->subcredential, DIGEST256_LEN);
+    tt_assert(!tor_mem_is_zero((char*)wanted_subcredential, DIGEST256_LEN));
   }
 
   /* Test handle_response_fetch_hsdesc_v3() */
@@ -508,13 +510,13 @@ test_client_cache(void *arg)
                        &mock_ns.fresh_until);
     parse_rfc1123_time("Sat, 27 Oct 1985 05:00:00 UTC",
                        &mock_ns.valid_until);
-    cache_clean_v3_as_client();
 
     /* fetch the descriptor and make sure it's there */
-    hs_cache_client_descriptor_t *cached_desc = NULL;
-    cached_desc = lookup_v3_desc_as_client(signing_kp.pubkey.pubkey);
+    const hs_descriptor_t *cached_desc = NULL;
+    cached_desc = hs_cache_lookup_as_client(&signing_kp.pubkey);
     tt_assert(cached_desc);
-    tt_str_op(cached_desc->encoded_desc, OP_EQ, published_desc_str);
+    tt_mem_op(cached_desc->subcredential, OP_EQ, wanted_subcredential,
+              DIGEST256_LEN);
   }
 
   /* Progress time to next TP and check that desc was cleaned */
@@ -525,10 +527,9 @@ test_client_cache(void *arg)
                        &mock_ns.fresh_until);
     parse_rfc1123_time("Sat, 27 Oct 1985 15:00:00 UTC",
                        &mock_ns.valid_until);
-    cache_clean_v3_as_client();
 
-    hs_cache_client_descriptor_t *cached_desc = NULL;
-    cached_desc = lookup_v3_desc_as_client(signing_kp.pubkey.pubkey);
+    const hs_descriptor_t *cached_desc = NULL;
+    cached_desc = hs_cache_lookup_as_client(&signing_kp.pubkey);
     tt_assert(!cached_desc);
   }
 

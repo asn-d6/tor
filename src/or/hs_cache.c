@@ -627,10 +627,9 @@ cache_store_as_client(hs_cache_client_descriptor_t *client_desc)
 /* Return true iff the cached client descriptor at <b>cached_desc</b has
  * expired. */
 static int
-cached_client_descriptor_has_expired(
+cached_client_descriptor_has_expired(time_t now,
                                const hs_cache_client_descriptor_t *cached_desc)
 {
-  time_t now = approx_time();
   /* We use the current consensus time to see if we should expire this
    * descriptor since we use consensus time for all other parts of the protocol
    * as well (e.g. to build the blinded key and compute time periods). */
@@ -651,7 +650,7 @@ cached_client_descriptor_has_expired(
 /* clean the client cache using now as the current time. Return the total size
  * of removed bytes from the cache. */
 STATIC size_t
-cache_clean_v3_as_client(void)
+cache_clean_v3_as_client(time_t now)
 {
   size_t bytes_removed = 0;
 
@@ -664,7 +663,7 @@ cache_clean_v3_as_client(void)
     size_t entry_size;
 
     /* If the entry has not expired, continue to the next cached entry */
-    if (!cached_client_descriptor_has_expired(entry)) {
+    if (!cached_client_descriptor_has_expired(now, entry)) {
       continue;
     }
     /* Here, our entry has expired, remove and free. */
@@ -700,7 +699,7 @@ hs_cache_lookup_as_client(const ed25519_public_key_t *key)
   tor_assert(key);
 
   /* Clean HS desc cache before lookup to delete any expired entries */
-  cache_clean_v3_as_client();
+  cache_clean_v3_as_client(approx_time());
 
   cached_desc = lookup_v3_desc_as_client(key->pubkey);
   if (cached_desc) {
@@ -750,7 +749,7 @@ hs_cache_clean_as_client(time_t now)
   rend_cache_clean(now, REND_CACHE_TYPE_CLIENT);
   /* Now, clean the v3 cache. Set the cutoff to 0 telling the cleanup function
    * to compute the cutoff by itself using the lifetime value. */
-  cache_clean_v3_as_client();
+  cache_clean_v3_as_client(now);
 }
 
 /* Purge the client descriptor cache. */
