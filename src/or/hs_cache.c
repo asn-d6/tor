@@ -20,6 +20,9 @@
 
 #include "hs_cache.h"
 
+static int cached_client_descriptor_has_expired(time_t now,
+           const hs_cache_client_descriptor_t *cached_desc);
+
 /********************** Directory HS cache ******************/
 
 /* Directory descriptor cache. Map indexed by blinded key. */
@@ -356,12 +359,27 @@ store_v3_desc_as_client(hs_cache_client_descriptor_t *desc)
   rend_cache_increment_allocation(cache_get_client_entry_size(desc));
 }
 
-/* Query our cache and return the entry or NULL if not found. */
+/* Query our cache and return the entry or NULL if not found or if expired. */
 STATIC hs_cache_client_descriptor_t *
 lookup_v3_desc_as_client(const uint8_t *key)
 {
+  time_t now = approx_time();
+  hs_cache_client_descriptor_t *cached_desc;
+
   tor_assert(key);
-  return digest256map_get(hs_cache_v3_client, key);
+
+  /* Do the lookup */
+  cached_desc = digest256map_get(hs_cache_v3_client, key);
+  if (!cached_desc) {
+    return NULL;
+  }
+
+  /* Don't return expired entries */
+  if (cached_client_descriptor_has_expired(now, cached_desc)) {
+    return NULL;
+  }
+
+  return cached_desc;
 }
 
 /* Parse the encoded descriptor in <b>desc_str</b> using
@@ -695,9 +713,6 @@ hs_cache_lookup_as_client(const ed25519_public_key_t *key)
   hs_cache_client_descriptor_t *cached_desc = NULL;
 
   tor_assert(key);
-
-  /* Clean HS desc cache before lookup to delete any expired entries */
-  cache_clean_v3_as_client(approx_time());
 
   cached_desc = lookup_v3_desc_as_client(key->pubkey);
   if (cached_desc) {
