@@ -1002,6 +1002,43 @@ hs_client_any_intro_points_usable(const ed25519_public_key_t *service_pk,
   return 1;
 }
 
+/** We tried to fetch the descriptor of the service with <b>identity_pk</b> but
+ *  it was not available. Mark pending connections as resolve failed. */
+static void
+hs_client_desc_unavailable(const ed25519_public_key_t *identity_pk)
+{
+  time_t now = approx_time();
+  smartlist_t *conns = NULL;
+  conns = connection_list_by_type_state(CONN_TYPE_AP,
+                                        AP_CONN_STATE_RENDDESC_WAIT);
+  SMARTLIST_FOREACH_BEGIN(conns, connection_t *, base_conn) {
+    entry_connection_t *entry_conn = TO_ENTRY_CONN(base_conn);
+    const edge_connection_t *edge_conn = ENTRY_TO_EDGE_CONN(entry_conn);
+
+    /* Only consider the entry connections that matches the service for which
+     * we tried to get the descriptor */
+    if (base_conn->marked_for_close ||
+        !edge_conn->hs_ident ||
+        !ed25519_pubkey_eq(identity_pk,
+                           &edge_conn->hs_ident->identity_pk)) {
+      continue;
+    }
+    assert_connection_ok(base_conn, now);
+
+    {
+      char onion_address[HS_SERVICE_ADDR_LEN_BASE32 + 1];
+      hs_build_address(identity_pk, HS_VERSION_THREE, onion_address);
+      log_notice(LD_REND,"Closing stream for v3 '%s.onion': hidden service is "
+                 "unavailable (try again later).",
+                 safe_str_client(onion_address));
+    }
+
+    connection_mark_unattached_ap(entry_conn, END_STREAM_REASON_RESOLVEFAILED);
+    /* Remove HSDir fetch attempts so that we can retry if the user wants us to */
+    purge_hid_serv_request(identity_pk);
+  } SMARTLIST_FOREACH_END(base_conn);
+}
+
 /** Launch a connection to a hidden service directory to fetch a hidden
  * service descriptor using <b>identity_pk</b> to get the necessary keys.
  *
@@ -1009,6 +1046,8 @@ hs_client_any_intro_points_usable(const ed25519_public_key_t *service_pk,
 int
 hs_client_refetch_hsdesc(const ed25519_public_key_t *identity_pk)
 {
+  int ret;
+
   tor_assert(identity_pk);
 
   /* Are we configured to fetch descriptors? */
@@ -1046,7 +1085,16 @@ hs_client_refetch_hsdesc(const ed25519_public_key_t *identity_pk)
     }
   }
 
-  return fetch_v3_desc(identity_pk);
+  /* Try to fetch the desc and if we encounter an unrecoverable error, mark the
+   * desc as unavailable for now. */
+  ret = fetch_v3_desc(identity_pk);
+  if (ret == HS_CLIENT_FETCH_NO_HSDIRS ||
+      ret == HS_CLIENT_FETCH_ERROR ||
+      ret == HS_CLIENT_FETCH_NOT_ALLOWED) {
+    hs_client_desc_unavailable(identity_pk);
+  }
+
+  return ret;
 }
 
 /* This is called when we are trying to attach an AP connection to these
