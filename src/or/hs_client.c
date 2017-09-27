@@ -53,7 +53,7 @@ fetch_status_to_string(hs_client_fetch_status_t status)
   case HS_CLIENT_FETCH_PENDING:
     return "Pending descriptor fetch";
   default:
-    return "(unkwnon client fetch status code)";
+    return "(Unknown client fetch status code)";
   }
 }
 
@@ -160,11 +160,13 @@ directory_request_is_pending(const ed25519_public_key_t *identity_pk)
   return ret;
 }
 
-/* For each connection waiting for a descriptor for the service identity_pk,
- * mark it with the given reason. */
+/* We failed to fetch a descriptor for the service with <b>identity_pk</b>
+ * because of <b>status</b>. Find all pending SOCKS connections for this
+ * service and close them with <b>reason</b>. Also clean up the HSDir request
+ * cache so that we can try connecting again in the future. */
 static void
-close_all_conn_wait_desc(const ed25519_public_key_t *identity_pk,
-                         hs_client_fetch_status_t status, int reason)
+hs_client_descriptor_unavailable(const ed25519_public_key_t *identity_pk,
+                                 hs_client_fetch_status_t status, int reason)
 {
   unsigned int count = 0;
   time_t now = approx_time();
@@ -190,16 +192,16 @@ close_all_conn_wait_desc(const ed25519_public_key_t *identity_pk,
 
   if (count > 0) {
     char onion_address[HS_SERVICE_ADDR_LEN_BASE32 + 1];
-
     hs_build_address(identity_pk, HS_VERSION_THREE, onion_address);
     log_notice(LD_REND, "Closed %u streams for service %s.onion "
                         "for reason %d. Fetch status: %s.",
                count, safe_str_client(onion_address), reason,
                fetch_status_to_string(status));
-    /* Remove HSDir fetch attempts so that we can retry later if the user
-     * wants us to */
-    purge_hid_serv_request(identity_pk);
   }
+
+  /* Remove HSDir fetch attempts so that we can retry later if the user
+   * wants us to */
+  purge_hid_serv_request(identity_pk);
 
   /* No ownership of the object(s) in this list. */
   smartlist_free(conns);
@@ -1157,8 +1159,8 @@ hs_client_refetch_hsdesc(const ed25519_public_key_t *identity_pk)
   if (ret == HS_CLIENT_FETCH_NO_HSDIRS ||
       ret == HS_CLIENT_FETCH_ERROR ||
       ret == HS_CLIENT_FETCH_NOT_ALLOWED) {
-    close_all_conn_wait_desc(identity_pk, ret,
-                             END_STREAM_REASON_RESOLVEFAILED);
+    hs_client_descriptor_unavailable(identity_pk, ret,
+                                     END_STREAM_REASON_RESOLVEFAILED);
   }
   return ret;
 }
