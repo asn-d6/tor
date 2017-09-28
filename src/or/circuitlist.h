@@ -68,7 +68,7 @@ int circuit_count_pending_on_channel(channel_t *chan);
   circuit_mark_for_close_((c), (reason), __LINE__, SHORT_FILE__)
 
 void assert_cpath_layer_ok(const crypt_path_t *cp);
-void assert_circuit_ok(const circuit_t *c);
+MOCK_DECL(void, assert_circuit_ok,(const circuit_t *c));
 void circuit_free_all(void);
 void circuits_handle_oom(size_t current_allocation);
 
@@ -86,6 +86,8 @@ STATIC size_t n_cells_in_circ_queues(const circuit_t *c);
 STATIC uint32_t circuit_max_queued_data_age(const circuit_t *c, uint32_t now);
 STATIC uint32_t circuit_max_queued_cell_age(const circuit_t *c, uint32_t now);
 STATIC uint32_t circuit_max_queued_item_age(const circuit_t *c, uint32_t now);
+STATIC void circuit_about_to_free(circuit_t *circ);
+
 #endif /* defined(CIRCUITLIST_PRIVATE) */
 
 #endif /* !defined(TOR_CIRCUITLIST_H) */

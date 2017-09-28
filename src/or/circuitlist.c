@@ -107,7 +107,6 @@ static smartlist_t *circuits_pending_close = NULL;
 static void circuit_free_cpath_node(crypt_path_t *victim);
 static void cpath_ref_decref(crypt_path_reference_t *cpath_ref);
 static void circuit_about_to_free_atexit(circuit_t *circ);
-static void circuit_about_to_free(circuit_t *circ);
 
 /********* END VARIABLES ************/
 
@@ -1956,10 +1955,9 @@ circuit_about_to_free_atexit(circuit_t *circ)
  * Disconnects the circuit from other data structures, launches events
  * as appropriate, and performs other housekeeping.
  */
-static void
+STATIC void
 circuit_about_to_free(circuit_t *circ)
 {
-
   int reason = circ->marked_for_close_reason;
   int orig_reason = circ->marked_for_close_orig_reason;
 
@@ -2476,8 +2474,8 @@ assert_cpath_ok(const crypt_path_t *cp)
 /** Verify that circuit <b>c</b> has all of its invariants
  * correct. Trigger an assert if anything is invalid.
  */
-void
-assert_circuit_ok(const circuit_t *c)
+MOCK_IMPL(void,
+assert_circuit_ok,(const circuit_t *c))
 {
   edge_connection_t *conn;
   const or_circuit_t *or_circ = NULL;

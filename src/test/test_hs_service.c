@@ -777,6 +777,76 @@ test_rdv_circuit_opened(void *arg)
   UNMOCK(relay_send_command_from_edge_);
 }
 
+static void
+mock_assert_circuit_ok(const circuit_t *c)
+{
+  (void) c;
+  return;
+}
+
+/** Test for the general mechanism for closing intro circs.
+ *  Also a way to identify that #23603 has been fixed. */
+static void
+test_closing_intro_circs(void *arg)
+{
+  hs_service_t *service = NULL;
+  hs_service_intro_point_t *ip = NULL;
+  origin_circuit_t *intro_circ = NULL;
+  origin_circuit_t *intro_circ2 = NULL;
+  int flags = CIRCLAUNCH_NEED_UPTIME | CIRCLAUNCH_IS_INTERNAL;
+  hs_ident_circuit_t ident;
+
+  (void) arg;
+
+  MOCK(assert_circuit_ok, mock_assert_circuit_ok);
+
+  hs_service_init();
+
+  /* Initialize service */
+  service = helper_create_service();
+  /* Initialize intro point */
+  ip = helper_create_service_ip();
+  tt_assert(ip);
+  service_intro_point_add(service->desc_current->intro_points.map, ip);
+  ed25519_pubkey_copy(&ident.intro_auth_pk, &ip->auth_key_kp.pubkey);
+  ed25519_pubkey_copy(&ident.identity_pk, &service->keys.identity_pk);
+
+  /* Initialize intro circuit */
+  intro_circ = origin_circuit_init(CIRCUIT_PURPOSE_S_ESTABLISH_INTRO,
+                                   flags);
+  intro_circ->hs_ident = tor_malloc_zero(sizeof(hs_ident_circuit_t));
+  ed25519_pubkey_copy(&intro_circ->hs_ident->identity_pk,
+                      &service->keys.identity_pk);
+
+  /* Pretend that intro point has failed too much */
+  ip->circuit_retries = MAX_INTRO_POINT_CIRCUIT_RETRIES+1;
+
+  /* Now pretend we are freeing this intro circuit. We want to see that our
+   * destructor is not gonna kill our intro point structure since that's the
+   * job of the cleanup routine. */
+  circuit_about_to_free(TO_CIRCUIT(intro_circ));
+
+  /* Now pretend that a new intro point circ was launched and opened. Check
+   * that the intro point will be established correctly. */
+  intro_circ2 = helper_create_origin_circuit(CIRCUIT_PURPOSE_S_ESTABLISH_INTRO,
+                                             flags);
+  ed25519_pubkey_copy(&intro_circ2->hs_ident->identity_pk,
+                      &service->keys.identity_pk);
+  tt_int_op(TO_CIRCUIT(intro_circ2)->marked_for_close, OP_EQ, 0);
+  hs_service_circuit_has_opened(intro_circ2);
+
+  /* BUG: Check that the circuit was closed (#23603) */
+  tt_int_op(TO_CIRCUIT(intro_circ2)->marked_for_close, OP_NE, 0);
+
+ done:
+  service_intro_point_free(ip);
+  hs_service_free(service);
+  circuit_free(TO_CIRCUIT(intro_circ));
+  circuit_free(TO_CIRCUIT(intro_circ2));
+  hs_free_all();
+  UNMOCK(assert_circuit_ok);
+}
+
 /** Test sending and receiving introduce2 cells */
 static void
 test_introduce2(void *arg)
@@ -1507,6 +1577,8 @@ struct testcase_t hs_service_tests[] = {
   { "intro_circuit_opened", test_intro_circuit_opened, TT_FORK,
     NULL, NULL },
   { "intro_established", test_intro_established, TT_FORK,
+    NULL, NULL },
+  { "closing_intro_circs", test_closing_intro_circs, TT_FORK,
     NULL, NULL },
   { "rdv_circuit_opened", test_rdv_circuit_opened, TT_FORK,
     NULL, NULL },
