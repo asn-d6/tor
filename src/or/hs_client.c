@@ -261,14 +261,15 @@ retry_all_socks_conn_waiting_for_desc(void)
 
     /* XXX: There is an optimization we could do which is that for a service
      * key, we could check if we can fetch and remember that decision. */
+
+    /* Order a refetch in case it works this time. */
     status = hs_client_refetch_hsdesc(&edge_conn->hs_ident->identity_pk);
-    if (status == HS_CLIENT_FETCH_HAVE_DESC) {
+    if (BUG(status == HS_CLIENT_FETCH_HAVE_DESC)) {
       /* This case is unique because it can NOT happen in theory. Once we get
        * a new descriptor, the HS client subsystem is notified immediately and
        * the connections waiting for it are handled which means the state will
        * change from renddesc wait state. Log this and continue to next
        * connection. */
-      tor_assert_nonfatal_unreached();
       continue;
     }
     /* In the case of an error, either all SOCKS connections have been
