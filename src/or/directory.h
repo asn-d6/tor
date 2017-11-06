@@ -196,6 +196,8 @@ STATIC int handle_response_fetch_hsdesc_v3(dir_connection_t *conn,
 
 STATIC int handle_response_fetch_consensus(dir_connection_t *conn,
                                          const response_handler_args_t *args);
+STATIC int handle_response_fetch_microdesc(dir_connection_t *conn,
+                                          const response_handler_args_t *args);
 
 #endif /* defined(DIRECTORY_PRIVATE) */
 
