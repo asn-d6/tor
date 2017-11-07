@@ -117,7 +117,7 @@ static void dir_routerdesc_download_failed(smartlist_t *failed,
                                            int was_descriptor_digests);
 static void dir_microdesc_download_failed(smartlist_t *failed,
                                           int status_code,
-                                          const char *relay_digest);
+                                          const char *dir_id);
 static int client_likes_consensus(const struct consensus_cache_entry_t *ent,
                                   const char *want_url);
 
@@ -5738,13 +5738,13 @@ dir_routerdesc_download_failed(smartlist_t *failed, int status_code,
 }
 
 /** Called when a connection to download microdescriptors from relay with
- * <b>relay_digest</b> has failed in whole or in part. <b>failed</b> is a list
+ * <b>dir_id</b> has failed in whole or in part. <b>failed</b> is a list
  * of every microdesc digest we didn't get. <b>status_code</b> is the http
  * status code we received. Reschedule the microdesc downloads as
  * appropriate. */
 static void
 dir_microdesc_download_failed(smartlist_t *failed,
-                              int status_code, const char *relay_digest)
+                              int status_code, const char *dir_id)
 {
   networkstatus_t *consensus
     = networkstatus_get_latest_consensus_by_flavor(FLAV_MICRODESC);
@@ -5756,9 +5756,9 @@ dir_microdesc_download_failed(smartlist_t *failed,
   if (! consensus)
     return;
 
-  /* We failed to fetch a microdescriptor from 'relay_digest', note it down
+  /* We failed to fetch a microdescriptor from 'dir_id', note it down
    * so that we don't try the same relay next time... */
-  microdesc_note_outdated_dirserver(relay_digest);
+  microdesc_note_outdated_dirserver(dir_id);
 
   SMARTLIST_FOREACH_BEGIN(failed, const char *, d) {
     rs = router_get_mutable_consensus_status_by_descriptor_digest(consensus,d);
@@ -5773,6 +5773,8 @@ dir_microdesc_download_failed(smartlist_t *failed,
     { /* Increment the failure count for this md fetch */
       char buf[BASE64_DIGEST256_LEN+1];
       digest256_to_base64(buf, d);
+      log_info(LD_DIR, "Failed to download md %s from %s",
+               buf, hex_str(dir_id, DIGEST_LEN));
       download_status_increment_failure(dls, status_code, buf,
                                         server, now);
     }
