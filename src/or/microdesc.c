@@ -146,7 +146,8 @@ microdesc_relay_is_outdated_dirserver(const char *relay_digest)
   base16_encode(relay_hexdigest, sizeof(relay_hexdigest),
                 relay_digest, DIGEST_LEN);
 
-  /* Is our guard an outdated dirserver? */
+  /* Last time we tried to fetch microdescs, was this directory mirror missing
+   * any mds we asked for? */
   if (smartlist_contains_string(outdated_dirserver_list, relay_hexdigest)) {
     return 1;
   }
