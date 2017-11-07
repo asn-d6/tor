@@ -76,8 +76,8 @@ HT_GENERATE2(microdesc_map, microdesc_t, node,
 
 /************************* md fetch fail cache *****************************/
 
-/* This is a heuristic limit to notice if this list becomes too huge (see
- * #23817 comment:12 for teor's argument). */
+/* If we end up with too many outdated dirservers, something probably went
+ * wrong so clean up the list. */
 #define TOO_MANY_OUTDATED_DIRSERVERS 30
 
 /** List of dirservers with outdated microdesc information. The smartlist is
@@ -97,6 +97,17 @@ microdesc_note_outdated_dirserver(const char *relay_digest)
 
   tor_assert(outdated_dirserver_list);
 
+  /* If the list grows too big, clean it up */
+  if (BUG(smartlist_len(outdated_dirserver_list) >
+          TOO_MANY_OUTDATED_DIRSERVERS)) {
+    microdesc_reset_outdated_dirservers_list();
+  }
+
+  /* Make sure we don't add a dirauth as an outdated dirserver */
+  if (BUG(router_get_trusteddirserver_by_digest(relay_digest))) {
+    return;
+  }
+
   /* Turn the binary relay digest to a hex since smartlists have better support
    * for strings than digests. */
   base16_encode(relay_hexdigest,sizeof(relay_hexdigest),
@@ -109,11 +120,6 @@ microdesc_note_outdated_dirserver(const char *relay_digest)
 
   /* Add it to the list of outdated dirservers */
   smartlist_add_strdup(outdated_dirserver_list, relay_hexdigest);
-
-  /* Give out a warning message if this list grows too big */
-  if (smartlist_len(outdated_dirserver_list) > TOO_MANY_OUTDATED_DIRSERVERS) {
-    tor_assert_nonfatal_unreached();
-  }
 
   log_info(LD_GENERAL, "Noted %s as outdated md dirserver", relay_hexdigest);
 }
@@ -133,15 +139,10 @@ microdesc_relay_is_outdated_dirserver(const char *relay_digest)
   base16_encode(relay_hexdigest, sizeof(relay_hexdigest),
                 relay_digest, DIGEST_LEN);
 
-  /* Go through the list of outdated dirservers and check if our guard is one
-   * of them */
-  SMARTLIST_FOREACH_BEGIN(outdated_dirserver_list, const char *,
-                          outdated_hexdigest) {
-    if (!strcmp(relay_hexdigest, outdated_hexdigest)) {
-      log_info(LD_GENERAL, "Skipping %s dirserver: outdated", relay_hexdigest);
-      return 1;
-    }
-  } SMARTLIST_FOREACH_END(outdated_hexdigest);
+  /* Is our guard an outdated dirserver? */
+  if (smartlist_contains_string(outdated_dirserver_list, relay_hexdigest)) {
+    return 1;
+  }
 
   return 0;
 }
