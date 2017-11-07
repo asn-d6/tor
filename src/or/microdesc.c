@@ -91,6 +91,13 @@ microdesc_note_outdated_dirserver(const char *relay_digest)
 {
   char relay_hexdigest[HEX_DIGEST_LEN+1];
 
+  /* Don't register outdated dirservers if we don't have a live consensus,
+   * since we might be trying to fetch microdescriptors that are not even
+   * currently active. */
+  if (!networkstatus_get_live_consensus(approx_time())) {
+    return;
+  }
+
   if (!outdated_dirserver_list) {
     outdated_dirserver_list = smartlist_new();
   }
