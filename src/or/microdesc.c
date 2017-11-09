@@ -110,15 +110,16 @@ microdesc_note_outdated_dirserver(const char *relay_digest)
     microdesc_reset_outdated_dirservers_list();
   }
 
-  /* Make sure we don't add a dirauth as an outdated dirserver */
-  if (BUG(router_get_trusteddirserver_by_digest(relay_digest))) {
-    return;
-  }
-
   /* Turn the binary relay digest to a hex since smartlists have better support
    * for strings than digests. */
   base16_encode(relay_hexdigest,sizeof(relay_hexdigest),
                 relay_digest, DIGEST_LEN);
+
+  /* Make sure we don't add a dirauth as an outdated dirserver */
+  if (router_get_trusteddirserver_by_digest(relay_digest)) {
+    log_info(LD_GENERAL, "Auth %s gave us outdated dirinfo.", relay_hexdigest);
+    return;
+  }
 
   /* Don't double-add outdated dirservers */
   if (smartlist_contains_string(outdated_dirserver_list, relay_hexdigest)) {
