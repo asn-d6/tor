@@ -37,6 +37,7 @@
 #include "rendservice.h"
 #include "statefile.h"
 #include "circuitlist.h"
+#include "circuituse.h"
 
 #undef log
 #include <math.h>
@@ -647,12 +648,47 @@ circuit_build_times_decide_to_count_circ(origin_circuit_t *circ)
     return;
   }
 
+  tor_gettimeofday(&end);
+  timediff = tv_mdiff(&circ->base_.timestamp_began, &end);
+
+  // Check if we would have timed out already. If so, change the
+  // purpose here. But don't do any timeout handling here if there
+  // are no circuits opened yet. Save it for circuit_expire_building()
+  // (to allow it to handle timeout "relaxing" over there).
+  if (timediff > get_circuit_build_timeout_ms() &&
+      circuit_any_opened_circs()) {
+
+    /* Circuits are allowed to last longer for measurement.
+     * Switch their purpose and wait. */
+    if (circ->base_.purpose != CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT) {
+      log_info(LD_CIRC,
+               "Deciding to timeout circuit "U64_FORMAT"\n",
+               U64_PRINTF_ARG(circ->global_identifier));
+      control_event_circuit_status(circ,
+                                   CIRC_EVENT_FAILED,
+                                   END_CIRC_REASON_TIMEOUT);
+      circuit_change_purpose(&circ->base_,
+                             CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT);
+      /* Record this failure to check for too many timeouts
+       * in a row. This function does not record a time value yet
+       * (we do that later); it only counts the fact that we did
+       * have a timeout. We also want to avoid double-counting
+       * already "relaxed" circuits, which are counted in
+       * circuit_expire_building(). */
+      if (!circ->relaxed_timeout) {
+        int first_hop_succeeded = circ->cpath &&
+              circ->cpath->state == CPATH_STATE_OPEN;
+
+        circuit_build_times_count_timeout(
+                                     get_circuit_build_times_mutable(),
+                                     first_hop_succeeded);
+      }
+    }
+  }
+
   /* If the circuit is built to exactly the DEFAULT_ROUTE_LEN,
    * add it to our buildtimes. */
   if (circuit_get_cpath_opened_len(circ) == DEFAULT_ROUTE_LEN) {
-    tor_gettimeofday(&end);
-    timediff = tv_mdiff(&circ->base_.timestamp_began, &end);
-
     /* If the circuit build time is much greater than we would have cut
      * it off at, we probably had a suspend event along this codepath,
      * and we should discard the value.
@@ -666,7 +702,7 @@ circuit_build_times_decide_to_count_circ(origin_circuit_t *circ)
     } else {
       /* Only count circuit times if the network is live */
       if (circuit_build_times_network_check_live(
-                                                 get_circuit_build_times())) {
+                            get_circuit_build_times())) {
         circuit_build_times_add_time(get_circuit_build_times_mutable(),
                                      (build_time_t)timediff);
         circuit_build_times_set_timeout(get_circuit_build_times_mutable());

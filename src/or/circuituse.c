@@ -412,8 +412,17 @@ circuit_conforms_to_options(const origin_circuit_t *circ,
 }
 #endif /* 0 */
 
-/** Close all circuits that start at us, aren't open, and were born
+/**
+ * Close all circuits that start at us, aren't open, and were born
  * at least CircuitBuildTimeout seconds ago.
+ *
+ * TODO: This function is now partially redundant to
+ * circuit_build_times_decide_to_count_circ(), but that function only
+ * covers circuits up to and including 3 hops that are still actually
+ * completing hops. However, circuit_expire_building() also handles longer
+ * circuits, as well as circuits that are completely stalled.
+ * In the future (after prop247/other path selection revamping), we probably
+ * want to eliminate this rats nest in favor of a simpler approach.
  */
 void
 circuit_expire_building(void)
@@ -492,6 +501,10 @@ circuit_expire_building(void)
    */
   SET_CUTOFF(general_cutoff, get_circuit_build_timeout_ms());
   SET_CUTOFF(begindir_cutoff, get_circuit_build_timeout_ms());
+
+  // TODO: We should probably use route_len_for_purpose() here instead,
+  // except that does not count the extra round trip for things like server
+  // intros and rends.
 
   /* > 3hop circs seem to have a 1.0 second delay on their cannibalized
    * 4th hop. */
@@ -694,6 +707,12 @@ circuit_expire_building(void)
 
       if (circuit_timeout_want_to_count_circ(TO_ORIGIN_CIRCUIT(victim)) &&
           circuit_build_times_enough_to_compute(get_circuit_build_times())) {
+
+        log_info(LD_CIRC,
+                   "Deciding to count the timeout for circuit "U64_FORMAT"\n",
+                   U64_PRINTF_ARG(
+                       TO_ORIGIN_CIRCUIT(victim)->global_identifier));
+
         /* Circuits are allowed to last longer for measurement.
          * Switch their purpose and wait. */
         if (victim->purpose != CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT) {

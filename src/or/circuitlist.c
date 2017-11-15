@@ -597,6 +597,28 @@ circuit_get_global_origin_circuit_list(void)
   return global_origin_circuit_list;
 }
 
+/**
+ * Return true if we have any opened general-purpose 3 hop
+ * origin circuits
+ */
+int
+circuit_any_opened_circs(void)
+{
+  SMARTLIST_FOREACH_BEGIN(circuit_get_global_origin_circuit_list(),
+          origin_circuit_t *, next_circ) {
+    if (!TO_CIRCUIT(next_circ)->marked_for_close &&
+        next_circ->has_opened &&
+        TO_CIRCUIT(next_circ)->state == CIRCUIT_STATE_OPEN &&
+        TO_CIRCUIT(next_circ)->purpose == CIRCUIT_PURPOSE_C_GENERAL &&
+        next_circ->build_state &&
+        next_circ->build_state->desired_path_len == DEFAULT_ROUTE_LEN) {
+      return 1;
+    }
+  } SMARTLIST_FOREACH_END(next_circ);
+
+  return 0;
+}
+
 /** Function to make circ-\>state human-readable */
 const char *
 circuit_state_to_string(int state)

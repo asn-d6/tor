@@ -17,6 +17,7 @@
 
 MOCK_DECL(smartlist_t *, circuit_get_global_list, (void));
 smartlist_t *circuit_get_global_origin_circuit_list(void);
+int circuit_any_opened_circs(void);
 const char *circuit_state_to_string(int state);
 const char *circuit_purpose_to_controller_string(uint8_t purpose);
 const char *circuit_purpose_to_controller_hs_state_string(uint8_t purpose);
