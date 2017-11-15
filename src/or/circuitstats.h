@@ -95,6 +95,13 @@ struct circuit_build_times_s {
   double timeout_ms;
   /** How long we wait before actually closing the circuit. */
   double close_ms;
+  /** Total succeeded counts */
+  uint32_t num_circ_succeeded;
+  /** Total timeout counts */
+  uint32_t num_circ_timeouts;
+  /** Total closed counts */
+  uint32_t num_circ_closed;
+
 };
 #endif /* defined(CIRCUITSTATS_PRIVATE) */
 

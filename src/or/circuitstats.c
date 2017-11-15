@@ -537,6 +537,11 @@ circuit_build_times_reset(circuit_build_times_t *cbt)
   cbt->total_build_times = 0;
   cbt->build_times_idx = 0;
   cbt->have_computed_timeout = 0;
+
+  // Reset timeout and close counts
+  cbt->num_circ_succeeded = 0;
+  cbt->num_circ_closed = 0;
+  cbt->num_circ_timeouts = 0;
 }
 
 /**
@@ -1401,6 +1406,16 @@ circuit_build_times_network_is_live(circuit_build_times_t *cbt)
 void
 circuit_build_times_network_circ_success(circuit_build_times_t *cbt)
 {
+  // Count circuit success
+  cbt->num_circ_succeeded++;
+
+  // If we're going to wrap int32, scale everything
+  if (cbt->num_circ_succeeded >= INT32_MAX) {
+    cbt->num_circ_succeeded /= 2;
+    cbt->num_circ_timeouts /= 2;
+    cbt->num_circ_closed /= 2;
+  }
+
   /* Check for NULLness because we might not be using adaptive timeouts */
   if (cbt->liveness.timeouts_after_firsthop &&
       cbt->liveness.num_recent_circs > 0) {
@@ -1423,6 +1438,16 @@ static void
 circuit_build_times_network_timeout(circuit_build_times_t *cbt,
                                     int did_onehop)
 {
+  // Count circuit timeout
+  cbt->num_circ_timeouts++;
+
+  // If we're going to wrap int32, scale everything
+  if (cbt->num_circ_timeouts >= INT32_MAX) {
+    cbt->num_circ_succeeded /= 2;
+    cbt->num_circ_timeouts /= 2;
+    cbt->num_circ_closed /= 2;
+  }
+
   /* Check for NULLness because we might not be using adaptive timeouts */
   if (cbt->liveness.timeouts_after_firsthop &&
       cbt->liveness.num_recent_circs > 0) {
@@ -1448,6 +1473,17 @@ circuit_build_times_network_close(circuit_build_times_t *cbt,
                                     int did_onehop, time_t start_time)
 {
   time_t now = time(NULL);
+
+  // Count circuit close
+  cbt->num_circ_closed++;
+
+  // If we're going to wrap int32, scale everything
+  if (cbt->num_circ_closed >= INT32_MAX) {
+    cbt->num_circ_succeeded /= 2;
+    cbt->num_circ_timeouts /= 2;
+    cbt->num_circ_closed /= 2;
+  }
+
   /*
    * Check if this is a timeout that was for a circuit that spent its
    * entire existence during a time where we have had no network activity.
@@ -1822,9 +1858,13 @@ cbt_control_event_buildtimeout_set(const circuit_build_times_t *cbt,
                (unsigned long)cbt->total_build_times,
                (unsigned long)cbt->timeout_ms,
                (unsigned long)cbt->Xm, cbt->alpha, qnt,
-               circuit_build_times_timeout_rate(cbt),
+               ((double)cbt->num_circ_timeouts)/
+                 MAX((cbt->num_circ_timeouts+cbt->num_circ_succeeded
+                      +cbt->num_circ_closed),1),
                (unsigned long)cbt->close_ms,
-               circuit_build_times_close_rate(cbt));
+               ((double)cbt->num_circ_closed)/
+                 MAX((cbt->num_circ_closed+cbt->num_circ_succeeded
+                      +cbt->num_circ_closed),1));
 
   control_event_buildtimeout_set(type, args);
 
