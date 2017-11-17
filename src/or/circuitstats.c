@@ -630,47 +630,51 @@ circuit_build_times_rewind_history(circuit_build_times_t *cbt, int n)
 void
 circuit_build_times_decide_to_count_circ(origin_circuit_t *circ)
 {
-  /* If circuit build times are disabled, let circuit_expire_buildind()
+  struct timeval end;
+  long timediff;
+
+  /* If circuit build times are disabled, let circuit_expire_building()
    * handle it.. */
   if (circuit_build_times_disabled(get_options())) {
     return;
   }
 
-  /* Is this a circuit for which the timeout applies in a straight-forward way?
-   * If so, we can handle it here. The more complicated cases are handled in
-   * circuit_expire_building() */
-  if (circuit_timeout_want_to_count_circ(circ)) {
-    struct timeval end;
-    long timediff;
+  /* Is this a circuit for which the timeout applies in a straight-forward
+   * way? If so, handle it below. If not, just return (and let
+   * circuit_expire_building() eventually take care of it).
+   */
+  if (!circuit_timeout_want_to_count_circ(circ)) {
+    return;
+  }
+
+  /* If the circuit is built to exactly the DEFAULT_ROUTE_LEN,
+   * add it to our buildtimes. */
+  if (circuit_get_cpath_opened_len(circ) == DEFAULT_ROUTE_LEN) {
     tor_gettimeofday(&end);
     timediff = tv_mdiff(&circ->base_.timestamp_began, &end);
 
-    /* If the circuit is built to exactly the DEFAULT_ROUTE_LEN,
-     * add it to our buildtimes. */
-    if (circuit_get_cpath_opened_len(circ) == DEFAULT_ROUTE_LEN) {
-      /* If the circuit build time is much greater than we would have cut
-       * it off at, we probably had a suspend event along this codepath,
-       * and we should discard the value.
-       */
-      if (timediff < 0 ||
-          timediff > 2*get_circuit_build_close_time_ms()+1000) {
-        log_notice(LD_CIRC, "Strange value for circuit build time: %ldmsec. "
-                   "Assuming clock jump. Purpose %d (%s)", timediff,
-                   circ->base_.purpose,
-                   circuit_purpose_to_string(circ->base_.purpose));
-      } else {
-        /* Only count circuit times if the network is live */
-        if (circuit_build_times_network_check_live(
-                                                   get_circuit_build_times())) {
-          circuit_build_times_add_time(get_circuit_build_times_mutable(),
-                                       (build_time_t)timediff);
-          circuit_build_times_set_timeout(get_circuit_build_times_mutable());
-        }
+    /* If the circuit build time is much greater than we would have cut
+     * it off at, we probably had a suspend event along this codepath,
+     * and we should discard the value.
+     */
+    if (timediff < 0 ||
+        timediff > 2*get_circuit_build_close_time_ms()+1000) {
+      log_notice(LD_CIRC, "Strange value for circuit build time: %ldmsec. "
+                 "Assuming clock jump. Purpose %d (%s)", timediff,
+                 circ->base_.purpose,
+                 circuit_purpose_to_string(circ->base_.purpose));
+    } else {
+      /* Only count circuit times if the network is live */
+      if (circuit_build_times_network_check_live(
+                                                 get_circuit_build_times())) {
+        circuit_build_times_add_time(get_circuit_build_times_mutable(),
+                                     (build_time_t)timediff);
+        circuit_build_times_set_timeout(get_circuit_build_times_mutable());
+      }
 
-        if (circ->base_.purpose != CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT) {
-          circuit_build_times_network_circ_success(
-                                        get_circuit_build_times_mutable());
-        }
+      if (circ->base_.purpose != CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT) {
+        circuit_build_times_network_circ_success(
+                                      get_circuit_build_times_mutable());
       }
     }
   }
