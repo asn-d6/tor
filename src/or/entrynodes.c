@@ -966,7 +966,7 @@ entry_guard_learned_bridge_identity(const tor_addr_port_t *addrport,
  * violate it.
  */
 STATIC int
-num_reachable_filtered_guards(guard_selection_t *gs,
+num_reachable_filtered_guards(const guard_selection_t *gs,
                               const entry_guard_restriction_t *rst)
 {
   int n_reachable_filtered_guards = 0;
@@ -1472,30 +1472,28 @@ guard_create_exit_restriction(const uint8_t *exit_id)
   return rst;
 }
 
-/** If we have fewer than this many possible guards, don't set
- * MD-availability-based restrictions: we might blacklist all of
- * them. */
+/** If we have fewer than this many possible guards, don't enforce
+ * MD-availability-based restrictions: we might blacklist all of them. */
 #define MIN_GUARDS_FOR_MD_RESTRICTION 10
 
-/** Return true if we should set md dirserver restrictions. We might not want
- *  to set those if our network is too restricted, since we don't want to
- *  blacklist all our nodes. */
+/** Return true if we should enforce md dirserver restrictions. We might not
+ *  want to enforce those if our network is too restricted, since we don't want
+ *  to blacklist all our nodes. */
 static int
-should_set_md_dirserver_restriction(void)
+should_enforce_md_dirserver_restriction(void)
 {
   const guard_selection_t *gs = get_guard_selection_info();
+  int num_usable_guards = num_reachable_filtered_guards(gs, NULL);
 
-  /* Compute the number of filtered guards */
-  int n_filtered_guards = 0;
-  SMARTLIST_FOREACH_BEGIN(gs->sampled_entry_guards, entry_guard_t *, guard) {
-    if (guard->is_filtered_guard) {
-      ++n_filtered_guards;
-    }
-  } SMARTLIST_FOREACH_END(guard);
+  /* Don't enforce restriction if too few reachable filtered guards. */
+  if (num_usable_guards < MIN_GUARDS_FOR_MD_RESTRICTION) {
+    log_info(LD_GUARD, "Not enforcing md restriction: only %d"
+             " usable guards.", num_usable_guards);
+    return 0;
+  }
 
-  /* Do we have enough filtered guards that we feel okay about blacklisting
-   * some for MD restriction? */
-  return (n_filtered_guards >= MIN_GUARDS_FOR_MD_RESTRICTION);
+  /* We have enough usable guards that we should enforce restrictions */
+  return 1;
 }
 
 /** Allocate and return an outdated md guard restriction. Return NULL if no
@@ -1504,12 +1502,6 @@ STATIC entry_guard_restriction_t *
 guard_create_dirserver_md_restriction(void)
 {
   entry_guard_restriction_t *rst = NULL;
-
-  if (!should_set_md_dirserver_restriction()) {
-    log_debug(LD_GUARD, "Not setting md restriction: too few "
-              "filtered guards.");
-    return NULL;
-  }
 
   rst = tor_malloc_zero(sizeof(entry_guard_restriction_t));
   rst->type = RST_OUTDATED_MD_DIRSERVER;
@@ -1537,6 +1529,10 @@ guard_obeys_exit_restriction(const entry_guard_t *guard,
 static int
 guard_obeys_md_dirserver_restriction(const entry_guard_t *guard)
 {
+  if (!should_enforce_md_dirserver_restriction()) {
+    return 1;
+  }
+
   /* If this guard is an outdated dirserver, don't use it. */
   if (microdesc_relay_is_outdated_dirserver(guard->identity)) {
     log_info(LD_GENERAL, "Skipping %s dirserver: outdated",
