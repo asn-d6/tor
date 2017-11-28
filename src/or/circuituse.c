@@ -444,21 +444,7 @@ circuit_expire_building(void)
    * we want to be more lenient with timeouts, in case the
    * user has relocated and/or changed network connections.
    * See bug #3443. */
-  SMARTLIST_FOREACH_BEGIN(circuit_get_global_list(), circuit_t *, next_circ) {
-    if (!CIRCUIT_IS_ORIGIN(next_circ) || /* didn't originate here */
-        next_circ->marked_for_close) { /* don't mess with marked circs */
-      continue;
-    }
-
-    if (TO_ORIGIN_CIRCUIT(next_circ)->has_opened &&
-        next_circ->state == CIRCUIT_STATE_OPEN &&
-        TO_ORIGIN_CIRCUIT(next_circ)->build_state &&
-        TO_ORIGIN_CIRCUIT(next_circ)->build_state->desired_path_len
-          == DEFAULT_ROUTE_LEN) {
-      any_opened_circs = 1;
-      break;
-    }
-  } SMARTLIST_FOREACH_END(next_circ);
+  any_opened_circs = circuit_any_opened_circuits();
 
 #define SET_CUTOFF(target, msec) do {                       \
     long ms = tor_lround(msec);                             \

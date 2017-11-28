@@ -661,7 +661,7 @@ circuit_build_times_decide_to_count_circ(origin_circuit_t *circ)
   // are no circuits opened yet. Save it for circuit_expire_building()
   // (to allow it to handle timeout "relaxing" over there).
   if (timediff > get_circuit_build_timeout_ms() &&
-      circuit_any_opened_circs()) {
+      circuit_any_opened_circuits_cached()) {
 
     /* Circuits are allowed to last longer for measurement.
      * Switch their purpose and wait. */
