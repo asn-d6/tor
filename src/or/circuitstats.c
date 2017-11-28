@@ -45,6 +45,7 @@
 static void cbt_control_event_buildtimeout_set(
                                   const circuit_build_times_t *cbt,
                                   buildtimeout_set_event_t type);
+static void circuit_build_times_scale_circ_counts(circuit_build_times_t *cbt);
 
 #define CBT_BIN_TO_MS(bin) ((bin)*CBT_BIN_WIDTH + (CBT_BIN_WIDTH/2))
 
@@ -1407,6 +1408,23 @@ circuit_build_times_network_is_live(circuit_build_times_t *cbt)
 }
 
 /**
+ * Non-destructively scale all of our circuit success, timeout, and close
+ * counts down by a factor of two. Scaling in this way preserves the
+ * ratios between succeeded vs timed out vs closed circuits, so that
+ * our statistics don't change when we scale.
+ *
+ * This is used only in the rare event that we build more than
+ * INT32_MAX circuits.
+ */
+void
+circuit_build_times_scale_circ_counts(circuit_build_times_t *cbt)
+{
+  cbt->num_circ_succeeded /= 2;
+  cbt->num_circ_timeouts /= 2;
+  cbt->num_circ_closed /= 2;
+}
+
+/**
  * Called to indicate that we completed a circuit. Because this circuit
  * succeeded, it doesn't count as a timeout-after-the-first-hop.
  *
@@ -1422,9 +1440,7 @@ circuit_build_times_network_circ_success(circuit_build_times_t *cbt)
 
   // If we're going to wrap int32, scale everything
   if (cbt->num_circ_succeeded >= INT32_MAX) {
-    cbt->num_circ_succeeded /= 2;
-    cbt->num_circ_timeouts /= 2;
-    cbt->num_circ_closed /= 2;
+    circuit_build_times_scale_circ_counts(cbt);
   }
 
   /* Check for NULLness because we might not be using adaptive timeouts */
@@ -1454,9 +1470,7 @@ circuit_build_times_network_timeout(circuit_build_times_t *cbt,
 
   // If we're going to wrap int32, scale everything
   if (cbt->num_circ_timeouts >= INT32_MAX) {
-    cbt->num_circ_succeeded /= 2;
-    cbt->num_circ_timeouts /= 2;
-    cbt->num_circ_closed /= 2;
+    circuit_build_times_scale_circ_counts(cbt);
   }
 
   /* Check for NULLness because we might not be using adaptive timeouts */
@@ -1490,9 +1504,7 @@ circuit_build_times_network_close(circuit_build_times_t *cbt,
 
   // If we're going to wrap int32, scale everything
   if (cbt->num_circ_closed >= INT32_MAX) {
-    cbt->num_circ_succeeded /= 2;
-    cbt->num_circ_timeouts /= 2;
-    cbt->num_circ_closed /= 2;
+    circuit_build_times_scale_circ_counts(cbt);
   }
 
   /*
