@@ -704,20 +704,8 @@ circuit_expire_building(void)
         /* Circuits are allowed to last longer for measurement.
          * Switch their purpose and wait. */
         if (victim->purpose != CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT) {
-          control_event_circuit_status(TO_ORIGIN_CIRCUIT(victim),
-                                       CIRC_EVENT_FAILED,
-                                       END_CIRC_REASON_TIMEOUT);
-          circuit_change_purpose(victim, CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT);
-          /* Record this failure to check for too many timeouts
-           * in a row. This function does not record a time value yet
-           * (we do that later); it only counts the fact that we did
-           * have a timeout. We also want to avoid double-counting
-           * already "relaxed" circuits, which are counted above. */
-          if (!TO_ORIGIN_CIRCUIT(victim)->relaxed_timeout) {
-            circuit_build_times_count_timeout(
-                                         get_circuit_build_times_mutable(),
-                                         first_hop_succeeded);
-          }
+          circuit_build_times_mark_circ_as_measurement_only(TO_ORIGIN_CIRCUIT(
+                                                            victim));
           continue;
         }
 

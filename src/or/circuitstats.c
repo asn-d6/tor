@@ -618,6 +618,35 @@ circuit_build_times_rewind_history(circuit_build_times_t *cbt, int n)
 #endif /* 0 */
 
 /**
+ * Mark this circuit as timed out, but change its purpose
+ * so that it continues to build, allowing us to measure
+ * its full build time.
+ */
+void
+circuit_build_times_mark_circ_as_measurement_only(origin_circuit_t *circ)
+{
+  control_event_circuit_status(circ,
+                               CIRC_EVENT_FAILED,
+                               END_CIRC_REASON_TIMEOUT);
+  circuit_change_purpose(TO_CIRCUIT(circ),
+                         CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT);
+  /* Record this event to check for too many timeouts
+   * in a row. This function does not record a time value yet
+   * (we do that later); it only counts the fact that we did
+   * have a timeout. We also want to avoid double-counting
+   * already "relaxed" circuits, which are counted in
+   * circuit_expire_building(). */
+  if (!circ->relaxed_timeout) {
+    int first_hop_succeeded = circ->cpath &&
+          circ->cpath->state == CPATH_STATE_OPEN;
+
+    circuit_build_times_count_timeout(
+                                 get_circuit_build_times_mutable(),
+                                 first_hop_succeeded);
+  }
+}
+
+/**
  * This function decides if we should record a circuit's build time
  * in our histogram data and other statistics, and if so, records it.
  *
@@ -669,25 +698,7 @@ circuit_build_times_decide_to_count_circ(origin_circuit_t *circ)
       log_info(LD_CIRC,
                "Deciding to timeout circuit "U64_FORMAT"\n",
                U64_PRINTF_ARG(circ->global_identifier));
-      control_event_circuit_status(circ,
-                                   CIRC_EVENT_FAILED,
-                                   END_CIRC_REASON_TIMEOUT);
-      circuit_change_purpose(&circ->base_,
-                             CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT);
-      /* Record this failure to check for too many timeouts
-       * in a row. This function does not record a time value yet
-       * (we do that later); it only counts the fact that we did
-       * have a timeout. We also want to avoid double-counting
-       * already "relaxed" circuits, which are counted in
-       * circuit_expire_building(). */
-      if (!circ->relaxed_timeout) {
-        int first_hop_succeeded = circ->cpath &&
-              circ->cpath->state == CPATH_STATE_OPEN;
-
-        circuit_build_times_count_timeout(
-                                     get_circuit_build_times_mutable(),
-                                     first_hop_succeeded);
-      }
+      circuit_build_times_mark_circ_as_measurement_only(circ);
     }
   }
 
