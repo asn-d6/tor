@@ -47,9 +47,7 @@ add_opened_threehop(void)
   extend_info_t fakehop;
   memset(&fakehop, 0, sizeof(fakehop));
 
-  or_circ->base_.purpose = CIRCUIT_PURPOSE_C_GENERAL;
-  //or_circ->base_.timestamp_began = circ_start_time;
-  //or_circ->base_.timestamp_created = circ_start_time;
+  TO_CIRCUIT(or_circ)->purpose = CIRCUIT_PURPOSE_C_GENERAL;
 
   or_circ->build_state = tor_malloc_zero(sizeof(cpath_build_state_t));
   or_circ->build_state->desired_path_len = DEFAULT_ROUTE_LEN;
@@ -72,9 +70,9 @@ build_unopened_fourhop(struct timeval circ_start_time)
   extend_info_t *fakehop = tor_malloc_zero(sizeof(extend_info_t));
   memset(fakehop, 0, sizeof(extend_info_t));
 
-  or_circ->base_.purpose = CIRCUIT_PURPOSE_C_GENERAL;
-  or_circ->base_.timestamp_began = circ_start_time;
-  or_circ->base_.timestamp_created = circ_start_time;
+  TO_CIRCUIT(or_circ)->purpose = CIRCUIT_PURPOSE_C_GENERAL;
+  TO_CIRCUIT(or_circ)->timestamp_began = circ_start_time;
+  TO_CIRCUIT(or_circ)->timestamp_created = circ_start_time;
 
   or_circ->build_state = tor_malloc_zero(sizeof(cpath_build_state_t));
   or_circ->build_state->desired_path_len = 4;
@@ -150,12 +148,12 @@ test_circuitstats_hoplen(void *arg)
   circuit_expire_building();
   tt_int_op(marked_for_close, OP_EQ, 0);
   tt_int_op(fourhop->relaxed_timeout, OP_EQ, 1);
-  fourhop->base_.timestamp_began.tv_sec -= 119;
+  TO_CIRCUIT(fourhop)->timestamp_began.tv_sec -= 119;
   circuit_expire_building();
   tt_int_op(get_circuit_build_times()->total_build_times, OP_EQ, 1);
   tt_int_op(marked_for_close, OP_EQ, 1);
 
-  circuit_free((circuit_t*)fourhop);
+  circuit_free(TO_CIRCUIT(fourhop));
   circuit_build_times_reset(get_circuit_build_times_mutable());
 
   // Test 2: Add a threehop circuit for non-relaxed timeouts
@@ -167,7 +165,7 @@ test_circuitstats_hoplen(void *arg)
   fourhop = subtest_fourhop_circuit(circ_start_time, 0);
   circuit_expire_building();
   tt_int_op(get_circuit_build_times()->total_build_times, OP_EQ, 1);
-  tt_int_op(fourhop->base_.purpose, OP_NE,
+  tt_int_op(TO_CIRCUIT(fourhop)->purpose, OP_NE,
             CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT);
 
   circuit_free((circuit_t *)fourhop);
@@ -178,7 +176,7 @@ test_circuitstats_hoplen(void *arg)
    */
   circ_start_time.tv_sec -= 2;
   fourhop = subtest_fourhop_circuit(circ_start_time, 0);
-  tt_int_op(fourhop->base_.purpose, OP_EQ,
+  tt_int_op(TO_CIRCUIT(fourhop)->purpose, OP_EQ,
             CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT);
   tt_int_op(get_circuit_build_times()->total_build_times, OP_EQ, 1);
   circuit_expire_building();
@@ -186,8 +184,8 @@ test_circuitstats_hoplen(void *arg)
 
  done:
   UNMOCK(circuit_mark_for_close_);
-  circuit_free((circuit_t*)threehop);
-  circuit_free((circuit_t*)fourhop);
+  circuit_free(TO_CIRCUIT(threehop));
+  circuit_free(TO_CIRCUIT(fourhop));
   circuit_build_times_free_timeouts(get_circuit_build_times_mutable());
 }
 
