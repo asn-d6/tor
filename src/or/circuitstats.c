@@ -1861,6 +1861,8 @@ cbt_control_event_buildtimeout_set(const circuit_build_times_t *cbt,
 {
   char *args = NULL;
   double qnt;
+  double timeout_rate = 0.0;
+  double close_rate = 0.0;
 
   switch (type) {
     case BUILDTIMEOUT_SET_EVENT_RESET:
@@ -1875,19 +1877,35 @@ cbt_control_event_buildtimeout_set(const circuit_build_times_t *cbt,
       break;
   }
 
+  /* The timeout rate is the ratio of the timeout count over
+   * the total number of circuits attempted. The total number of
+   * circuits is (timeouts+succeeded+closed), since a circuit can
+   * either timeout, close, or succeed. We cast the denominator
+   * to promote it to double before the addition, to avoid int32
+   * overflow. */
+  if (cbt->num_circ_timeouts) {
+    timeout_rate = cbt->num_circ_timeouts/
+                    (((double)cbt->num_circ_timeouts)+cbt->num_circ_succeeded
+                        +cbt->num_circ_closed);
+  }
+
+  /* Similar to the timeout rate, the close rate is the ratio of
+   * closed circuits to the total number of circuits. */
+  if (cbt->num_circ_closed) {
+    close_rate = cbt->num_circ_closed/
+                   (((double)cbt->num_circ_closed)+cbt->num_circ_succeeded
+                        +cbt->num_circ_closed);
+  }
+
   tor_asprintf(&args, "TOTAL_TIMES=%lu "
                "TIMEOUT_MS=%lu XM=%lu ALPHA=%f CUTOFF_QUANTILE=%f "
                "TIMEOUT_RATE=%f CLOSE_MS=%lu CLOSE_RATE=%f",
                (unsigned long)cbt->total_build_times,
                (unsigned long)cbt->timeout_ms,
                (unsigned long)cbt->Xm, cbt->alpha, qnt,
-               ((double)cbt->num_circ_timeouts)/
-                 MAX((cbt->num_circ_timeouts+cbt->num_circ_succeeded
-                      +cbt->num_circ_closed),1),
+               timeout_rate,
                (unsigned long)cbt->close_ms,
-               ((double)cbt->num_circ_closed)/
-                 MAX((cbt->num_circ_closed+cbt->num_circ_succeeded
-                      +cbt->num_circ_closed),1));
+               close_rate);
 
   control_event_buildtimeout_set(type, args);
 
