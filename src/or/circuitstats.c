@@ -656,10 +656,10 @@ circuit_build_times_decide_to_count_circ(origin_circuit_t *circ)
   tor_gettimeofday(&end);
   timediff = tv_mdiff(&circ->base_.timestamp_began, &end);
 
-  // Check if we would have timed out already. If so, change the
-  // purpose here. But don't do any timeout handling here if there
-  // are no circuits opened yet. Save it for circuit_expire_building()
-  // (to allow it to handle timeout "relaxing" over there).
+  /* Check if we would have timed out already. If so, change the
+   * purpose here. But don't do any timeout handling here if there
+   * are no circuits opened yet. Save it for circuit_expire_building()
+   * (to allow it to handle timeout "relaxing" over there). */
   if (timediff > get_circuit_build_timeout_ms() &&
       circuit_any_opened_circuits_cached()) {
 
