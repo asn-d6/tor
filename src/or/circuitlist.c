@@ -718,6 +718,8 @@ circuit_purpose_to_controller_string(uint8_t purpose)
       return "CONTROLLER";
     case CIRCUIT_PURPOSE_PATH_BIAS_TESTING:
       return "PATH_BIAS_TESTING";
+    case CIRCUIT_PURPOSE_HS_GENERAL:
+      return "HS_GENERAL";
 
     default:
       tor_snprintf(buf, sizeof(buf), "UNKNOWN_%d", (int)purpose);
@@ -746,6 +748,7 @@ circuit_purpose_to_controller_hs_state_string(uint8_t purpose)
     case CIRCUIT_PURPOSE_TESTING:
     case CIRCUIT_PURPOSE_CONTROLLER:
     case CIRCUIT_PURPOSE_PATH_BIAS_TESTING:
+    case CIRCUIT_PURPOSE_HS_GENERAL:
       return NULL;
 
     case CIRCUIT_PURPOSE_INTRO_POINT:
@@ -842,6 +845,9 @@ circuit_purpose_to_string(uint8_t purpose)
 
     case CIRCUIT_PURPOSE_PATH_BIAS_TESTING:
       return "Path-bias testing circuit";
+
+    case CIRCUIT_PURPOSE_HS_GENERAL:
+      return "Hidden service: General vanguard circuit";
 
     default:
       tor_snprintf(buf, sizeof(buf), "UNKNOWN_%d", (int)purpose);
@@ -1730,7 +1736,7 @@ circuit_can_be_cannibalized_for_v3_rp(const origin_circuit_t *circ)
  */
 origin_circuit_t *
 circuit_find_to_cannibalize(uint8_t purpose, extend_info_t *info,
-                            int flags)
+                            int flags, uint8_t from_purpose)
 {
   origin_circuit_t *best=NULL;
   int need_uptime = (flags & CIRCLAUNCH_NEED_UPTIME) != 0;
@@ -1742,6 +1748,20 @@ circuit_find_to_cannibalize(uint8_t purpose, extend_info_t *info,
    * cannibalization. */
   tor_assert(!(flags & CIRCLAUNCH_ONEHOP_TUNNEL));
 
+  tor_assert_nonfatal(from_purpose == CIRCUIT_PURPOSE_C_GENERAL ||
+                      from_purpose == CIRCUIT_PURPOSE_HS_GENERAL);
+
+  /* If we are using vanguards/pinned middles, then enforce
+   * choosing only from HS_GENERAL for them */
+  if (circuit_purpose_needs_vanguards(purpose) &&
+      from_purpose != CIRCUIT_PURPOSE_HS_GENERAL) {
+    log_notice(LD_BUG,
+              "Refusing to cannibalize non-vanguard circuits for "
+              "hidden service purpose %d from purpose %d", purpose,
+              from_purpose);
+    return NULL;
+  }
+
   log_debug(LD_CIRC,
             "Hunting for a circ to cannibalize: purpose %d, uptime %d, "
             "capacity %d, internal %d",
@@ -1751,15 +1771,26 @@ circuit_find_to_cannibalize(uint8_t purpose, extend_info_t *info,
     if (CIRCUIT_IS_ORIGIN(circ_) &&
         circ_->state == CIRCUIT_STATE_OPEN &&
         !circ_->marked_for_close &&
-        circ_->purpose == CIRCUIT_PURPOSE_C_GENERAL &&
+        circ_->purpose == from_purpose &&
         !circ_->timestamp_dirty) {
       origin_circuit_t *circ = TO_ORIGIN_CIRCUIT(circ_);
+
+      /* Only cannibalize from reasonable length circuits. If we
+       * want C_GENERAL, then only choose 3 hop circs. If we want
+       * HS_GENERAL, only choose 4 hop circs. Ignore all other
+       * lengths and purpose combos */
+      if (!((circ->build_state->desired_path_len == DEFAULT_ROUTE_LEN &&
+           from_purpose == CIRCUIT_PURPOSE_C_GENERAL) ||
+          (circ->build_state->desired_path_len == DEFAULT_ROUTE_LEN+1 &&
+           from_purpose == CIRCUIT_PURPOSE_HS_GENERAL))) {
+        goto next;
+      }
+
       if ((!need_uptime || circ->build_state->need_uptime) &&
           (!need_capacity || circ->build_state->need_capacity) &&
           (internal == circ->build_state->is_internal) &&
           !circ->unusable_for_new_conns &&
           circ->remaining_relay_early_cells &&
-          circ->build_state->desired_path_len == DEFAULT_ROUTE_LEN &&
           !circ->build_state->onehop_tunnel &&
           !circ->isolation_values_set) {
         if (info) {
