@@ -1026,7 +1026,7 @@ circuit_free(circuit_t *circ)
    * the circuit is closed. This is to avoid any code path that free
    * registered circuits without closing them before. */
   if (circ->hs_token) {
-    hs_circuitmap_remove_circuit(circ);
+    hs_cleanup_circ(circ);
   }
 
   /* Clear cell queue _after_ removing it from the map.  Otherwise our
@@ -1919,23 +1919,8 @@ circuit_mark_for_close_, (circuit_t *circ, int reason, int line,
     }
   }
 
-  /* Notify the HS subsystem for the intro point circuit closing so it can be
-   * dealt with cleanly. */
-  if (circ->purpose == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO ||
-      circ->purpose == CIRCUIT_PURPOSE_S_INTRO) {
-    hs_service_intro_circ_has_closed(TO_ORIGIN_CIRCUIT(circ));
-  }
-  /* Clear HS circuitmap token for this circ (if any). Very important to be
-   * done after the HS subsystem has been notified of the close else the
-   * circuit will not be found.
-   *
-   * We do this at the close because from this point on, the circuit is good
-   * as dead. We can't remove it in the circuit free() function because we
-   * open a race window between the close and free where we can't register a
-   * new circuit for the same intro point. */
-  if (circ->hs_token) {
-    hs_circuitmap_remove_circuit(circ);
-  }
+  /* Notify the HS subsystem that this circuit is closing. */
+  hs_cleanup_circ(circ);
 
   if (circuits_pending_close == NULL)
     circuits_pending_close = smartlist_new();
