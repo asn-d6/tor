@@ -2631,8 +2631,8 @@ static int
 connection_ap_get_nonrend_circ_purpose(const entry_connection_t *conn)
 {
   const connection_t *base_conn = ENTRY_TO_CONN(conn);
-  tor_assert(!connection_edge_is_rendezvous_stream(
-              ENTRY_TO_EDGE_CONN(conn)));
+  tor_assert_nonfatal(!connection_edge_is_rendezvous_stream(
+                      ENTRY_TO_EDGE_CONN(conn)));
 
   if (base_conn->linked_conn &&
       base_conn->linked_conn->type == CONN_TYPE_DIR) {
