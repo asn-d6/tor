@@ -2169,9 +2169,9 @@ pick_rendezvous_node(router_crn_flags_t flags)
  * Return NULL if no usable nodes could be found. */
 static const node_t *
 pick_restricted_middle_node(router_crn_flags_t flags,
-                               routerset_t *pick_from,
-                               routerset_t *exclude_set,
-                               smartlist_t *exclude_list)
+                            const routerset_t *pick_from,
+                            const routerset_t *exclude_set,
+                            const smartlist_t *exclude_list)
 {
   const node_t *middle_node = NULL;
   const int need_desc = (flags & CRN_NEED_DESC) != 0;
@@ -2566,6 +2566,53 @@ build_middle_exclude_list(uint8_t purpose,
   return excluded;
 }
 
+/** Return true if we MUST use vanguards for picking this middle node. */
+static int
+middle_node_must_be_vanguard(const or_options_t *options,
+                             uint8_t purpose, int cur_len)
+{
+  /* If this is not a hidden service circuit, don't use vanguards */
+  if (!circuit_purpose_is_hidden_service(purpose)) {
+    return 0;
+  }
+
+  /* If we have sticky L2 nodes, and this is an L2 pick, use vanguards */
+  if (options->HSLayer2Guards && cur_len == 1) {
+    return 1;
+  }
+
+  /* If we have sticky L3 nodes, and this is an L3 pick, use vanguards */
+  if (options->HSLayer3Guards && cur_len == 2) {
+    return 1;
+  }
+
+  return 0;
+}
+
+/** Pick a sticky vanguard middle node or return NULL if not found.
+ *  See doc of pick_restricted_middle_node() for argument details. */
+static const node_t *
+pick_vanguard_middle_node(const or_options_t *options,
+                          router_crn_flags_t flags, int cur_len,
+                          const smartlist_t *excluded)
+{
+  const routerset_t *vanguard_routerset = NULL;
+
+  /* Pick the right routerset based on the current hop */
+  if (cur_len == 1) {
+    vanguard_routerset = options->HSLayer2Guards;
+  } else if (cur_len == 2) {
+    vanguard_routerset = options->HSLayer3Guards;
+  } else {
+    /* guaranteed by middle_node_should_be_vanguard() */
+    tor_assert_nonfatal_unreached();
+    return NULL;
+  }
+
+  return pick_restricted_middle_node(flags, vanguard_routerset,
+                                     options->ExcludeNodes, excluded);
+}
+
 /** A helper function used by onion_extend_cpath(). Use <b>purpose</b>
  * and <b>state</b> and the cpath <b>head</b> (currently populated only
  * to length <b>cur_len</b> to decide a suitable middle hop for a
@@ -2595,22 +2642,10 @@ choose_good_middle_server(uint8_t purpose,
   if (state->need_capacity)
     flags |= CRN_NEED_CAPACITY;
 
-  /** If a hidden service wants a specific middle node for the second
-      hop, pin this node now. */
-  if (options->HSLayer2Guards && circuit_purpose_is_hidden_service(purpose) &&
-      cur_len == 1) {
-    log_debug(LD_GENERAL, "Picking a sticky layer2 node");
-    return pick_restricted_middle_node(flags, options->HSLayer2Guards,
-                                       options->ExcludeNodes,
-                                       excluded);
-  }
-
-  if (options->HSLayer3Guards && circuit_purpose_is_hidden_service(purpose) &&
-      cur_len == 2) {
-    log_debug(LD_GENERAL, "Picking a sticky layer3 node");
-    return pick_restricted_middle_node(flags, options->HSLayer3Guards,
-                                       options->ExcludeNodes,
-                                       excluded);
+  /** If a hidden service circuit wants a specific middle node, pin it. */
+  if (middle_node_must_be_vanguard(options, purpose, cur_len)) {
+    log_debug(LD_GENERAL, "Picking a sticky node (cur_len = %d)", cur_len);
+    return pick_vanguard_middle_node(options, flags, cur_len, excluded);
   }
 
   choice = router_choose_random_node(excluded, options->ExcludeNodes, flags);
