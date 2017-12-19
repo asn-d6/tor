@@ -1531,7 +1531,7 @@ The following options are useful only for clients (that is, if
     picked.
  +
     If no nodes in HSLayer2Guards are currently available for
-    use, the Hidden Service will not work.
+    use, Tor will not work.
 
 [[HSLayer3Guards]] **HSLayer3Guards** __node__,__node__,__...__::
     A list of identity fingerprints, nicknames, country codes and
@@ -1557,7 +1557,7 @@ The following options are useful only for clients (that is, if
     picked.
  +
     If no nodes in HSLayer3Guards are currently available for
-    use, the Hidden Service will not work.
+    use, Tor will not work.
 
 [[UseMicrodescriptors]] **UseMicrodescriptors** **0**|**1**|**auto**::
     Microdescriptors are a smaller version of the information that Tor needs
