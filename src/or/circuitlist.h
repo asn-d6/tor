@@ -56,8 +56,7 @@ origin_circuit_t *circuit_get_next_service_intro_circ(origin_circuit_t *start);
 origin_circuit_t *circuit_get_next_service_rp_circ(origin_circuit_t *start);
 origin_circuit_t *circuit_get_next_service_hsdir_circ(origin_circuit_t *start);
 origin_circuit_t *circuit_find_to_cannibalize(uint8_t purpose,
-                                              extend_info_t *info, int flags,
-                                              uint8_t from_purpose);
+                                              extend_info_t *info, int flags);
 void circuit_mark_all_unused_circs(void);
 void circuit_mark_all_dirty_circs_as_unusable(void);
 MOCK_DECL(void, circuit_mark_for_close_, (circuit_t *circ, int reason,

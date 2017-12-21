@@ -1715,14 +1715,29 @@ circuit_can_be_cannibalized_for_v3_rp(const origin_circuit_t *circ)
   return 0;
 }
 
+/** We are trying to create a circuit of purpose <b>purpose</b> and we are
+ *  looking for cannibalizable circuits. Return the circuit purpose we would be
+ *  willing to cannibalize. */
+static uint8_t
+get_circuit_purpose_needed_to_cannibalize(uint8_t purpose)
+{
+  if (circuit_purpose_needs_vanguards(purpose)) {
+    /* If we are using vanguards, then we should only cannibalize vanguard
+     * circuits so that we get the same path construction logic. */
+    return CIRCUIT_PURPOSE_HS_GENERAL;
+  } else {
+    /* If no vanguards are used just get a general circuit! */
+    return CIRCUIT_PURPOSE_C_GENERAL;
+  }
+}
+
 /** Return a circuit that is open, is CIRCUIT_PURPOSE_C_GENERAL,
  * has a timestamp_dirty value of 0, has flags matching the CIRCLAUNCH_*
  * flags in <b>flags</b>, and if info is defined, does not already use info
  * as any of its hops; or NULL if no circuit fits this description.
  *
- * The <b>purpose</b> argument (currently ignored) refers to the purpose of
- * the circuit we want to create, not the purpose of the circuit we want to
- * cannibalize.
+ * The <b>purpose</b> argument refers to the purpose of the circuit we want to
+ * create, not the purpose of the circuit we want to cannibalize.
  *
  * If !CIRCLAUNCH_NEED_UPTIME, prefer returning non-uptime circuits.
  *
@@ -1735,32 +1750,24 @@ circuit_can_be_cannibalized_for_v3_rp(const origin_circuit_t *circ)
  * a new circuit.)
  */
 origin_circuit_t *
-circuit_find_to_cannibalize(uint8_t purpose, extend_info_t *info,
-                            int flags, uint8_t from_purpose)
+circuit_find_to_cannibalize(uint8_t purpose, extend_info_t *info, int flags)
 {
   origin_circuit_t *best=NULL;
   int need_uptime = (flags & CIRCLAUNCH_NEED_UPTIME) != 0;
   int need_capacity = (flags & CIRCLAUNCH_NEED_CAPACITY) != 0;
   int internal = (flags & CIRCLAUNCH_IS_INTERNAL) != 0;
   const or_options_t *options = get_options();
+  /* We want the circuit we are trying to cannibalize to have this purpose */
+  int purpose_needed;
 
   /* Make sure we're not trying to create a onehop circ by
    * cannibalization. */
   tor_assert(!(flags & CIRCLAUNCH_ONEHOP_TUNNEL));
 
-  tor_assert_nonfatal(from_purpose == CIRCUIT_PURPOSE_C_GENERAL ||
-                      from_purpose == CIRCUIT_PURPOSE_HS_GENERAL);
+  purpose_needed = get_circuit_purpose_needed_to_cannibalize(purpose);
 
-  /* If we are using vanguards/pinned middles, then enforce
-   * choosing only from HS_GENERAL for them */
-  if (circuit_purpose_needs_vanguards(purpose) &&
-      from_purpose != CIRCUIT_PURPOSE_HS_GENERAL) {
-    log_notice(LD_BUG,
-              "Refusing to cannibalize non-vanguard circuits for "
-              "hidden service purpose %d from purpose %d", purpose,
-              from_purpose);
-    return NULL;
-  }
+  tor_assert_nonfatal(purpose_needed == CIRCUIT_PURPOSE_C_GENERAL ||
+                      purpose_needed == CIRCUIT_PURPOSE_HS_GENERAL);
 
   log_debug(LD_CIRC,
             "Hunting for a circ to cannibalize: purpose %d, uptime %d, "
@@ -1771,7 +1778,7 @@ circuit_find_to_cannibalize(uint8_t purpose, extend_info_t *info,
     if (CIRCUIT_IS_ORIGIN(circ_) &&
         circ_->state == CIRCUIT_STATE_OPEN &&
         !circ_->marked_for_close &&
-        circ_->purpose == from_purpose &&
+        circ_->purpose == purpose_needed &&
         !circ_->timestamp_dirty) {
       origin_circuit_t *circ = TO_ORIGIN_CIRCUIT(circ_);
 
@@ -1780,9 +1787,9 @@ circuit_find_to_cannibalize(uint8_t purpose, extend_info_t *info,
        * HS_GENERAL, only choose 4 hop circs. Ignore all other
        * lengths and purpose combos */
       if (!((circ->build_state->desired_path_len == DEFAULT_ROUTE_LEN &&
-           from_purpose == CIRCUIT_PURPOSE_C_GENERAL) ||
+             purpose_needed == CIRCUIT_PURPOSE_C_GENERAL) ||
           (circ->build_state->desired_path_len == DEFAULT_ROUTE_LEN+1 &&
-           from_purpose == CIRCUIT_PURPOSE_HS_GENERAL))) {
+           purpose_needed == CIRCUIT_PURPOSE_HS_GENERAL))) {
         goto next;
       }
 

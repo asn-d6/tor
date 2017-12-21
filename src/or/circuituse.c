@@ -1985,17 +1985,9 @@ circuit_launch_by_extend_info(uint8_t purpose,
        purpose != CIRCUIT_PURPOSE_S_ESTABLISH_INTRO) &&
       !onehop_tunnel && !need_specific_rp) {
     /* see if there are appropriate circs available to cannibalize. */
-    if (circuit_purpose_needs_vanguards(purpose)) {
-      circ = circuit_find_to_cannibalize(purpose,
-                                         extend_info, flags,
-                                         CIRCUIT_PURPOSE_HS_GENERAL);
-    } else {
-     /* XXX if we're planning to add a hop, perhaps we want to look for
+    /* XXX if we're planning to add a hop, perhaps we want to look for
      * internal circs rather than exit circs? -RD */
-     circ = circuit_find_to_cannibalize(purpose,
-                                         extend_info, flags,
-                                         CIRCUIT_PURPOSE_C_GENERAL);
-    }
+    circ = circuit_find_to_cannibalize(purpose, extend_info, flags);
     if (circ) {
       uint8_t old_purpose = circ->base_.purpose;
       struct timeval old_timestamp_began = circ->base_.timestamp_began;
