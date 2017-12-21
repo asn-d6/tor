@@ -1971,13 +1971,15 @@ circuit_launch_by_extend_info(uint8_t purpose,
   }
 
   /* We don't try to cannibalize unless an exit is known.
-   * We also don't try to cannibalize for testing, HS_GENERAL,
-   * or server-side intro circs.
+   * We also don't try to cannibalize for testing, and HS_GENERAL circuits.
    *
    * For vanguards, the server-side intro circ is not cannibalized
    * because we pre-build 4 hop HS circuits, and it only needs a 3 hop
    * circuit. It is also long-lived, so it is more important that
-   * it have lower latency than get built fast. */
+   * it have lower latency than get built fast.
+   *
+   * We also don't cannibalize if it's an 1-hop tunnel or if we need a specific
+   * rendezvous point. */
   if ((extend_info || purpose != CIRCUIT_PURPOSE_C_GENERAL) &&
       purpose != CIRCUIT_PURPOSE_TESTING &&
       purpose != CIRCUIT_PURPOSE_HS_GENERAL &&
