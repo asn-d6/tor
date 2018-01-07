@@ -1212,7 +1212,7 @@ circuit_launch_predicted_hs_circ(int flags)
   /* K.I.S.S. implementation of bug #23101: If we are using
    * vanguards or pinned middles, pre-build a specific purpose
    * for HS circs. */
-  if (circuit_purpose_needs_vanguards(CIRCUIT_PURPOSE_HS_GENERAL)) {
+  if (circuit_should_use_vanguards(CIRCUIT_PURPOSE_HS_GENERAL)) {
     circuit_launch(CIRCUIT_PURPOSE_HS_GENERAL, flags);
   } else {
     /* If no vanguards, then no HS-specific prebuilt circuits are needed.

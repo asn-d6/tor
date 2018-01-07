@@ -1729,7 +1729,7 @@ circuit_can_be_cannibalized_for_v3_rp(const origin_circuit_t *circ)
 static uint8_t
 get_circuit_purpose_needed_to_cannibalize(uint8_t purpose)
 {
-  if (circuit_purpose_needs_vanguards(purpose)) {
+  if (circuit_should_use_vanguards(purpose)) {
     /* If we are using vanguards, then we should only cannibalize vanguard
      * circuits so that we get the same path construction logic. */
     return CIRCUIT_PURPOSE_HS_GENERAL;
