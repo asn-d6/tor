@@ -1195,7 +1195,6 @@ struct testgroup_t testgroups[] = {
   { "dir/md/", microdesc_tests },
   { "entryconn/", entryconn_tests },
   { "entrynodes/", entrynodes_tests },
-  { "guardfraction/", guardfraction_tests },
   { "extorport/", extorport_tests },
   { "legacy_hs/", hs_tests },
   { "hs_cache/", hs_cache },

@@ -163,28 +163,6 @@ static entry_guard_t *get_sampled_guard_by_bridge_addr(guard_selection_t *gs,
 static int entry_guard_obeys_restriction(const entry_guard_t *guard,
                                          const entry_guard_restriction_t *rst);
 
-/** Return 0 if we should apply guardfraction information found in the
- *  consensus. A specific consensus can be specified with the
- *  <b>ns</b> argument, if NULL the most recent one will be picked.*/
-int
-should_apply_guardfraction(const networkstatus_t *ns)
-{
-  /* We need to check the corresponding torrc option and the consensus
-   * parameter if we need to. */
-  const or_options_t *options = get_options();
-
-  /* If UseGuardFraction is 'auto' then check the same-named consensus
-   * parameter. If the consensus parameter is not present, default to
-   * "off". */
-  if (options->UseGuardFraction == -1) {
-    return networkstatus_get_param(ns, "UseGuardFraction",
-                                   0, /* default to "off" */
-                                   0, 1);
-  }
-
-  return options->UseGuardFraction;
-}
-
 /** Return true iff we know a descriptor for <b>guard</b> */
 static int
 guard_has_descriptor(const entry_guard_t *guard)
@@ -3396,41 +3374,6 @@ getinfo_helper_entry_guards(control_connection_t *conn,
     smartlist_free(sl);
   }
   return 0;
-}
-
-/* Given the original bandwidth of a guard and its guardfraction,
- * calculate how much bandwidth the guard should have as a guard and
- * as a non-guard.
- *
- * Quoting from proposal236:
- *
- *   Let Wpf denote the weight from the 'bandwidth-weights' line a
- *   client would apply to N for position p if it had the guard
- *   flag, Wpn the weight if it did not have the guard flag, and B the
- *   measured bandwidth of N in the consensus.  Then instead of choosing
- *   N for position p proportionally to Wpf*B or Wpn*B, clients should
- *   choose N proportionally to F*Wpf*B + (1-F)*Wpn*B.
- *
- * This function fills the <b>guardfraction_bw</b> structure. It sets
- * <b>guard_bw</b> to F*B and <b>non_guard_bw</b> to (1-F)*B.
- */
-void
-guard_get_guardfraction_bandwidth(guardfraction_bandwidth_t *guardfraction_bw,
-                                  int orig_bandwidth,
-                                  uint32_t guardfraction_percentage)
-{
-  double guardfraction_fraction;
-
-  /* Turn the percentage into a fraction. */
-  tor_assert(guardfraction_percentage <= 100);
-  guardfraction_fraction = guardfraction_percentage / 100.0;
-
-  long guard_bw = tor_lround(guardfraction_fraction * orig_bandwidth);
-  tor_assert(guard_bw <= INT_MAX);
-
-  guardfraction_bw->guard_bw = (int) guard_bw;
-
-  guardfraction_bw->non_guard_bw = orig_bandwidth - (int) guard_bw;
 }
 
 /** Helper: Update the status of all entry guards, in whatever algorithm

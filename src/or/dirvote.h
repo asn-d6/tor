@@ -86,10 +86,6 @@
 /** Lowest consensus method where we include "package" lines*/
 #define MIN_METHOD_FOR_PACKAGE_LINES 19
 
-/** Lowest consensus method where authorities may include
- * GuardFraction information in microdescriptors. */
-#define MIN_METHOD_FOR_GUARDFRACTION 20
-
 /** Lowest consensus method where authorities may include an "id" line for
  * ed25519 identities in microdescriptors. (Broken; see
  * consensus_method_is_supported() for more info.) */

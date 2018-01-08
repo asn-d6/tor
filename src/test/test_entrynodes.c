@@ -142,8 +142,6 @@ big_fake_network_setup(const struct testcase_t *testcase)
     /* Call half of the nodes a possible guard. */
     if (i % 2 == 0) {
       n->is_possible_guard = 1;
-      n->rs->guardfraction_percentage = 100;
-      n->rs->has_guardfraction = 1;
     }
 
     smartlist_add(big_fake_net_nodes, n);

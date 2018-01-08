@@ -2545,7 +2545,6 @@ compute_weighted_bandwidths(const smartlist_t *sl,
   int64_t weight_scale;
   double Wg = -1, Wm = -1, We = -1, Wd = -1;
   double Wgb = -1, Wmb = -1, Web = -1, Wdb = -1;
-  guardfraction_bandwidth_t guardfraction_bw;
   double *bandwidths = NULL;
   double total_bandwidth = 0.0;
 
@@ -2645,7 +2644,6 @@ compute_weighted_bandwidths(const smartlist_t *sl,
   SMARTLIST_FOREACH_BEGIN(sl, const node_t *, node) {
     int is_exit = 0, is_guard = 0, is_dir = 0, this_bw = 0;
     double weight = 1;
-    double weight_without_guard_flag = 0; /* Used for guardfraction */
     double final_weight = 0;
     is_exit = node->is_exit && ! node->is_bad_exit;
     is_guard = node->is_possible_guard;
@@ -2674,10 +2672,8 @@ compute_weighted_bandwidths(const smartlist_t *sl,
 
     if (is_guard && is_exit) {
       weight = (is_dir ? Wdb*Wd : Wd);
-      weight_without_guard_flag = (is_dir ? Web*We : We);
     } else if (is_guard) {
       weight = (is_dir ? Wgb*Wg : Wg);
-      weight_without_guard_flag = (is_dir ? Wmb*Wm : Wm);
     } else if (is_exit) {
       weight = (is_dir ? Web*We : We);
     } else { // middle
@@ -2689,41 +2685,8 @@ compute_weighted_bandwidths(const smartlist_t *sl,
       this_bw = 0;
     if (weight < 0.0)
       weight = 0.0;
-    if (weight_without_guard_flag < 0.0)
-      weight_without_guard_flag = 0.0;
 
-    /* If guardfraction information is available in the consensus, we
-     * want to calculate this router's bandwidth according to its
-     * guardfraction. Quoting from proposal236:
-     *
-     *    Let Wpf denote the weight from the 'bandwidth-weights' line a
-     *    client would apply to N for position p if it had the guard
-     *    flag, Wpn the weight if it did not have the guard flag, and B the
-     *    measured bandwidth of N in the consensus.  Then instead of choosing
-     *    N for position p proportionally to Wpf*B or Wpn*B, clients should
-     *    choose N proportionally to F*Wpf*B + (1-F)*Wpn*B.
-     */
-    if (node->rs && node->rs->has_guardfraction && rule != WEIGHT_FOR_GUARD) {
-      /* XXX The assert should actually check for is_guard. However,
-       * that crashes dirauths because of #13297. This should be
-       * equivalent: */
-      tor_assert(node->rs->is_possible_guard);
-
-      guard_get_guardfraction_bandwidth(&guardfraction_bw,
-                                        this_bw,
-                                        node->rs->guardfraction_percentage);
-
-      /* Calculate final_weight = F*Wpf*B + (1-F)*Wpn*B */
-      final_weight =
-        guardfraction_bw.guard_bw * weight +
-        guardfraction_bw.non_guard_bw * weight_without_guard_flag;
-
-      log_debug(LD_GENERAL, "%s: Guardfraction weight %f instead of %f (%s)",
-                node->rs->nickname, final_weight, weight*this_bw,
-                bandwidth_weight_rule_to_string(rule));
-    } else { /* no guardfraction information. calculate the weight normally. */
-      final_weight = weight*this_bw;
-    }
+    final_weight = weight*this_bw;
 
     bandwidths[node_sl_idx] = final_weight;
     total_bandwidth += final_weight;

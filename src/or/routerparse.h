@@ -111,10 +111,6 @@ typedef struct {
 
 EXTERN(uint64_t, len_descs_dumped)
 EXTERN(smartlist_t *, descs_dumped)
-STATIC int routerstatus_parse_guardfraction(const char *guardfraction_str,
-                                            networkstatus_t *vote,
-                                            vote_routerstatus_t *vote_rs,
-                                            routerstatus_t *rs);
 MOCK_DECL(STATIC dumped_desc_t *, dump_desc_populate_one_file,
     (const char *dirname, const char *f));
 STATIC void dump_desc_populate_fifo_from_directory(const char *dirname);

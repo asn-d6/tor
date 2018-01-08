@@ -929,8 +929,7 @@ test_options_validate__authdir(void *ignored)
   tdata = get_options_test_data("AuthoritativeDirectory 1\n"
                                 "Address 100.200.10.1\n"
                                 "BridgeAuthoritativeDir 1\n"
-                                "ContactInfo hello@hello.com\n"
-                                "GuardfractionFile non-existant-file\n");
+                                "ContactInfo hello@hello.com\n");
   mock_clean_saved_logs();
   options_validate(tdata->old_opt, tdata->opt, tdata->def_opt, 0, &msg);
   tt_str_op(msg, OP_EQ,
@@ -941,8 +940,7 @@ test_options_validate__authdir(void *ignored)
   tdata = get_options_test_data("AuthoritativeDirectory 1\n"
                                 "Address 100.200.10.1\n"
                                 "BridgeAuthoritativeDir 1\n"
-                                "ContactInfo hello@hello.com\n"
-                                "GuardfractionFile non-existant-file\n");
+                                "ContactInfo hello@hello.com\n");
   mock_clean_saved_logs();
   options_validate(NULL, tdata->opt, tdata->def_opt, 0, &msg);
   tt_str_op(msg, OP_EQ,
