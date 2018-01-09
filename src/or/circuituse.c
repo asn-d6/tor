@@ -1755,6 +1755,20 @@ circuit_build_failed(origin_circuit_t *circ)
    * the last hop or an earlier hop. then use this info below.
    */
   int failed_at_last_hop = 0;
+
+  /* If this circuit should use vanguards, but failed because those vanguards
+   * are missing, emit a ratelimit warn and return (so we don't blame the
+   * entry guard and drop it)
+   */
+  if (circuit_should_use_vanguards(TO_CIRCUIT(circ)->purpose) &&
+      !vanguards_are_reachable_or_disabled()) {
+    static ratelim_t vanguard_fail_limit = RATELIM_INIT(300);
+    log_fn_ratelim(&vanguard_fail_limit, LOG_WARN, LD_CIRC,
+         "Hidden service circuits are failing because some of your specified "
+         "layer 2 or 3 guards are down.");
+    return;
+  }
+
   /* If the last hop isn't open, and the second-to-last is, we failed
    * at the last hop. */
   if (circ->cpath &&

@@ -77,6 +77,7 @@ const node_t *choose_good_entry_server(uint8_t purpose,
                            cpath_build_state_t *state,
                            struct circuit_guard_state_t **guard_state_out);
 void circuit_upgrade_circuits_from_guard_wait(void);
+int vanguards_are_reachable_or_disabled(void);
 
 #ifdef CIRCUITBUILD_PRIVATE
 STATIC circid_t get_unique_circ_id_by_chan(channel_t *chan);

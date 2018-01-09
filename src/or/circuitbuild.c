@@ -2623,6 +2623,39 @@ pick_vanguard_middle_node(const or_options_t *options,
                                      options->ExcludeNodes, excluded);
 }
 
+/**
+ * Return true if we should be able to build a vanguard circuit,
+ * or if we don't want to build them.
+ *
+ * This helper is used in circuit_build_failed() so that we can
+ * avoid blaming our entry guard if the vanguards disappear from
+ * the network.
+ */
+int
+vanguards_are_reachable_or_disabled(void)
+{
+  const or_options_t *options = get_options();
+  /* We use all these flags because we want to know if a circuit
+   * would ever fail due to us not having at least one vanguard
+   * that has all of them. If we don't have at least one vanguard
+   * with all of these flags, then we must not blame our entry guard
+   * and we must warn the user in circuit_build_failed().
+   */
+  router_crn_flags_t flags = CRN_NEED_DESC|CRN_NEED_UPTIME|CRN_NEED_CAPACITY;
+
+  if (options->HSLayer2Guards &&
+      pick_restricted_middle_node(flags, options->HSLayer2Guards,
+                                  options->ExcludeNodes, NULL) == NULL)
+    return 0; /* We could not pick a layer2 guard.. all down or excluded */
+
+  if (options->HSLayer3Guards &&
+      pick_restricted_middle_node(flags, options->HSLayer3Guards,
+                                  options->ExcludeNodes, NULL) == NULL)
+    return 0; /* We could not pick a layer3 guard.. all down or excluded */
+
+  return 1;
+}
+
 /** A helper function used by onion_extend_cpath(). Use <b>purpose</b>
  * and <b>state</b> and the cpath <b>head</b> (currently populated only
  * to length <b>cur_len</b> to decide a suitable middle hop for a
