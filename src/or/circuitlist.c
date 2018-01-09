@@ -1792,12 +1792,10 @@ circuit_find_to_cannibalize(uint8_t purpose, extend_info_t *info, int flags)
 
       /* Only cannibalize from reasonable length circuits. If we
        * want C_GENERAL, then only choose 3 hop circs. If we want
-       * HS_GENERAL, only choose 4 hop circs. Ignore all other
-       * lengths and purpose combos */
-      if (!((circ->build_state->desired_path_len == DEFAULT_ROUTE_LEN &&
-             purpose_needed == CIRCUIT_PURPOSE_C_GENERAL) ||
-          (circ->build_state->desired_path_len == DEFAULT_ROUTE_LEN+1 &&
-           purpose_needed == CIRCUIT_PURPOSE_HS_GENERAL))) {
+       * HS_GENERAL, only choose 4 hop circs.
+       */
+      if (circ->build_state->desired_path_len !=
+          route_len_for_purpose(purpose_needed, NULL)) {
         goto next;
       }
 

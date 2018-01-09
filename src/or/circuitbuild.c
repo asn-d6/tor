@@ -1657,7 +1657,7 @@ onionskin_answer(or_circuit_t *circ,
  * new_route_len()) in the one-hop tunnel case, so we don't need to
  * handle that.
  */
-static int
+int
 route_len_for_purpose(uint8_t purpose, extend_info_t *exit_ei)
 {
   int routelen = DEFAULT_ROUTE_LEN;
