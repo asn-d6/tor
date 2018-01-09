@@ -1811,8 +1811,11 @@ circuit_build_failed(origin_circuit_t *circ)
                TO_CIRCUIT(circ)->n_circ_id, circ->global_identifier);
     }
     if (n_chan_id && !already_marked) {
-      /* New guard API: we failed. */
-      if (circ->guard_state)
+      /* New guard API: we failed. However, don't count failures that
+       * failed during path construction. The cpath should be
+       * at least as long as our desired length. */
+      if (circ->guard_state &&
+          circuit_get_cpath_len(circ) >= circ->build_state->desired_path_len)
         entry_guard_failed(&circ->guard_state);
       /* if there are any one-hop streams waiting on this circuit, fail
        * them now so they can retry elsewhere. */
