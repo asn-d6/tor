@@ -134,7 +134,7 @@ circuit_is_acceptable(const origin_circuit_t *origin_circ,
   }
 
   if (purpose == CIRCUIT_PURPOSE_C_GENERAL ||
-      purpose == CIRCUIT_PURPOSE_HS_GENERAL ||
+      purpose == CIRCUIT_PURPOSE_HS_VANGUARDS ||
       purpose == CIRCUIT_PURPOSE_C_REND_JOINED) {
     if (circ->timestamp_dirty &&
        circ->timestamp_dirty+get_options()->MaxCircuitDirtiness <= now)
@@ -329,7 +329,7 @@ circuit_get_best(const entry_connection_t *conn,
   tor_assert(conn);
 
   tor_assert(purpose == CIRCUIT_PURPOSE_C_GENERAL ||
-             purpose == CIRCUIT_PURPOSE_HS_GENERAL ||
+             purpose == CIRCUIT_PURPOSE_HS_VANGUARDS ||
              purpose == CIRCUIT_PURPOSE_C_HSDIR_GET ||
              purpose == CIRCUIT_PURPOSE_S_HSDIR_POST ||
              purpose == CIRCUIT_PURPOSE_C_INTRODUCE_ACK_WAIT ||
@@ -1090,7 +1090,7 @@ circuit_is_available_for_use(const circuit_t *circ)
   if (circ->timestamp_dirty)
     return 0; /* Only count clean circs */
   if (circ->purpose != CIRCUIT_PURPOSE_C_GENERAL &&
-      circ->purpose != CIRCUIT_PURPOSE_HS_GENERAL)
+      circ->purpose != CIRCUIT_PURPOSE_HS_VANGUARDS)
     return 0; /* We only pay attention to general purpose circuits.
                  General purpose circuits are always origin circuits. */
 
@@ -1212,8 +1212,8 @@ circuit_launch_predicted_hs_circ(int flags)
   /* K.I.S.S. implementation of bug #23101: If we are using
    * vanguards or pinned middles, pre-build a specific purpose
    * for HS circs. */
-  if (circuit_should_use_vanguards(CIRCUIT_PURPOSE_HS_GENERAL)) {
-    circuit_launch(CIRCUIT_PURPOSE_HS_GENERAL, flags);
+  if (circuit_should_use_vanguards(CIRCUIT_PURPOSE_HS_VANGUARDS)) {
+    circuit_launch(CIRCUIT_PURPOSE_HS_VANGUARDS, flags);
   } else {
     /* If no vanguards, then no HS-specific prebuilt circuits are needed.
      * Normal GENERAL circs are fine */
@@ -1490,7 +1490,7 @@ circuit_expire_old_circuits_clientside(void)
         if (circ->purpose == CIRCUIT_PURPOSE_C_GENERAL ||
                 circ->purpose == CIRCUIT_PURPOSE_C_HSDIR_GET ||
                 circ->purpose == CIRCUIT_PURPOSE_S_HSDIR_POST ||
-                circ->purpose == CIRCUIT_PURPOSE_HS_GENERAL ||
+                circ->purpose == CIRCUIT_PURPOSE_HS_VANGUARDS ||
                 circ->purpose == CIRCUIT_PURPOSE_C_MEASURE_TIMEOUT ||
                 circ->purpose == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO ||
                 circ->purpose == CIRCUIT_PURPOSE_TESTING ||
@@ -1916,7 +1916,7 @@ have_enough_path_info(int need_exit)
 int
 circuit_purpose_is_hidden_service(uint8_t purpose)
 {
-   if (purpose == CIRCUIT_PURPOSE_HS_GENERAL) {
+   if (purpose == CIRCUIT_PURPOSE_HS_VANGUARDS) {
      return 1;
    }
 
@@ -1996,7 +1996,8 @@ circuit_launch_by_extend_info(uint8_t purpose,
   }
 
   /* We don't try to cannibalize unless an exit is known.
-   * We also don't try to cannibalize for testing, and HS_GENERAL circuits.
+   * We also don't try to cannibalize for testing, and HS_VANGUARDS
+   * circuits.
    *
    * For vanguards, the server-side intro circ is not cannibalized
    * because we pre-build 4 hop HS circuits, and it only needs a 3 hop
@@ -2007,7 +2008,7 @@ circuit_launch_by_extend_info(uint8_t purpose,
    * rendezvous point. */
   if ((extend_info || purpose != CIRCUIT_PURPOSE_C_GENERAL) &&
       purpose != CIRCUIT_PURPOSE_TESTING &&
-      purpose != CIRCUIT_PURPOSE_HS_GENERAL &&
+      purpose != CIRCUIT_PURPOSE_HS_VANGUARDS &&
       (!circuit_should_use_vanguards(purpose) ||
        purpose != CIRCUIT_PURPOSE_S_ESTABLISH_INTRO) &&
       !onehop_tunnel && !need_specific_rp) {

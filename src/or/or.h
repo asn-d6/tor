@@ -556,7 +556,7 @@ typedef enum {
 #define CIRCUIT_PURPOSE_PATH_BIAS_TESTING 22
 
 /** This circuit is used for vanguards/restricted paths */
-#define CIRCUIT_PURPOSE_HS_GENERAL 23
+#define CIRCUIT_PURPOSE_HS_VANGUARDS 23
 
 #define CIRCUIT_PURPOSE_MAX_ 23
 /** A catch-all for unrecognized purposes. Currently we don't expect

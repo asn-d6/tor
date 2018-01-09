@@ -721,8 +721,8 @@ circuit_purpose_to_controller_string(uint8_t purpose)
       return "CONTROLLER";
     case CIRCUIT_PURPOSE_PATH_BIAS_TESTING:
       return "PATH_BIAS_TESTING";
-    case CIRCUIT_PURPOSE_HS_GENERAL:
-      return "HS_GENERAL";
+    case CIRCUIT_PURPOSE_HS_VANGUARDS:
+      return "HS_VANGUARDS";
 
     default:
       tor_snprintf(buf, sizeof(buf), "UNKNOWN_%d", (int)purpose);
@@ -751,7 +751,7 @@ circuit_purpose_to_controller_hs_state_string(uint8_t purpose)
     case CIRCUIT_PURPOSE_TESTING:
     case CIRCUIT_PURPOSE_CONTROLLER:
     case CIRCUIT_PURPOSE_PATH_BIAS_TESTING:
-    case CIRCUIT_PURPOSE_HS_GENERAL:
+    case CIRCUIT_PURPOSE_HS_VANGUARDS:
       return NULL;
 
     case CIRCUIT_PURPOSE_INTRO_POINT:
@@ -849,8 +849,8 @@ circuit_purpose_to_string(uint8_t purpose)
     case CIRCUIT_PURPOSE_PATH_BIAS_TESTING:
       return "Path-bias testing circuit";
 
-    case CIRCUIT_PURPOSE_HS_GENERAL:
-      return "Hidden service: General vanguard circuit";
+    case CIRCUIT_PURPOSE_HS_VANGUARDS:
+      return "Hidden service: Pre-built vanguard circuit";
 
     default:
       tor_snprintf(buf, sizeof(buf), "UNKNOWN_%d", (int)purpose);
@@ -1732,7 +1732,7 @@ get_circuit_purpose_needed_to_cannibalize(uint8_t purpose)
   if (circuit_should_use_vanguards(purpose)) {
     /* If we are using vanguards, then we should only cannibalize vanguard
      * circuits so that we get the same path construction logic. */
-    return CIRCUIT_PURPOSE_HS_GENERAL;
+    return CIRCUIT_PURPOSE_HS_VANGUARDS;
   } else {
     /* If no vanguards are used just get a general circuit! */
     return CIRCUIT_PURPOSE_C_GENERAL;
@@ -1775,7 +1775,7 @@ circuit_find_to_cannibalize(uint8_t purpose, extend_info_t *info, int flags)
   purpose_needed = get_circuit_purpose_needed_to_cannibalize(purpose);
 
   tor_assert_nonfatal(purpose_needed == CIRCUIT_PURPOSE_C_GENERAL ||
-                      purpose_needed == CIRCUIT_PURPOSE_HS_GENERAL);
+                      purpose_needed == CIRCUIT_PURPOSE_HS_VANGUARDS);
 
   log_debug(LD_CIRC,
             "Hunting for a circ to cannibalize: purpose %d, uptime %d, "
@@ -1792,7 +1792,7 @@ circuit_find_to_cannibalize(uint8_t purpose, extend_info_t *info, int flags)
 
       /* Only cannibalize from reasonable length circuits. If we
        * want C_GENERAL, then only choose 3 hop circs. If we want
-       * HS_GENERAL, only choose 4 hop circs.
+       * HS_VANGUARDS, only choose 4 hop circs.
        */
       if (circ->build_state->desired_path_len !=
           route_len_for_purpose(purpose_needed, NULL)) {

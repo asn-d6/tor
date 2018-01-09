@@ -1674,7 +1674,7 @@ route_len_for_purpose(uint8_t purpose, extend_info_t *exit_ei)
      */
     if (purpose == CIRCUIT_PURPOSE_C_ESTABLISH_REND ||
         purpose == CIRCUIT_PURPOSE_S_HSDIR_POST ||
-        purpose == CIRCUIT_PURPOSE_HS_GENERAL ||
+        purpose == CIRCUIT_PURPOSE_HS_VANGUARDS ||
         purpose == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO)
       return routelen+1;
 
@@ -2251,7 +2251,7 @@ choose_good_exit_server(origin_circuit_t *circ, int need_uptime,
   switch (TO_CIRCUIT(circ)->purpose) {
     case CIRCUIT_PURPOSE_C_HSDIR_GET:
     case CIRCUIT_PURPOSE_S_HSDIR_POST:
-    case CIRCUIT_PURPOSE_HS_GENERAL:
+    case CIRCUIT_PURPOSE_HS_VANGUARDS:
       tor_assert_nonfatal(is_internal);
       /* We need to restrict these to vanguards. Build middles instead...
        * But since we need an exit, lie and say our pathlen is already 2
