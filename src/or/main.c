@@ -34,6 +34,7 @@
 #include "dirvote.h"
 #include "dns.h"
 #include "dnsserv.h"
+#include "dos.h"
 #include "entrynodes.h"
 #include "geoip.h"
 #include "hibernate.h"
@@ -2883,6 +2884,12 @@ tor_init(int argc, char *argv[])
   /* Scan/clean unparseable descroptors; after reading config */
   routerparse_init();
 
+  /* Only initialize the Denial of Service mitigation subsystem if we are
+   * either a relay or a bridge. */
+  if (server_mode(get_options())) {
+    dos_init();
+  }
+
   return 0;
 }
 
@@ -2989,6 +2996,7 @@ tor_free_all(int postfork)
   control_free_all();
   sandbox_free_getaddrinfo_cache();
   protover_free_all();
+  dos_free_all();
   if (!postfork) {
     config_free_all();
     or_state_free_all();
