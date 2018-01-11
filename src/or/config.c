@@ -2039,6 +2039,17 @@ options_act(const or_options_t *old_options)
     }
   }
 
+  /* DoS mitigation subsystem. */
+  if (server_mode(options)) {
+    if (!old_options || !server_mode(old_options)) {
+      /* Going from a non relay to a relay, initialize. */
+      dos_init();
+    }
+  } else if (old_options && server_mode(old_options)) {
+    /* Going from relay to non relay, clean it up. */
+    dos_free_all();
+  }
+
   /* Load the webpage we're going to serve every time someone asks for '/' on
      our DirPort. */
   tor_free(global_dirfrontpagecontents);
