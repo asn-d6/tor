@@ -1776,6 +1776,8 @@ circuit_build_failed(origin_circuit_t *circ)
       circ->cpath->prev->prev->state == CPATH_STATE_OPEN) {
     failed_at_last_hop = 1;
   }
+
+  /* Check if we failed at first hop */
   if (circ->cpath &&
       circ->cpath->state != CPATH_STATE_OPEN &&
       ! circ->base_.received_destroy) {
@@ -1995,9 +1997,10 @@ circuit_launch_by_extend_info(uint8_t purpose,
     need_specific_rp = 1;
   }
 
-  /* We don't try to cannibalize unless an exit is known.
-   * We also don't try to cannibalize for testing, and HS_VANGUARDS
-   * circuits.
+  /* We don't try to cannibalize generic circuits (unless their exit is known),
+   * or HS_VANGUARDS circuits, because these are created preemptively.
+   *
+   * We also don't try to cannibalize circuits made for testing.
    *
    * For vanguards, the server-side intro circ is not cannibalized
    * because we pre-build 4 hop HS circuits, and it only needs a 3 hop
