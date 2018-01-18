@@ -11,11 +11,22 @@
 
 /* General API. */
 
+/* Stub so the pointer is opaque. The geoip subsystem uses this in the per-IP
+ * client map. */
+struct dos_client_stats_t;
+
 void dos_init(void);
 void dos_free_all(void);
 void dos_consensus_has_changed(void);
 
-/* Circuit creation DoS mitigation subsystemn interface. */
+void dos_new_client_conn(const tor_addr_t *addr);
+void dos_close_client_conn(const tor_addr_t *addr);
+
+void dos_client_stats_free(struct dos_client_stats_t *obj);
+
+/*
+ * Circuit creation DoS mitigation subsystemn interface.
+ */
 
 /* dos_cc_enabled, that feature is disabled by default. */
 #define DOS_CC_ENABLED_DEFAULT 0

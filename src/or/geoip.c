@@ -515,6 +515,7 @@ clientmap_entry_free(clientmap_entry_t *ent)
   if (!ent)
     return;
 
+  dos_client_stats_free(ent->dos_stats);
   tor_free(ent->transport_name);
   tor_free(ent);
 }

@@ -2590,6 +2590,9 @@ channel_do_open_actions(channel_t *chan)
                                &remote_addr, transport_name,
                                now);
         tor_free(transport_name);
+
+        /* Notify the DoS subsystem of a new client. */
+        dos_new_client_conn(&remote_addr);
       }
       /* Otherwise the underlying transport can't tell us this, so skip it */
     }
