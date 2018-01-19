@@ -42,10 +42,23 @@ void dos_client_stats_free(struct dos_client_stats_t *obj);
 /* dos_cc_defense_time_period in seconds. */
 #define DOS_CC_DEFENSE_TIME_PERIOD_DEFAULT (60 * 60)
 
+/* Type of defense that we can use for the circuit creation DoS mitigation. */
+typedef enum dos_cc_defense_type_t {
+  /* No defense used. */
+  DOS_CC_DEFENSE_NONE             = 0,
+  /* Refuse any cells which means a DESTROY cell will be sent back. */
+  DOS_CC_DEFENSE_REFUSE_CELL      = 1,
+
+  /* Maximum value that can be used. Useful for the boundaries of the
+   * consensus parameter. */
+  DOS_CC_DEFENSE_MAX              = 1,
+} dos_cc_defense_type_t;
+
 void dos_cc_init(void);
 void dos_cc_free_all(void);
 
 void dos_cc_new_create_cell(channel_t *channel);
+dos_cc_defense_type_t dos_cc_get_defense_type(circuit_t *circ);
 
 #endif /* TOR_DOS_H */
 

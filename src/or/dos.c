@@ -31,7 +31,7 @@ static unsigned int dos_cc_enabled = 0;
 static uint32_t dos_cc_min_concurrent_conn;
 static uint32_t dos_cc_circuit_time_rate;
 static uint32_t dos_cc_circuit_max_count;
-static uint32_t dos_cc_defense_type;
+static dos_cc_defense_type_t dos_cc_defense_type;
 static int32_t dos_cc_defense_time_period;
 
 /* Structure that keeps stats of client connection per-IP. */
@@ -120,11 +120,9 @@ get_ns_param_cc_circuit_max_count(void)
 static uint32_t
 get_ns_param_cc_defense_type(void)
 {
-  /* Time in seconds. */
   return networkstatus_get_param(NULL, "dos_cc_defense_type",
                                  DOS_CC_DEFENSE_TYPE_DEFAULT,
-                                 0, 1);
-  /* XXX: Use defines for these max and min. */
+                                 DOS_CC_DEFENSE_NONE, DOS_CC_DEFENSE_MAX);
 }
 
 /* Return the consensus parameter of the defense time period which is how much
@@ -347,6 +345,44 @@ cc_mark_client(cc_client_stats_t *stats)
     crypto_rand_int_range(1, dos_cc_defense_time_period / 2);
 }
 
+/* Return true iff the given channel address is marked as malicious. This is
+ * called a lot and part of the fast path of handling cells. It has to remain
+ * as fast as we can. */
+static int
+cc_channel_addr_is_marked(channel_t *chan)
+{
+  time_t now;
+  tor_addr_t addr;
+  clientmap_entry_t *entry;
+  cc_client_stats_t *stats = NULL;
+
+  if (chan == NULL) {
+    goto end;
+  }
+  /* Must be a client connection else we ignore. */
+  if (!channel_is_client(chan)) {
+    goto end;
+  }
+  /* Without an IP address, nothing can work. */
+  if (!channel_get_addr_if_possible(chan, &addr)) {
+    goto end;
+  }
+
+  /* We are only interested in client connection from the geoip cache. */
+  entry = geoip_lookup_client(&addr, NULL, GEOIP_CLIENT_CONNECT);
+  if (entry == NULL || entry->dos_stats == NULL) {
+    /* We can have a connection creating circuits but not tracked by the geoip
+     * cache. Once this DoS subsystem is enabled, we can end up here with no
+     * entry for the channel. */
+    goto end;
+  }
+  now = approx_time();
+  stats = entry->dos_stats->cc_stats;
+
+ end:
+  return stats && stats->marked_until_ts >= now;
+}
+
 /* General private API */
 
 /* Return true iff we have at least one DoS detection enabled. This is used to
@@ -427,6 +463,30 @@ dos_cc_new_create_cell(channel_t *chan)
 
  end:
   return;
+}
+
+/* Return the defense type that should be used for this circuit.
+ *
+ * This is part of the fast path and called a lot. */
+dos_cc_defense_type_t
+dos_cc_get_defense_type(circuit_t *circ)
+{
+  tor_assert(circ);
+
+  /* Skip everything if not enabled. */
+  if (!dos_cc_enabled) {
+    goto end;
+  }
+
+  /* On an OR circuit, we'll check if the previous channel is a marked client
+   * connection detected by our DoS circuit creation mitigation subsystem. */
+  if (CIRCUIT_IS_ORCIRC(circ) &&
+      cc_channel_addr_is_marked(TO_OR_CIRCUIT(circ)->p_chan)) {
+    return dos_cc_defense_type;
+  }
+
+ end:
+  return DOS_CC_DEFENSE_NONE;
 }
 
 /* General API */
