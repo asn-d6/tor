@@ -38,6 +38,16 @@ typedef struct cc_client_stats_t {
   /* Concurrent connection count from the specific address. 2^32 is most
    * likely way to big for the amount of allowed file descriptors. */
   uint32_t concurrent_count;
+
+  /* Number of allowed circuit rate that is this value is refilled at a rate
+   * defined by the consensus plus a bit of random. It is decremented every
+   * time a new circuit is seen for this client address and if the count goes
+   * to 0, we have a positive detection. */
+  uint32_t circuit_bucket;
+
+  /* When was the last time we've refilled the circuit bucket? This is used to
+   * know if we need to refill the bucket when a new circuit is seen. */
+  time_t last_circ_bucket_refill_ts;
 } cc_client_stats_t;
 
 /*
@@ -180,6 +190,72 @@ cc_consensus_has_changed(void)
   return;
 }
 
+/* Given the circuit creation client statistics object, refill the cirucit
+ * bucket if needed. This also works if the bucket was never filled in the
+ * first place. The addr is only used for logging purposes. */
+static void
+cc_stats_refill_bucket(cc_client_stats_t *stats, const tor_addr_t *addr)
+{
+  uint32_t new_circuit_bucket_count;
+  double circuit_rate = 0.0, num_token;
+  time_t now, elapsed_time_last_refill;
+
+  tor_assert(stats);
+  tor_assert(addr);
+
+  now = approx_time();
+
+  /* We've never filled the bucket so fill it with the expected number and we
+   * are done. */
+  if (stats->last_circ_bucket_refill_ts == 0) {
+    num_token = dos_cc_circuit_max_count;
+    goto end;
+  }
+
+  /* At this point, we know we need to add token to the bucket. We'll first
+   * compute the circuit rate that is how many circuit are we allowed to do
+   * per second. For this, we take the maximum count and time rate from the
+   * consensus. */
+  circuit_rate = (double) dos_cc_circuit_max_count /
+                 (double) dos_cc_circuit_time_rate;
+  /* Safety checks here. 2^16 circuits per second is insanely high so cap it
+   * just to be safe. Because the above is controlled by the consensus, this
+   * should really never happens. */
+  if (BUG(circuit_rate >= UINT16_MAX)) {
+    circuit_rate = UINT16_MAX;
+  }
+
+  /* How many seconds have elapsed between now and the last refill? */
+  elapsed_time_last_refill = now - stats->last_circ_bucket_refill_ts;
+
+  /* We cap this to the circuit time rate else an attacker could connect once,
+   * wait 2 days for which the circuit bucket will fill up continously and
+   * then start a circuit creaton DoS. */
+  if (elapsed_time_last_refill > dos_cc_circuit_time_rate) {
+    elapsed_time_last_refill = dos_cc_circuit_time_rate;
+  }
+
+  /* Compute how many circuits we are allowed in that time frame which we'll
+   * add to the bucket. We want it to be rounded down to an integer. For
+   * example, if we have 0.8 circuits allowed, it is clamped down to 0. */
+  num_token = elapsed_time_last_refill * circuit_rate;
+
+ end:
+  /* We cap the bucket to the maxium circuit count else this could grow to
+   * infinity over time. We want the new tokens clamped down to uint32_t so we
+   * get an integer value. */
+  new_circuit_bucket_count = MIN(stats->circuit_bucket + (uint32_t) num_token,
+                                 dos_cc_circuit_max_count);
+  log_debug(LD_DOS, "DoS address %s has its circuit bucket value: %" PRIu32
+                    ". Filling it to %" PRIu32 ". Circuit rate is %.2f",
+            fmt_addr(addr), stats->circuit_bucket, new_circuit_bucket_count,
+            circuit_rate);
+
+  stats->circuit_bucket = new_circuit_bucket_count;
+  stats->last_circ_bucket_refill_ts = now;
+  return;
+}
+
 /* Called when a new client connection has been established. Allocate the
  * circuit creation statistics object if needed in the stats object. The
  * address addr is for logging purposes only. */
@@ -191,6 +267,9 @@ cc_new_client_conn(const tor_addr_t *addr, dos_client_stats_t *stats)
 
   if (stats->cc_stats == NULL) {
     stats->cc_stats = tor_malloc_zero(sizeof(cc_client_stats_t));
+    /* Fill up the bucket to the expected values since this is a brand new
+     * connection. */
+    cc_stats_refill_bucket(stats->cc_stats, addr);
   }
   stats->cc_stats->concurrent_count++;
 
