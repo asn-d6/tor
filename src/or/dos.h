@@ -19,6 +19,7 @@ void dos_init(void);
 void dos_free_all(void);
 void dos_consensus_has_changed(void);
 void dos_cleanup(time_t now);
+int dos_enabled(void);
 
 void dos_new_client_conn(const tor_addr_t *addr);
 void dos_close_client_conn(const tor_addr_t *addr);

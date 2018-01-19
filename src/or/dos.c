@@ -649,6 +649,13 @@ dos_consensus_has_changed(void)
   cc_consensus_has_changed();
 }
 
+/* Return true iff the DoS mitigation subsystem is enabled. */
+int
+dos_enabled(void)
+{
+  return dos_is_enabled();
+}
+
 /* Free everything from the Denial of Service subsystem. */
 void
 dos_free_all(void)
