@@ -63,5 +63,31 @@ void dos_cc_free_all(void);
 void dos_cc_new_create_cell(channel_t *channel);
 dos_cc_defense_type_t dos_cc_assess_circuit(circuit_t *circ);
 
+/*
+ * Concurrent connection DoS mitigation interface.
+ */
+
+/* dos_conn_enabled which if off by default. */
+#define DOS_CONN_ENABLED_DEFAULT 0
+/* dos_conn_max_concurrent_count */
+#define DOS_CONN_MAX_CONCURRENT_COUNT_DEFAULT 100
+/* dos_conn_defense_type_t maps to the dos_conn_defense_type_t enum. */
+#define DOS_CONN_DEFENSE_TYPE_DEFAULT 1
+
+/* Type of defense that we can use for the concurrent connection DoS
+ * mitigation. */
+typedef enum dos_conn_defense_type_t {
+  /* No defense used. */
+  DOS_CONN_DEFENSE_NONE             = 0,
+  /* Close immediately the connection meaning refuse it. */
+  DOS_CONN_DEFENSE_CLOSE            = 1,
+
+  /* Maximum value that can be used. Useful for the boundaries of the
+   * consensus parameter. */
+  DOS_CONN_DEFENSE_MAX              = 1,
+} dos_conn_defense_type_t;
+
+dos_conn_defense_type_t dos_conn_permits_address(const tor_addr_t *addr);
+
 #endif /* TOR_DOS_H */
 

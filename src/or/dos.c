@@ -65,6 +65,30 @@ typedef struct cc_client_stats_t {
 } cc_client_stats_t;
 
 /*
+ * Concurrent connection denial of service mitigation.
+ *
+ * Namespace used for this mitigation framework is "dos_conn_".
+ */
+
+/* Structure that keeps stats of client connection per-IP. */
+typedef struct conn_client_stats_t {
+  /* Concurrent connection count from the specific address. 2^32 is most
+   * likely way to big for the amount of allowed file descriptors. */
+  uint32_t concurrent_count;
+} conn_client_stats_t;
+
+/* Is the connection DoS mitigation enabled? */
+static unsigned int dos_conn_enabled = 0;
+
+/* Consensus parameters. They can be changed when a new consensus arrives.
+ * They are initialized with the hardcoded default values. */
+static uint32_t dos_conn_max_concurrent_count;
+static dos_conn_defense_type_t dos_conn_defense_type;
+
+/* Keep some stats for the heartbeat so we can report out. */
+static uint64_t conn_num_addr_rejected;
+
+/*
  * General interface of the denial of service mitigation subsystem.
  */
 
@@ -75,6 +99,10 @@ typedef struct dos_client_stats_t {
   /* Circuit creation statistics. This is set only if the circuit creation
    * subsystem has been enabled (dos_cc_enabled). */
   cc_client_stats_t *cc_stats;
+
+  /* Concurrent connection statistics. This is set only if the subsystem has
+   * been enabled (dos_conn_enabled). */
+  conn_client_stats_t *conn_stats;
 } dos_client_stats_t;
 
 /* Used to count the number of entries removed when cleaning up the geoip
@@ -151,6 +179,34 @@ get_ns_param_cc_defense_time_period(void)
                                  0, INT32_MAX);
 }
 
+/* Return true iff connection mitigation is enabled. We look at the consensus
+ * for this else a default value is returned. */
+static unsigned int
+conn_is_enabled(void)
+{
+  return !!networkstatus_get_param(NULL, "dos_conn_enabled",
+                                   DOS_CONN_ENABLED_DEFAULT, 0, 1);
+}
+
+/* Return the consensus parameter for the maximum concurrent connection
+ * allowed. */
+static uint32_t
+get_ns_param_conn_max_concurrent_count(void)
+{
+  return networkstatus_get_param(NULL, "dos_conn_max_concurrent_count",
+                                 DOS_CONN_MAX_CONCURRENT_COUNT_DEFAULT,
+                                 1, INT32_MAX);
+}
+
+/* Return the consensus parameter of the connection defense type. */
+static uint32_t
+get_ns_param_conn_defense_type(void)
+{
+  return networkstatus_get_param(NULL, "dos_conn_defense_type",
+                                 DOS_CONN_DEFENSE_TYPE_DEFAULT,
+                                 DOS_CONN_DEFENSE_NONE, DOS_CONN_DEFENSE_MAX);
+}
+
 /* Set circuit creation parameters located in the consensus or their default
  * if none are present. Called at initialization or when the consensus
  * changes. */
@@ -163,6 +219,9 @@ cc_set_parameters_from_ns(void)
   dos_cc_circuit_max_count = get_ns_param_cc_circuit_max_count();
   dos_cc_defense_time_period = get_ns_param_cc_defense_time_period();
   dos_cc_defense_type = get_ns_param_cc_defense_type();
+
+  dos_conn_max_concurrent_count = get_ns_param_conn_max_concurrent_count();
+  dos_conn_defense_type = get_ns_param_conn_defense_type();
 }
 
 /* Free everything for the circuit creation DoS mitigation subsystem. */
@@ -441,6 +500,62 @@ cc_cleanup(time_t now)
   geoip_entry_cleaned_up = 0;
 }
 
+/* Concurrent connection private API. */
+
+/* Free a connection client object. */
+static void
+conn_client_stats_free(conn_client_stats_t *obj)
+{
+  if (obj == NULL) {
+    return;
+  }
+  tor_free(obj);
+}
+
+/* Called when a client connection has closed. Update the connection stats
+ * object if one exists and free it if concurrent count has reached 0. */
+static void
+conn_close_client_conn(dos_client_stats_t *stats)
+{
+  tor_assert(stats);
+
+  /* Cleanup the object if we've reached 0 as a concurrent count. */
+  if (stats->conn_stats &&
+      stats->conn_stats->concurrent_count == 0) {
+    conn_client_stats_free(stats->conn_stats);
+    stats->conn_stats = NULL;
+  }
+}
+
+/* New client connection seen from address addr. Update the connection stats
+ * object in the given stats and increment the concurrent count. */
+static void
+conn_new_client_conn(dos_client_stats_t *stats)
+{
+  tor_assert(stats);
+
+  if (stats->conn_stats == NULL) {
+    stats->conn_stats = tor_malloc_zero(sizeof(conn_client_stats_t));
+  }
+  stats->conn_stats->concurrent_count++;
+}
+
+/* Free everything for the connection DoS mitigation subsystem. */
+static void
+conn_free_all(void)
+{
+  dos_conn_enabled = 0;
+}
+
+/* Initialize the connection DoS mitigation subsystem. */
+static void
+conn_init(void)
+{
+  /* At least get the defaults set up. */
+  cc_set_parameters_from_ns();
+  dos_conn_enabled = 1;
+}
+
 /* General private API */
 
 /* Return true iff we have at least one DoS detection enabled. This is used to
@@ -448,7 +563,7 @@ cc_cleanup(time_t now)
 static inline int
 dos_is_enabled(void)
 {
-  return !!dos_cc_enabled;
+  return !!(dos_cc_enabled || dos_conn_enabled);
 }
 
 /* Circuit creation public API. */
@@ -551,28 +666,76 @@ dos_cc_assess_circuit(circuit_t *circ)
   return DOS_CC_DEFENSE_NONE;
 }
 
+/* Concurrent connection detection public API. */
+
+/* Return true iff the given address is permitted to open another connection.
+ * A defense value is returned for the caller to take appropriate actions. */
+dos_conn_defense_type_t
+dos_conn_permits_address(const tor_addr_t *addr)
+{
+  clientmap_entry_t *entry;
+
+  tor_assert(addr);
+
+  /* Skip everything if not enabled. */
+  if (!dos_conn_enabled) {
+    goto end;
+  }
+
+  /* We are only interested in client connection from the geoip cache. */
+  entry = geoip_lookup_client(addr, NULL, GEOIP_CLIENT_CONNECT);
+  if (entry == NULL) {
+    goto end;
+  }
+
+  /* Need to be above the maximum concurrent connection count to trigger a
+   * defense. */
+  if (entry->dos_stats->conn_stats &&
+      (entry->dos_stats->conn_stats->concurrent_count >=
+       dos_conn_max_concurrent_count)) {
+    conn_num_addr_rejected++;
+    return dos_conn_defense_type;
+  }
+
+ end:
+  return DOS_CONN_DEFENSE_NONE;
+}
+
 /* General API */
 
 /* Log an heartbeat message with some statistics. */
 void
 dos_log_heartbeat(void)
 {
-  static char msg[256];
+  char *conn_msg = NULL;
+  char *cc_msg = NULL;
 
   if (!dos_is_enabled()) {
     goto end;
   }
 
-  memset(msg, 0, sizeof(msg));
-  log_notice(LD_HEARTBEAT,
-             "DoS mitigation since last heartbeat: %" PRIu64 " cells "
-             "rejected, %" PRIu32 " marked address. %" PRIu64 " MB have "
-             "been dropped.",
-             cc_num_rejected_cells, cc_num_marked_addrs,
-             (cc_num_rejected_cells * CELL_MAX_NETWORK_SIZE) / 1000 / 1000);
+  if (dos_cc_enabled) {
+    uint64_t rejected_mb =
+      (cc_num_rejected_cells * CELL_MAX_NETWORK_SIZE) / 1000 / 1000;
+    tor_asprintf(&cc_msg,
+                 " %" PRIu64 " cells rejected, %" PRIu32 " marked address. "
+                 "%" PRIu64 " MB have been dropped.",
+                 cc_num_rejected_cells, cc_num_marked_addrs, rejected_mb);
+  }
 
-  /* Reset out counters because we just got an heartbeat. */
-  cc_num_rejected_cells = cc_num_marked_addrs = 0;
+  if (dos_conn_enabled) {
+    tor_asprintf(&conn_msg,
+                 " %" PRIu64 " connection rejected.",
+                 conn_num_addr_rejected);
+  }
+
+  log_notice(LD_HEARTBEAT,
+             "DoS mitigation since startup:%s%s",
+             (cc_msg != NULL) ? cc_msg : " [cc not enabled]",
+             (conn_msg != NULL) ? conn_msg : " [conn not enabled]");
+
+  tor_free(conn_msg);
+  tor_free(cc_msg);
 
  end:
   return;
@@ -611,6 +774,10 @@ dos_new_client_conn(const tor_addr_t *addr)
   if (dos_cc_enabled) {
     cc_new_client_conn(addr, entry->dos_stats);
   }
+  /* If we have the connection detection enabled, allocate stats. */
+  if (dos_conn_enabled) {
+    conn_new_client_conn(entry->dos_stats);
+  }
 
  end:
   return;
@@ -648,6 +815,10 @@ dos_close_client_conn(const tor_addr_t *addr)
   if (dos_cc_enabled) {
     cc_close_client_conn(addr, entry->dos_stats);
   }
+  /* If we have the connection detection enabled, try to clean it. */
+  if (dos_conn_enabled) {
+    conn_close_client_conn(entry->dos_stats);
+  }
 
  end:
   return;
@@ -661,6 +832,7 @@ dos_client_stats_free(dos_client_stats_t *obj)
     return;
   }
   cc_client_stats_free(obj->cc_stats);
+  conn_client_stats_free(obj->conn_stats);
   tor_free(obj);
 }
 
@@ -696,6 +868,10 @@ dos_free_all(void)
   /* Free the circuit creation mitigation subsystem. It is safe to do this
    * even if it wasn't initialized. */
   cc_free_all();
+
+  /* Free the connection mitigation subsystem. It is safe to do this even if
+   * it wasn't initialized. */
+  conn_free_all();
 }
 
 /* Initialize the Denial of Service subsystem. */
@@ -704,6 +880,10 @@ dos_init(void)
 {
   if (cc_is_enabled()) {
     cc_init();
+  }
+
+  if (conn_is_enabled()) {
+    conn_init();
   }
 }
 
