@@ -34,6 +34,10 @@ static uint32_t dos_cc_circuit_max_count;
 static dos_cc_defense_type_t dos_cc_defense_type;
 static int32_t dos_cc_defense_time_period;
 
+/* Keep some stats for the heartbeat so we can report out. */
+static uint64_t cc_num_rejected_cells;
+static uint32_t cc_num_marked_addrs;
+
 /* Structure that keeps stats of client connection per-IP. */
 typedef struct cc_client_stats_t {
   /* Concurrent connection count from the specific address. 2^32 is most
@@ -521,6 +525,7 @@ dos_cc_new_create_cell(channel_t *chan)
     if (entry->dos_stats->cc_stats->marked_until_ts == 0) {
       log_debug(LD_DOS, "Detected circuit creation DoS by address: %s",
                 fmt_addr(&addr));
+      cc_num_marked_addrs++;
     }
     cc_mark_client(entry->dos_stats->cc_stats);
   }
@@ -546,6 +551,9 @@ dos_cc_get_defense_type(circuit_t *circ)
    * connection detected by our DoS circuit creation mitigation subsystem. */
   if (CIRCUIT_IS_ORCIRC(circ) &&
       cc_channel_addr_is_marked(TO_OR_CIRCUIT(circ)->p_chan)) {
+    /* We've just assess that this circuit should trigger a defense for the
+     * cell it just seen. Note it down. */
+    cc_num_rejected_cells++;
     return dos_cc_defense_type;
   }
 
@@ -554,6 +562,31 @@ dos_cc_get_defense_type(circuit_t *circ)
 }
 
 /* General API */
+
+/* Log an heartbeat message with some statistics. */
+void
+dos_log_heartbeat(void)
+{
+  static char msg[256];
+
+  if (!dos_is_enabled()) {
+    goto end;
+  }
+
+  memset(msg, 0, sizeof(msg));
+  log_notice(LD_HEARTBEAT,
+             "DoS mitigation since last heartbeat: %" PRIu64 " cells "
+             "rejected, %" PRIu32 " marked address. %" PRIu64 " MB have "
+             "been dropped.",
+             cc_num_rejected_cells, cc_num_marked_addrs,
+             (cc_num_rejected_cells * CELL_MAX_NETWORK_SIZE) / 1000 / 1000);
+
+  /* Reset out counters because we just got an heartbeat. */
+  cc_num_rejected_cells = cc_num_marked_addrs = 0;
+
+ end:
+  return;
+}
 
 /* Called when a new client connection has been established on the given
  * address. */
