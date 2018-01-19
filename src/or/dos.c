@@ -9,6 +9,7 @@
 #define DOS_PRIVATE
 
 #include "or.h"
+#include "channel.h"
 #include "config.h"
 #include "geoip.h"
 #include "networkstatus.h"
@@ -48,6 +49,11 @@ typedef struct cc_client_stats_t {
   /* When was the last time we've refilled the circuit bucket? This is used to
    * know if we need to refill the bucket when a new circuit is seen. */
   time_t last_circ_bucket_refill_ts;
+
+  /* This client address was detected to be above the circuit creation rate
+   * and this timestamp indicate until when it should remain marked as
+   * detected so we can apply a defense for the address. */
+  time_t marked_until_ts;
 } cc_client_stats_t;
 
 /*
@@ -317,6 +323,30 @@ cc_close_client_conn(const tor_addr_t *addr, dos_client_stats_t *stats)
   return;
 }
 
+/* Return true iff the circuit bucket is down to 0 and the number of
+ * concurrent connections is greater or equal the minimum threshold set the
+ * consensus parameter. */
+static int
+cc_has_exhausted_circuits(const cc_client_stats_t *stats)
+{
+  tor_assert(stats);
+  return stats->circuit_bucket == 0 &&
+         stats->concurrent_count >= dos_cc_min_concurrent_conn;
+}
+
+/* Mark client by setting a timestamp in the stats object for which until when
+ * it is marked as positively detected. */
+static void
+cc_mark_client(cc_client_stats_t *stats)
+{
+  tor_assert(stats);
+  /* We add a random offset of a maximum of half the defense time so it is
+   * less predictable. */
+  stats->marked_until_ts =
+    approx_time() + dos_cc_defense_time_period +
+    crypto_rand_int_range(1, dos_cc_defense_time_period / 2);
+}
+
 /* General private API */
 
 /* Return true iff we have at least one DoS detection enabled. This is used to
@@ -325,6 +355,78 @@ static inline int
 dos_is_enabled(void)
 {
   return !!dos_cc_enabled;
+}
+
+/* Circuit creation public API. */
+
+/* Called when a CREATE cell is received from the given channel. */
+void
+dos_cc_new_create_cell(channel_t *chan)
+{
+  tor_addr_t addr;
+  clientmap_entry_t *entry;
+
+  tor_assert(chan);
+
+  /* Skip everything if not enabled. */
+  if (!dos_cc_enabled) {
+    goto end;
+  }
+
+  /* Must be a client connection else we ignore. */
+  if (!channel_is_client(chan)) {
+    goto end;
+  }
+  /* Without an IP address, nothing can work. */
+  if (!channel_get_addr_if_possible(chan, &addr)) {
+    goto end;
+  }
+
+  /* We are only interested in client connection from the geoip cache. */
+  entry = geoip_lookup_client(&addr, NULL, GEOIP_CLIENT_CONNECT);
+  if (entry == NULL) {
+    /* We can have a connection creating circuits but not tracked by the geoip
+     * cache. Once this DoS subsystem is enabled, we can end up here with no
+     * entry for the channel. */
+    goto end;
+  }
+  /* Same possibility as the above condition but in that case, we can recover
+   * by initializing. */
+  if (entry->dos_stats == NULL || entry->dos_stats->cc_stats == NULL) {
+    dos_new_client_conn(&addr);
+  }
+  tor_assert(entry->dos_stats->cc_stats);
+
+  /* General comment. Even though the client can already be marked as
+   * malicious, we continue to track statistics. If it keeps going above
+   * threshold while marked, the defense period time will grow longer. There
+   * is really no point at unmarking a client that keeps DoSing us. */
+
+  /* First of all, we'll try to refill the circuit bucket opportunastically
+   * before we assess. */
+  cc_stats_refill_bucket(entry->dos_stats->cc_stats, &addr);
+
+  /* Take a token out of the circuit bucket if we are above 0 so we don't
+   * underflow the bucket. */
+  if (entry->dos_stats->cc_stats->circuit_bucket > 0) {
+    entry->dos_stats->cc_stats->circuit_bucket--;
+  }
+
+  /* This is the detection. Assess at every CREATE cell if the client should
+   * get marked as malicious. This should be kept as fast as possible. */
+  if (cc_has_exhausted_circuits(entry->dos_stats->cc_stats)) {
+    /* If this is the first time we mark this entry, log it a info level.
+     * Under heavy DDoS, logging each time we mark would results in lots and
+     * lots of logs. */
+    if (entry->dos_stats->cc_stats->marked_until_ts == 0) {
+      log_debug(LD_DOS, "Detected circuit creation DoS by address: %s",
+                fmt_addr(&addr));
+    }
+    cc_mark_client(entry->dos_stats->cc_stats);
+  }
+
+ end:
+  return;
 }
 
 /* General API */

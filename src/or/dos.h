@@ -45,5 +45,7 @@ void dos_client_stats_free(struct dos_client_stats_t *obj);
 void dos_cc_init(void);
 void dos_cc_free_all(void);
 
+void dos_cc_new_create_cell(channel_t *channel);
+
 #endif /* TOR_DOS_H */
 
