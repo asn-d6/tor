@@ -54,6 +54,10 @@ typedef struct cc_client_stats_t {
    * and this timestamp indicate until when it should remain marked as
    * detected so we can apply a defense for the address. */
   time_t marked_until_ts;
+
+  /* Timestamp of when was the last connection. We use this value to cleanup
+   * the DoS statistics from the geoip cache. */
+  time_t last_conn_ts;
 } cc_client_stats_t;
 
 /*
@@ -68,6 +72,10 @@ typedef struct dos_client_stats_t {
    * subsystem has been enabled (dos_cc_enabled). */
   cc_client_stats_t *cc_stats;
 } dos_client_stats_t;
+
+/* Used to count the number of entries removed when cleaning up the geoip
+ * cache for dead connections. */
+static unsigned int geoip_entry_cleaned_up = 0;
 
 /* Free a circuit creation client connection object. */
 static void
@@ -276,6 +284,7 @@ cc_new_client_conn(const tor_addr_t *addr, dos_client_stats_t *stats)
     cc_stats_refill_bucket(stats->cc_stats, addr);
   }
   stats->cc_stats->concurrent_count++;
+  stats->cc_stats->last_conn_ts = approx_time();
 
   log_debug(LD_DOS, "Client address %s has now %u concurrent connections.",
             fmt_addr(addr), stats->cc_stats->concurrent_count);
@@ -371,6 +380,61 @@ cc_channel_addr_is_marked(channel_t *chan)
 
  end:
   return stats && stats->marked_until_ts >= now;
+}
+
+/* The lifetime of circuit creation stats if idle. */
+#define CC_STATS_LIFETIME_SEC (2 * 60)
+
+/* If the entry contains a circuit creation stats object, we'll free the
+ * object if all of these requirements are met:
+ *    1. It is unmarked or the marked timestamp has passed.
+ *    2. Concurrent connection count is 0.
+ *    3. The last seen connection was at least CC_STATS_LIFETIME_SEC ago.
+ *
+ * The generic DoS stats object remains untouched. */
+static void
+cc_clean_unmarked_dead_conn(clientmap_entry_t *entry, time_t now)
+{
+  cc_client_stats_t *stats;
+
+  tor_assert(entry);
+
+  if (entry->dos_stats == NULL ||
+      entry->dos_stats->cc_stats == NULL) {
+    goto end;
+  }
+  stats = entry->dos_stats->cc_stats;
+
+  /* This connection is marked as malicious so we need to keep it alive until
+   * the defense time has passed. */
+  if (stats->marked_until_ts >= now) {
+    goto end;
+  }
+
+  /* No concurrent connection and the last connection is above its lifetime,
+   * we free the circuit creation stats object. */
+  if (stats->concurrent_count == 0 &&
+      (stats->last_conn_ts + CC_STATS_LIFETIME_SEC) <= now) {
+    cc_client_stats_free(stats);
+    entry->dos_stats->cc_stats = NULL;
+    geoip_entry_cleaned_up++;
+  }
+
+ end:
+  return;
+}
+
+/* Garbage collect the circuit creation subsystem. */
+static void
+cc_cleanup(time_t now)
+{
+  /* Go over each client entry in the geoip cache and make it call our clean
+   * up unmarked connection function. */
+  geoip_for_each_client(GEOIP_CLIENT_CONNECT, now,
+                        cc_clean_unmarked_dead_conn);
+  log_info(LD_DOS, "DoS circuit creation subsystem cleaned up %u entries.",
+           geoip_entry_cleaned_up);
+  geoip_entry_cleaned_up = 0;
 }
 
 /* General private API */
@@ -565,6 +629,16 @@ dos_client_stats_free(dos_client_stats_t *obj)
   }
   cc_client_stats_free(obj->cc_stats);
   tor_free(obj);
+}
+
+/* Cleanup anything that is unused. In other words, this is an opportunity to
+ * garbage collect. Called by the main loop every 5 minutes. */
+void
+dos_cleanup(time_t now)
+{
+  if (dos_cc_enabled) {
+    cc_cleanup(now);
+  }
 }
 
 /* Called when a the consensus has changed. We might have new consensus
