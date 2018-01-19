@@ -61,6 +61,8 @@ void geoip_remove_old_clients(time_t cutoff);
 clientmap_entry_t *geoip_lookup_client(const tor_addr_t *addr,
                                        const char *transport_name,
                                        geoip_client_action_t action);
+void geoip_for_each_client(geoip_client_action_t action, time_t now,
+                           void (*callback_fn)(clientmap_entry_t *, time_t));
 
 void geoip_note_ns_response(geoip_ns_response_t response);
 char *geoip_get_transport_history(void);

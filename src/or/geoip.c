@@ -537,6 +537,23 @@ client_history_clear(void)
   }
 }
 
+/* For each client map entry matching the given action, call the given
+ * callback function with the entry. */
+void
+geoip_for_each_client(geoip_client_action_t action, time_t now,
+                      void (*callback_fn)(clientmap_entry_t *, time_t))
+{
+  clientmap_entry_t **ent;
+
+  tor_assert(callback_fn);
+
+  HT_FOREACH(ent, clientmap, &client_history) {
+    if ((*ent)->action == action) {
+      callback_fn(*ent, now);
+    }
+  }
+}
+
 /** Note that we've seen a client connect from the IP <b>addr</b>
  * at time <b>now</b>. Ignored by all but bridges and directories if
  * configured accordingly. */

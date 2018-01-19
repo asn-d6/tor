@@ -1140,6 +1140,7 @@ CALLBACK(check_dns_honesty);
 CALLBACK(write_bridge_ns);
 CALLBACK(check_fw_helper_app);
 CALLBACK(heartbeat);
+CALLBACK(clean_dos);
 
 #undef CALLBACK
 
@@ -1171,6 +1172,7 @@ static periodic_event_item_t periodic_events[] = {
   CALLBACK(write_bridge_ns),
   CALLBACK(check_fw_helper_app),
   CALLBACK(heartbeat),
+  CALLBACK(clean_dos),
   END_OF_PERIODIC_EVENTS
 };
 #undef CALLBACK
@@ -1887,6 +1889,20 @@ heartbeat_callback(time_t now, const or_options_t *options)
   }
 
   return options->HeartbeatPeriod;
+}
+
+/* Periodic callback: Run the cleanup scheduled events for entire the Denial
+ * of Service subsystem. This is called every 5 minutes which is more than
+ * enough to garbage collect anything leftover if any. */
+static int
+clean_dos_callback(time_t now, const or_options_t *options)
+{
+  (void) options;
+
+  dos_cleanup(now);
+
+#define DOS_CALLBACK_INTERVAL (60 * 5)
+  return DOS_CALLBACK_INTERVAL;
 }
 
 /** Timer: used to invoke second_elapsed_callback() once per second. */
