@@ -24,6 +24,7 @@
 #include "connection_edge.h"
 #include "connection_or.h"
 #include "control.h"
+#include "dos.h"
 #include "geoip.h"
 #include "main.h"
 #include "networkstatus.h"
@@ -1448,6 +1449,11 @@ connection_edge_process_relay_cell(cell_t *cell, circuit_t *circ,
     log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
            "Relay cell length field too long. Closing circuit.");
     return - END_CIRC_REASON_TORPROTOCOL;
+  }
+
+  /* Ask the DoS mitigation subsystem what to do with this circuit. */
+  if (dos_cc_assess_circuit(circ) == DOS_CC_DEFENSE_REFUSE_CELL) {
+    return -END_CIRC_REASON_TORPROTOCOL;
   }
 
   if (rh.stream_id == 0) {
