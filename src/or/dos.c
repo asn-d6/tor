@@ -720,6 +720,19 @@ dos_conn_addr_get_defense_type(const tor_addr_t *addr)
 
 /* General API */
 
+/* Return true iff tor2web client connection (ESTABLISH_RENDEZVOUS) should be
+ * refused. */
+int
+dos_should_refuse_tor2web_client(void)
+{
+  if (get_options()->DoSRefuseTor2webClient != -1) {
+    return get_options()->DoSRefuseTor2webClient;
+  }
+
+  return (int) networkstatus_get_param(NULL, "DoSRefuseTor2webClient",
+                                       0 /* default */, 0, 1);
+}
+
 /* Log an heartbeat message with some statistics. */
 void
 dos_log_heartbeat(void)

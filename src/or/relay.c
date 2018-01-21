@@ -24,7 +24,6 @@
 #include "connection_edge.h"
 #include "connection_or.h"
 #include "control.h"
-#include "dos.h"
 #include "geoip.h"
 #include "main.h"
 #include "networkstatus.h"
