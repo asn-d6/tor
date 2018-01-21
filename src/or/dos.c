@@ -110,6 +110,9 @@ typedef struct dos_client_stats_t {
  * it and the cc_cleanup function logs it and resets it to 0. */
 static unsigned int tmp_geoip_n_entries_cleaned_up = 0;
 
+/* Keep stats for the heartbeat. */
+static uint64_t num_tor2web_client_refused;
+
 /* Free a circuit creation client connection object. */
 static void
 cc_client_stats_free(cc_client_stats_t *obj)
@@ -720,6 +723,14 @@ dos_conn_addr_get_defense_type(const tor_addr_t *addr)
 
 /* General API */
 
+/* Note down that we've just refused a tor2web client. This increments a
+ * counter later used for the heartbeat. */
+void
+dos_note_refuse_tor2web_client(void)
+{
+  num_tor2web_client_refused++;
+}
+
 /* Return true iff tor2web client connection (ESTABLISH_RENDEZVOUS) should be
  * refused. */
 int
@@ -739,6 +750,7 @@ dos_log_heartbeat(void)
 {
   char *conn_msg = NULL;
   char *cc_msg = NULL;
+  char *tor2web_msg = NULL;
 
   if (!dos_is_enabled()) {
     goto end;
@@ -759,13 +771,21 @@ dos_log_heartbeat(void)
                  conn_num_addr_rejected);
   }
 
+  if (dos_should_refuse_tor2web_client()) {
+    tor_asprintf(&tor2web_msg,
+                 " %" PRIu64 " tor2web client refused.",
+                 num_tor2web_client_refused);
+  }
+
   log_notice(LD_HEARTBEAT,
-             "DoS mitigation since startup:%s%s",
+             "DoS mitigation since startup:%s%s%s",
              (cc_msg != NULL) ? cc_msg : " [cc not enabled]",
-             (conn_msg != NULL) ? conn_msg : " [conn not enabled]");
+             (conn_msg != NULL) ? conn_msg : " [conn not enabled]",
+             (tor2web_msg != NULL) ? tor2web_msg : "");
 
   tor_free(conn_msg);
   tor_free(cc_msg);
+  tor_free(tor2web_msg);
 
  end:
   return;

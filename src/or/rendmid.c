@@ -252,6 +252,8 @@ rend_mid_establish_rendezvous(or_circuit_t *circ, const uint8_t *request,
    * client or in other words tor2web clients. */
   if (channel_is_client(circ->p_chan) &&
       dos_should_refuse_tor2web_client()) {
+    /* Note it down for the heartbeat log purposes. */
+    dos_note_refuse_tor2web_client();
     /* Silent drop so the client has to time out before moving on. */
     return 0;
   }
