@@ -28,6 +28,7 @@ void dos_close_client_conn(const tor_addr_t *addr);
 void dos_client_stats_free(struct dos_client_stats_t *obj);
 
 int dos_should_refuse_tor2web_client(void);
+void dos_note_refuse_tor2web_client(void);
 
 /*
  * Circuit creation DoS mitigation subsystemn interface.

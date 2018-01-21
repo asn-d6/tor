@@ -1462,6 +1462,7 @@ connection_edge_process_relay_cell(cell_t *cell, circuit_t *circ,
     if (dos_should_refuse_tor2web_client() &&
         CIRCUIT_IS_ORCIRC(circ) &&
         channel_is_client(TO_OR_CIRCUIT(circ)->p_chan)) {
+      dos_note_refuse_tor2web_client();
       return -END_CIRC_REASON_TORPROTOCOL;
     }
   }
