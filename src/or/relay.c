@@ -1456,6 +1456,16 @@ connection_edge_process_relay_cell(cell_t *cell, circuit_t *circ,
     return -END_CIRC_REASON_TORPROTOCOL;
   }
 
+  /* Check if we are configured to accept established rendezvous cells from
+   * client or in other words tor2web clients. */
+  if (rh.command == RELAY_COMMAND_ESTABLISH_RENDEZVOUS) {
+    if (dos_should_refuse_tor2web_client() &&
+        CIRCUIT_IS_ORCIRC(circ) &&
+        channel_is_client(TO_OR_CIRCUIT(circ)->p_chan)) {
+      return -END_CIRC_REASON_TORPROTOCOL;
+    }
+  }
+
   if (rh.stream_id == 0) {
     switch (rh.command) {
       case RELAY_COMMAND_BEGIN:

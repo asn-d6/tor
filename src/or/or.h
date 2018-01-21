@@ -4510,6 +4510,9 @@ typedef struct {
 
   /** If 1, we skip all OOS checks. */
   int DisableOOSCheck;
+
+  /** Autobool: Do we refuse tor2web client establish rendezvous? */
+  int DoSRefuseTor2webClient;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */
