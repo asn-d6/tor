@@ -70,7 +70,7 @@ dos_cc_defense_type_t dos_cc_get_defense_type(circuit_t *circ);
  * Concurrent connection DoS mitigation interface.
  */
 
-/* dos_conn_enabled which if off by default. */
+/* dos_conn_enabled which is off by default. */
 #define DOS_CONN_ENABLED_DEFAULT 0
 /* dos_conn_max_concurrent_count */
 #define DOS_CONN_MAX_CONCURRENT_COUNT_DEFAULT 100

@@ -1891,7 +1891,7 @@ heartbeat_callback(time_t now, const or_options_t *options)
   return options->HeartbeatPeriod;
 }
 
-/* Periodic callback: Run the cleanup scheduled events for entire the Denial
+/* Periodic callback: Run the cleanup scheduled events for the entire Denial
  * of Service subsystem. This is called every 5 minutes which is more than
  * enough to garbage collect anything leftover if any. */
 static int

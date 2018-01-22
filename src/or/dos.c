@@ -41,7 +41,7 @@ static uint32_t cc_num_marked_addrs;
 /* Structure that keeps stats of client connection per-IP. */
 typedef struct cc_client_stats_t {
   /* Concurrent connection count from the specific address. 2^32 is most
-   * likely way to big for the amount of allowed file descriptors. */
+   * likely way too big for the amount of allowed file descriptors. */
   uint32_t concurrent_count;
 
   /* Number of allowed circuit rate that is this value is refilled at a rate
@@ -51,16 +51,20 @@ typedef struct cc_client_stats_t {
   uint32_t circuit_bucket;
 
   /* When was the last time we've refilled the circuit bucket? This is used to
-   * know if we need to refill the bucket when a new circuit is seen. */
+   * know if we need to refill the bucket when a new circuit is seen. It is
+   * synchronized using approx_time(). */
   time_t last_circ_bucket_refill_ts;
 
   /* This client address was detected to be above the circuit creation rate
-   * and this timestamp indicate until when it should remain marked as
-   * detected so we can apply a defense for the address. */
+   * and this timestamp indicates until when it should remain marked as
+   * detected so we can apply a defense for the address. It is synchronized
+   * using the approx_time(). */
   time_t marked_until_ts;
 
-  /* Timestamp of when was the last connection. We use this value to cleanup
-   * the DoS statistics from the geoip cache. */
+  /* Timestamp of when was the last connection received regardless of the
+   * connection count. We use this value to cleanup the DoS statistics from
+   * the geoip cache. It is synchronized using the approx_time() and never
+   * cleared until we clean it up from the cache. */
   time_t last_conn_ts;
 } cc_client_stats_t;
 
@@ -73,7 +77,7 @@ typedef struct cc_client_stats_t {
 /* Structure that keeps stats of client connection per-IP. */
 typedef struct conn_client_stats_t {
   /* Concurrent connection count from the specific address. 2^32 is most
-   * likely way to big for the amount of allowed file descriptors. */
+   * likely way too big for the amount of allowed file descriptors. */
   uint32_t concurrent_count;
 } conn_client_stats_t;
 
@@ -93,7 +97,7 @@ static uint64_t conn_num_addr_rejected;
  */
 
 /* This object is a top level object that contains everything related to the
- * per-IP client DoS mitigation. Because it is per-IP, is it used in the geoip
+ * per-IP client DoS mitigation. Because it is per-IP, it is used in the geoip
  * clientmap_entry_t object and opaque to that subsystem. */
 typedef struct dos_client_stats_t {
   /* Circuit creation statistics. This is set only if the circuit creation
@@ -130,7 +134,7 @@ get_ns_param_cc_enabled(void)
 }
 
 /* Return the consensus parameter for the minimum concurrent connection at
- * which we'll start counting circuit for the a specific client address. */
+ * which we'll start counting circuit for a specific client address. */
 static uint32_t
 get_ns_param_cc_min_concurrent_connection(void)
 {
@@ -266,7 +270,7 @@ cc_consensus_has_changed(void)
   return;
 }
 
-/* Given the circuit creation client statistics object, refill the cirucit
+/* Given the circuit creation client statistics object, refill the circuit
  * bucket if needed. This also works if the bucket was never filled in the
  * first place. The addr is only used for logging purposes. */
 static void
@@ -296,7 +300,7 @@ cc_stats_refill_bucket(cc_client_stats_t *stats, const tor_addr_t *addr)
                  (double) dos_cc_circuit_time_rate;
   /* Safety checks here. 2^16 circuits per second is insanely high so cap it
    * just to be safe. Because the above is controlled by the consensus, this
-   * should really never happens. */
+   * should really never happen. */
   if (BUG(circuit_rate >= UINT16_MAX)) {
     circuit_rate = UINT16_MAX;
   }
@@ -329,7 +333,7 @@ cc_stats_refill_bucket(cc_client_stats_t *stats, const tor_addr_t *addr)
   num_token = elapsed_time_last_refill * circuit_rate;
 
  end:
-  /* We cap the bucket to the maxium circuit count else this could grow to
+  /* We cap the bucket to the maximum circuit count else this could grow to
    * infinity over time. We want the new tokens clamped down to uint32_t so we
    * get an integer value. */
   new_circuit_bucket_count = MIN(stats->circuit_bucket + (uint32_t) num_token,
@@ -356,7 +360,7 @@ cc_new_client_conn(const tor_addr_t *addr, dos_client_stats_t *stats)
   if (stats->cc_stats == NULL) {
     stats->cc_stats = tor_malloc_zero(sizeof(cc_client_stats_t));
     /* Fill up the bucket to the expected values since this is a brand new
-     * connection. */
+     * address. */
     cc_stats_refill_bucket(stats->cc_stats, addr);
   }
   stats->cc_stats->concurrent_count++;
@@ -407,8 +411,8 @@ cc_has_exhausted_circuits(const cc_client_stats_t *stats)
          stats->concurrent_count >= dos_cc_min_concurrent_conn;
 }
 
-/* Mark client by setting a timestamp in the stats object for which until when
- * it is marked as positively detected. */
+/* Mark client address by setting a timestamp in the stats object which tells
+ * us until when it is marked as positively detected. */
 static void
 cc_mark_client(cc_client_stats_t *stats)
 {
@@ -631,7 +635,7 @@ dos_cc_new_create_cell(channel_t *chan)
    * threshold while marked, the defense period time will grow longer. There
    * is really no point at unmarking a client that keeps DoSing us. */
 
-  /* First of all, we'll try to refill the circuit bucket opportunastically
+  /* First of all, we'll try to refill the circuit bucket opportunistically
    * before we assess. */
   cc_stats_refill_bucket(entry->dos_stats->cc_stats, &addr);
 
@@ -896,7 +900,7 @@ dos_cleanup(time_t now)
   }
 }
 
-/* Called when a the consensus has changed. We might have new consensus
+/* Called when the consensus has changed. We might have new consensus
  * parameters to look at. */
 void
 dos_consensus_has_changed(void)
