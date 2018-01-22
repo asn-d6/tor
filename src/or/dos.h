@@ -64,7 +64,7 @@ void dos_cc_init(void);
 void dos_cc_free_all(void);
 
 void dos_cc_new_create_cell(channel_t *channel);
-dos_cc_defense_type_t dos_cc_get_defense_type(circuit_t *circ);
+dos_cc_defense_type_t dos_cc_get_defense_type(channel_t *chan);
 
 /*
  * Concurrent connection DoS mitigation interface.

@@ -701,9 +701,9 @@ dos_cc_new_create_cell(channel_t *chan)
  *
  * This is part of the fast path and called a lot. */
 dos_cc_defense_type_t
-dos_cc_get_defense_type(circuit_t *circ)
+dos_cc_get_defense_type(channel_t *chan)
 {
-  tor_assert(circ);
+  tor_assert(chan);
 
   /* Skip everything if not enabled. */
   if (!dos_cc_enabled) {
@@ -712,8 +712,7 @@ dos_cc_get_defense_type(circuit_t *circ)
 
   /* On an OR circuit, we'll check if the previous channel is a marked client
    * connection detected by our DoS circuit creation mitigation subsystem. */
-  if (CIRCUIT_IS_ORCIRC(circ) &&
-      cc_channel_addr_is_marked(TO_OR_CIRCUIT(circ)->p_chan)) {
+  if (cc_channel_addr_is_marked(chan)) {
     /* We've just assess that this circuit should trigger a defense for the
      * cell it just seen. Note it down. */
     cc_num_rejected_cells++;

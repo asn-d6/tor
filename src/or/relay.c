@@ -1450,11 +1450,6 @@ connection_edge_process_relay_cell(cell_t *cell, circuit_t *circ,
     return - END_CIRC_REASON_TORPROTOCOL;
   }
 
-  /* Ask the DoS mitigation subsystem what to do with this circuit. */
-  if (dos_cc_get_defense_type(circ) == DOS_CC_DEFENSE_REFUSE_CELL) {
-    return -END_CIRC_REASON_TORPROTOCOL;
-  }
-
   if (rh.stream_id == 0) {
     switch (rh.command) {
       case RELAY_COMMAND_BEGIN:
