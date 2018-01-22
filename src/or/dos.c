@@ -126,8 +126,8 @@ cc_client_stats_free(cc_client_stats_t *obj)
 
 /* Return true iff the circuit creation mitigation is enabled. We look at the
  * consensus for this else a default value is returned. */
-static unsigned int
-get_ns_param_cc_enabled(void)
+MOCK_IMPL(STATIC unsigned int,
+get_ns_param_cc_enabled, (void))
 {
   return !!networkstatus_get_param(NULL, "dos_cc_enabled",
                                    DOS_CC_ENABLED_DEFAULT, 0, 1);
@@ -135,7 +135,7 @@ get_ns_param_cc_enabled(void)
 
 /* Return the consensus parameter for the minimum concurrent connection at
  * which we'll start counting circuit for a specific client address. */
-static uint32_t
+STATIC uint32_t
 get_ns_param_cc_min_concurrent_connection(void)
 {
   return networkstatus_get_param(NULL, "dos_cc_min_concurrent_conn",
@@ -156,7 +156,7 @@ get_ns_param_cc_circuit_time_rate(void)
 
 /* Return the consensus parameter for the maximum circuit count for the
  * circuit time rate. */
-static uint32_t
+STATIC uint32_t
 get_ns_param_cc_circuit_max_count(void)
 {
   return networkstatus_get_param(NULL, "dos_cc_circuit_max_count",
@@ -186,8 +186,8 @@ get_ns_param_cc_defense_time_period(void)
 
 /* Return true iff connection mitigation is enabled. We look at the consensus
  * for this else a default value is returned. */
-static unsigned int
-get_ns_param_conn_enabled(void)
+MOCK_IMPL(STATIC unsigned int,
+get_ns_param_conn_enabled,(void))
 {
   return !!networkstatus_get_param(NULL, "dos_conn_enabled",
                                    DOS_CONN_ENABLED_DEFAULT, 0, 1);
@@ -195,7 +195,7 @@ get_ns_param_conn_enabled(void)
 
 /* Return the consensus parameter for the maximum concurrent connection
  * allowed. */
-static uint32_t
+STATIC uint32_t
 get_ns_param_conn_max_concurrent_count(void)
 {
   return networkstatus_get_param(NULL, "dos_conn_max_concurrent_count",
