@@ -92,5 +92,16 @@ typedef enum dos_conn_defense_type_t {
 
 dos_conn_defense_type_t dos_conn_permits_address(const tor_addr_t *addr);
 
+#ifdef DOS_PRIVATE
+
+STATIC uint32_t get_ns_param_conn_max_concurrent_count(void);
+STATIC uint32_t get_ns_param_cc_circuit_max_count(void);
+STATIC uint32_t get_ns_param_cc_min_concurrent_connection(void);
+
+MOCK_DECL(STATIC unsigned int, cc_is_enabled,(void));
+MOCK_DECL(STATIC unsigned int, conn_is_enabled,(void));
+
+#endif /* TOR_DOS_PRIVATE */
+
 #endif /* TOR_DOS_H */
 
