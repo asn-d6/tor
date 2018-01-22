@@ -522,9 +522,16 @@ conn_close_client_conn(dos_client_stats_t *stats)
 {
   tor_assert(stats);
 
+  if (!stats->conn_stats) {
+    return;
+  }
+
+  if (stats->conn_stats->concurrent_count > 0) {
+    stats->conn_stats->concurrent_count--;
+  }
+
   /* Cleanup the object if we've reached 0 as a concurrent count. */
-  if (stats->conn_stats &&
-      stats->conn_stats->concurrent_count == 0) {
+  if (stats->conn_stats->concurrent_count == 0) {
     conn_client_stats_free(stats->conn_stats);
     stats->conn_stats = NULL;
   }
@@ -694,7 +701,7 @@ dos_conn_permits_address(const tor_addr_t *addr)
   /* Need to be above the maximum concurrent connection count to trigger a
    * defense. */
   if (entry->dos_stats->conn_stats &&
-      (entry->dos_stats->conn_stats->concurrent_count >=
+      (entry->dos_stats->conn_stats->concurrent_count >
        dos_conn_max_concurrent_count)) {
     conn_num_addr_rejected++;
     return dos_conn_defense_type;
