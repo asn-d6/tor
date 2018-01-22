@@ -229,12 +229,29 @@ cc_set_parameters_from_ns(void)
   dos_conn_defense_type = get_ns_param_conn_defense_type();
 }
 
+/* Free the circuit stats entry from a geoip client entry and set it to NULL
+ * to indicate it is not used. */
+static void
+cc_free_stats_from_geoip_entry(clientmap_entry_t *entry, time_t now)
+{
+  (void) now;
+
+  tor_assert(entry);
+
+  if (entry->dos_stats && entry->dos_stats->cc_stats) {
+    cc_client_stats_free(entry->dos_stats->cc_stats);
+    entry->dos_stats->cc_stats = NULL;
+  }
+}
+
 /* Free everything for the circuit creation DoS mitigation subsystem. */
 static void
 cc_free_all(void)
 {
   /* If everything is freed, the circuit creation subsystem is not enabled. */
   dos_cc_enabled = 0;
+  geoip_for_each_client(GEOIP_CLIENT_CONNECT, 0,
+                        cc_free_stats_from_geoip_entry);
 }
 
 /* Initialize the circuit creation DoS mitigation subsystem. */
@@ -564,11 +581,28 @@ conn_new_client_conn(dos_client_stats_t *stats)
   stats->conn_stats->concurrent_count++;
 }
 
+/* Free the connection stats entry from a geoip client entry and set it to
+ * NULL to indicate it is not used. */
+static void
+conn_free_stats_from_geoip_entry(clientmap_entry_t *entry, time_t now)
+{
+  (void) now;
+
+  tor_assert(entry);
+
+  if (entry->dos_stats && entry->dos_stats->conn_stats) {
+    conn_client_stats_free(entry->dos_stats->conn_stats);
+    entry->dos_stats->conn_stats = NULL;
+  }
+}
+
 /* Free everything for the connection DoS mitigation subsystem. */
 static void
 conn_free_all(void)
 {
   dos_conn_enabled = 0;
+  geoip_for_each_client(GEOIP_CLIENT_CONNECT, 0,
+                        conn_free_stats_from_geoip_entry);
 }
 
 /* Initialize the connection DoS mitigation subsystem. */
