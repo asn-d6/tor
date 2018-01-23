@@ -216,15 +216,18 @@ get_ns_param_conn_defense_type(const networkstatus_t *ns)
  * if none are present. Called at initialization or when the consensus
  * changes. */
 static void
-cc_set_parameters_from_ns(const networkstatus_t *ns)
+set_parameters_from_ns(const networkstatus_t *ns)
 {
   /* Get the default consensus param values. */
+  dos_cc_enabled = get_ns_param_cc_enabled(ns);
   dos_cc_min_concurrent_conn = get_ns_param_cc_min_concurrent_connection(ns);
   dos_cc_circuit_time_rate = get_ns_param_cc_circuit_time_rate(ns);
   dos_cc_circuit_max_count = get_ns_param_cc_circuit_max_count(ns);
   dos_cc_defense_time_period = get_ns_param_cc_defense_time_period(ns);
   dos_cc_defense_type = get_ns_param_cc_defense_type(ns);
 
+  /* Connection detection. */
+  dos_conn_enabled = get_ns_param_conn_enabled(ns);
   dos_conn_max_concurrent_count = get_ns_param_conn_max_concurrent_count(ns);
   dos_conn_defense_type = get_ns_param_conn_defense_type(ns);
 }
@@ -254,15 +257,6 @@ cc_free_all(void)
                         cc_free_stats_from_geoip_entry);
 }
 
-/* Initialize the circuit creation DoS mitigation subsystem. */
-static void
-cc_init(const networkstatus_t *ns)
-{
-  /* At least get the defaults set up. */
-  cc_set_parameters_from_ns(ns);
-  dos_cc_enabled = 1;
-}
-
 /* Called when the consensus has changed. Do appropriate actions for the
  * circuit creation subsystem. */
 static void
@@ -272,19 +266,7 @@ cc_consensus_has_changed(const networkstatus_t *ns)
    * not and it was enabled before, clean it up. */
   if (dos_cc_enabled && !get_ns_param_cc_enabled(ns)) {
     cc_free_all();
-    goto end;
   }
-
-  /* If we were enabled, time to get the parameters again. Else, we just
-   * became enabled so we need to initialize. */
-  if (dos_cc_enabled) {
-    cc_set_parameters_from_ns(ns);
-  } else {
-    cc_init(ns);
-  }
-
- end:
-  return;
 }
 
 /* Given the circuit creation client statistics object, refill the circuit
@@ -605,13 +587,16 @@ conn_free_all(void)
                         conn_free_stats_from_geoip_entry);
 }
 
-/* Initialize the connection DoS mitigation subsystem. */
+/* Called when the consensus has changed. Do appropriate actions for the
+ * connection mitigation subsystem. */
 static void
-conn_init(const networkstatus_t *ns)
+conn_consensus_has_changed(const networkstatus_t *ns)
 {
-  /* At least get the defaults set up. */
-  cc_set_parameters_from_ns(ns);
-  dos_conn_enabled = 1;
+  /* Looking at the consensus, is the connection mitigation subsystem enabled?
+   * If not and it was enabled before, clean it up. */
+  if (dos_conn_enabled && !get_ns_param_conn_enabled(ns)) {
+    conn_free_all();
+  }
 }
 
 /* General private API */
@@ -939,6 +924,11 @@ void
 dos_consensus_has_changed(const networkstatus_t *ns)
 {
   cc_consensus_has_changed(ns);
+  conn_consensus_has_changed(ns);
+
+  /* We were already enabled or we just became enabled but either way, set the
+   * consensus parameters for all subsystems. */
+  set_parameters_from_ns(ns);
 }
 
 /* Return true iff the DoS mitigation subsystem is enabled. */
@@ -965,12 +955,7 @@ dos_free_all(void)
 void
 dos_init(void)
 {
-  if (get_ns_param_cc_enabled(NULL)) {
-    cc_init(NULL);
-  }
-
-  if (get_ns_param_conn_enabled(NULL)) {
-    conn_init(NULL);
-  }
+  /* To initialize, we only need to get the parameters. */
+  set_parameters_from_ns(NULL);
 }
 
