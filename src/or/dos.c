@@ -127,18 +127,18 @@ cc_client_stats_free(cc_client_stats_t *obj)
 /* Return true iff the circuit creation mitigation is enabled. We look at the
  * consensus for this else a default value is returned. */
 MOCK_IMPL(STATIC unsigned int,
-get_ns_param_cc_enabled, (void))
+get_ns_param_cc_enabled, (const networkstatus_t *ns))
 {
-  return !!networkstatus_get_param(NULL, "dos_cc_enabled",
+  return !!networkstatus_get_param(ns, "dos_cc_enabled",
                                    DOS_CC_ENABLED_DEFAULT, 0, 1);
 }
 
 /* Return the consensus parameter for the minimum concurrent connection at
  * which we'll start counting circuit for a specific client address. */
 STATIC uint32_t
-get_ns_param_cc_min_concurrent_connection(void)
+get_ns_param_cc_min_concurrent_connection(const networkstatus_t *ns)
 {
-  return networkstatus_get_param(NULL, "dos_cc_min_concurrent_conn",
+  return networkstatus_get_param(ns, "dos_cc_min_concurrent_conn",
                                  DOS_CC_MIN_CONCURRENT_CONN_DEFAULT,
                                  1, INT32_MAX);
 }
@@ -146,10 +146,10 @@ get_ns_param_cc_min_concurrent_connection(void)
 /* Return the consensus parameter for the time rate that is how many circuits
  * over this time span. */
 static uint32_t
-get_ns_param_cc_circuit_time_rate(void)
+get_ns_param_cc_circuit_time_rate(const networkstatus_t *ns)
 {
   /* This is in seconds. */
-  return networkstatus_get_param(NULL, "dos_cc_circuit_time_rate",
+  return networkstatus_get_param(ns, "dos_cc_circuit_time_rate",
                                  DOS_CC_CIRCUIT_TIME_RATE_DEFAULT,
                                  1, INT32_MAX);
 }
@@ -157,18 +157,18 @@ get_ns_param_cc_circuit_time_rate(void)
 /* Return the consensus parameter for the maximum circuit count for the
  * circuit time rate. */
 STATIC uint32_t
-get_ns_param_cc_circuit_max_count(void)
+get_ns_param_cc_circuit_max_count(const networkstatus_t *ns)
 {
-  return networkstatus_get_param(NULL, "dos_cc_circuit_max_count",
+  return networkstatus_get_param(ns, "dos_cc_circuit_max_count",
                                  DOS_CC_CIRCUIT_MAX_COUNT_DEFAULT,
                                  1, INT32_MAX);
 }
 
 /* Return the consensus parameter of the circuit creation defense type. */
 static uint32_t
-get_ns_param_cc_defense_type(void)
+get_ns_param_cc_defense_type(const networkstatus_t *ns)
 {
-  return networkstatus_get_param(NULL, "dos_cc_defense_type",
+  return networkstatus_get_param(ns, "dos_cc_defense_type",
                                  DOS_CC_DEFENSE_TYPE_DEFAULT,
                                  DOS_CC_DEFENSE_NONE, DOS_CC_DEFENSE_MAX);
 }
@@ -176,10 +176,10 @@ get_ns_param_cc_defense_type(void)
 /* Return the consensus parameter of the defense time period which is how much
  * time should we defend against a malicious client address. */
 static int32_t
-get_ns_param_cc_defense_time_period(void)
+get_ns_param_cc_defense_time_period(const networkstatus_t *ns)
 {
   /* Time in seconds. */
-  return networkstatus_get_param(NULL, "dos_cc_defense_time_period",
+  return networkstatus_get_param(ns, "dos_cc_defense_time_period",
                                  DOS_CC_DEFENSE_TIME_PERIOD_DEFAULT,
                                  0, INT32_MAX);
 }
@@ -187,27 +187,27 @@ get_ns_param_cc_defense_time_period(void)
 /* Return true iff connection mitigation is enabled. We look at the consensus
  * for this else a default value is returned. */
 MOCK_IMPL(STATIC unsigned int,
-get_ns_param_conn_enabled,(void))
+get_ns_param_conn_enabled, (const networkstatus_t *ns))
 {
-  return !!networkstatus_get_param(NULL, "dos_conn_enabled",
+  return !!networkstatus_get_param(ns, "dos_conn_enabled",
                                    DOS_CONN_ENABLED_DEFAULT, 0, 1);
 }
 
 /* Return the consensus parameter for the maximum concurrent connection
  * allowed. */
 STATIC uint32_t
-get_ns_param_conn_max_concurrent_count(void)
+get_ns_param_conn_max_concurrent_count(const networkstatus_t *ns)
 {
-  return networkstatus_get_param(NULL, "dos_conn_max_concurrent_count",
+  return networkstatus_get_param(ns, "dos_conn_max_concurrent_count",
                                  DOS_CONN_MAX_CONCURRENT_COUNT_DEFAULT,
                                  1, INT32_MAX);
 }
 
 /* Return the consensus parameter of the connection defense type. */
 static uint32_t
-get_ns_param_conn_defense_type(void)
+get_ns_param_conn_defense_type(const networkstatus_t *ns)
 {
-  return networkstatus_get_param(NULL, "dos_conn_defense_type",
+  return networkstatus_get_param(ns, "dos_conn_defense_type",
                                  DOS_CONN_DEFENSE_TYPE_DEFAULT,
                                  DOS_CONN_DEFENSE_NONE, DOS_CONN_DEFENSE_MAX);
 }
@@ -216,17 +216,17 @@ get_ns_param_conn_defense_type(void)
  * if none are present. Called at initialization or when the consensus
  * changes. */
 static void
-cc_set_parameters_from_ns(void)
+cc_set_parameters_from_ns(const networkstatus_t *ns)
 {
   /* Get the default consensus param values. */
-  dos_cc_min_concurrent_conn = get_ns_param_cc_min_concurrent_connection();
-  dos_cc_circuit_time_rate = get_ns_param_cc_circuit_time_rate();
-  dos_cc_circuit_max_count = get_ns_param_cc_circuit_max_count();
-  dos_cc_defense_time_period = get_ns_param_cc_defense_time_period();
-  dos_cc_defense_type = get_ns_param_cc_defense_type();
+  dos_cc_min_concurrent_conn = get_ns_param_cc_min_concurrent_connection(ns);
+  dos_cc_circuit_time_rate = get_ns_param_cc_circuit_time_rate(ns);
+  dos_cc_circuit_max_count = get_ns_param_cc_circuit_max_count(ns);
+  dos_cc_defense_time_period = get_ns_param_cc_defense_time_period(ns);
+  dos_cc_defense_type = get_ns_param_cc_defense_type(ns);
 
-  dos_conn_max_concurrent_count = get_ns_param_conn_max_concurrent_count();
-  dos_conn_defense_type = get_ns_param_conn_defense_type();
+  dos_conn_max_concurrent_count = get_ns_param_conn_max_concurrent_count(ns);
+  dos_conn_defense_type = get_ns_param_conn_defense_type(ns);
 }
 
 /* Free the circuit stats entry from a geoip client entry and set it to NULL
@@ -256,21 +256,21 @@ cc_free_all(void)
 
 /* Initialize the circuit creation DoS mitigation subsystem. */
 static void
-cc_init(void)
+cc_init(const networkstatus_t *ns)
 {
   /* At least get the defaults set up. */
-  cc_set_parameters_from_ns();
+  cc_set_parameters_from_ns(ns);
   dos_cc_enabled = 1;
 }
 
 /* Called when the consensus has changed. Do appropriate actions for the
  * circuit creation subsystem. */
 static void
-cc_consensus_has_changed(void)
+cc_consensus_has_changed(const networkstatus_t *ns)
 {
   /* Looking at the consensus, is the circuit creation subsystem enabled? If
    * not and it was enabled before, clean it up. */
-  if (dos_cc_enabled && !get_ns_param_cc_enabled()) {
+  if (dos_cc_enabled && !get_ns_param_cc_enabled(ns)) {
     cc_free_all();
     goto end;
   }
@@ -278,9 +278,9 @@ cc_consensus_has_changed(void)
   /* If we were enabled, time to get the parameters again. Else, we just
    * became enabled so we need to initialize. */
   if (dos_cc_enabled) {
-    cc_set_parameters_from_ns();
+    cc_set_parameters_from_ns(ns);
   } else {
-    cc_init();
+    cc_init(ns);
   }
 
  end:
@@ -607,10 +607,10 @@ conn_free_all(void)
 
 /* Initialize the connection DoS mitigation subsystem. */
 static void
-conn_init(void)
+conn_init(const networkstatus_t *ns)
 {
   /* At least get the defaults set up. */
-  cc_set_parameters_from_ns();
+  cc_set_parameters_from_ns(ns);
   dos_conn_enabled = 1;
 }
 
@@ -936,9 +936,9 @@ dos_cleanup(time_t now)
 /* Called when the consensus has changed. We might have new consensus
  * parameters to look at. */
 void
-dos_consensus_has_changed(void)
+dos_consensus_has_changed(const networkstatus_t *ns)
 {
-  cc_consensus_has_changed();
+  cc_consensus_has_changed(ns);
 }
 
 /* Return true iff the DoS mitigation subsystem is enabled. */
@@ -965,12 +965,12 @@ dos_free_all(void)
 void
 dos_init(void)
 {
-  if (get_ns_param_cc_enabled()) {
-    cc_init();
+  if (get_ns_param_cc_enabled(NULL)) {
+    cc_init(NULL);
   }
 
-  if (get_ns_param_conn_enabled()) {
-    conn_init();
+  if (get_ns_param_conn_enabled(NULL)) {
+    conn_init(NULL);
   }
 }
 

@@ -1509,7 +1509,7 @@ notify_networkstatus_changed(const networkstatus_t *old_c,
                              const networkstatus_t *new_c)
 {
   notify_control_networkstatus_changed(old_c, new_c);
-  dos_consensus_has_changed();
+  dos_consensus_has_changed(new_c);
 }
 
 /** Copy all the ancillary information (like router download status and so on)

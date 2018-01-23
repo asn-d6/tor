@@ -14,8 +14,9 @@
 #include "log_test_helpers.h"
 
 static unsigned int
-mock_enable_dos_protection(void)
+mock_enable_dos_protection(const networkstatus_t *ns)
 {
+  (void) ns;
   return 1;
 }
 
@@ -36,7 +37,7 @@ test_dos_conn_creation(void *arg)
 
   /* Get DoS subsystem limits */
   dos_init();
-  uint32_t max_concurrent_conns = get_ns_param_conn_max_concurrent_count();
+  uint32_t max_concurrent_conns = get_ns_param_conn_max_concurrent_count(NULL);
 
   /* Introduce new client */
   geoip_note_client_seen(GEOIP_CLIENT_CONNECT, &addr, NULL, now);
@@ -107,8 +108,9 @@ test_dos_circuit_creation(void *arg)
 
   /* Get DoS subsystem limits */
   dos_init();
-  uint32_t max_circuit_count = get_ns_param_cc_circuit_max_count();
-  uint32_t min_conc_conns_for_cc = get_ns_param_cc_min_concurrent_connection();
+  uint32_t max_circuit_count = get_ns_param_cc_circuit_max_count(NULL);
+  uint32_t min_conc_conns_for_cc =
+    get_ns_param_cc_min_concurrent_connection(NULL);
 
   /* Introduce new client and establish enough connections to activate the
    * circuit counting subsystem */

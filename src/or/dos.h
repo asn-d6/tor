@@ -17,7 +17,7 @@ struct dos_client_stats_t;
 
 void dos_init(void);
 void dos_free_all(void);
-void dos_consensus_has_changed(void);
+void dos_consensus_has_changed(const networkstatus_t *ns);
 void dos_cleanup(time_t now);
 int dos_enabled(void);
 void dos_log_heartbeat(void);
@@ -94,12 +94,16 @@ dos_conn_defense_type_t dos_conn_addr_get_defense_type(const tor_addr_t *addr);
 
 #ifdef DOS_PRIVATE
 
-STATIC uint32_t get_ns_param_conn_max_concurrent_count(void);
-STATIC uint32_t get_ns_param_cc_circuit_max_count(void);
-STATIC uint32_t get_ns_param_cc_min_concurrent_connection(void);
+STATIC uint32_t get_ns_param_conn_max_concurrent_count(
+                                                 const networkstatus_t *ns);
+STATIC uint32_t get_ns_param_cc_circuit_max_count(const networkstatus_t *ns);
+STATIC uint32_t get_ns_param_cc_min_concurrent_connection(
+                                               const networkstatus_t *ns);
 
-MOCK_DECL(STATIC unsigned int, get_ns_param_cc_enabled, (void));
-MOCK_DECL(STATIC unsigned int, get_ns_param_conn_enabled, (void));
+MOCK_DECL(STATIC unsigned int, get_ns_param_cc_enabled,
+          (const networkstatus_t *ns));
+MOCK_DECL(STATIC unsigned int, get_ns_param_conn_enabled,
+          (const networkstatus_t *ns));
 
 #endif /* TOR_DOS_PRIVATE */
 
