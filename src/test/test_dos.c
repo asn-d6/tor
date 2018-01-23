@@ -27,8 +27,8 @@ test_dos_conn_creation(void *arg)
 {
   (void) arg;
 
-  MOCK(get_ns_param_cc_enabled, mock_enable_dos_protection);
-  MOCK(get_ns_param_conn_enabled, mock_enable_dos_protection);
+  MOCK(get_param_cc_enabled, mock_enable_dos_protection);
+  MOCK(get_param_conn_enabled, mock_enable_dos_protection);
 
   /* Initialize test data */
   tor_addr_t addr;
@@ -37,7 +37,7 @@ test_dos_conn_creation(void *arg)
 
   /* Get DoS subsystem limits */
   dos_init();
-  uint32_t max_concurrent_conns = get_ns_param_conn_max_concurrent_count(NULL);
+  uint32_t max_concurrent_conns = get_param_conn_max_concurrent_count(NULL);
 
   /* Introduce new client */
   geoip_note_client_seen(GEOIP_CLIENT_CONNECT, &addr, NULL, now);
@@ -91,8 +91,8 @@ test_dos_circuit_creation(void *arg)
   (void) arg;
   unsigned int i;
 
-  MOCK(get_ns_param_cc_enabled, mock_enable_dos_protection);
-  MOCK(get_ns_param_conn_enabled, mock_enable_dos_protection);
+  MOCK(get_param_cc_enabled, mock_enable_dos_protection);
+  MOCK(get_param_conn_enabled, mock_enable_dos_protection);
   MOCK(channel_get_addr_if_possible,
        mock_channel_get_addr_if_possible);
 
@@ -108,9 +108,9 @@ test_dos_circuit_creation(void *arg)
 
   /* Get DoS subsystem limits */
   dos_init();
-  uint32_t max_circuit_count = get_ns_param_cc_circuit_max_count(NULL);
+  uint32_t max_circuit_count = get_param_cc_circuit_max_count(NULL);
   uint32_t min_conc_conns_for_cc =
-    get_ns_param_cc_min_concurrent_connection(NULL);
+    get_param_cc_min_concurrent_connection(NULL);
 
   /* Introduce new client and establish enough connections to activate the
    * circuit counting subsystem */

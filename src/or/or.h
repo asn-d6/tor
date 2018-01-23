@@ -4516,6 +4516,34 @@ typedef struct {
   /** If 1, we skip all OOS checks. */
   int DisableOOSCheck;
 
+  /** Autobool: Is the circuit creation DoS mitigation subsystem enabled? */
+  int DoSCircuitCreationEnabled;
+  /** Autobool: Minimum concurrent connection needed from one single address
+   * before any defense is used. */
+  int DoSCircuitCreationMinConnections;
+  /** Autobool: Circuit time rate from which we compute a circuit rate using
+   * the maximum circuit count (DoSCircuitCreationMaxCount) and used for the
+   * token bucket size. */
+  int DoSCircuitCreationTimeRate;
+  /** Autobool: Maximum circuit count for a time rate. Below that, the address
+   * is detected as malicious and a defense might be used. */
+  int DoSCircuitCreationMaxCount;
+  /** Autobool: When an address is marked as malicous, what defense should be
+   * used against it. See the dos_cc_defense_type_t enum. */
+  int DoSCircuitCreationDefenseType;
+  /** Autobool: For how much time the defense is applicable for a malicious
+   * address. A random time delta is added to the defense time of an address
+   * which will be between 1 second and half of this value. */
+  int DoSCircuitCreationDefenseTimePeriod;
+
+  /** Autobool: Is the DoS connection mitigation subsystem enabled? */
+  int DoSConnectionEnabled;
+  /** Autobool: Maximum concurrent connection allowed per address. */
+  int DoSConnectionMaxConcurrentCount;
+  /** Autobool: When an address is reaches the maximum count, what defense
+   * should be used against it. See the dos_conn_defense_type_t enum. */
+  int DoSConnectionDefenseType;
+
   /** Autobool: Do we refuse tor2web client establish rendezvous? */
   int DoSRefuseTor2webClient;
 } or_options_t;

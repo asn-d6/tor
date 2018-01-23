@@ -120,15 +120,15 @@ dos_conn_defense_type_t dos_conn_addr_get_defense_type(const tor_addr_t *addr);
 
 #ifdef DOS_PRIVATE
 
-STATIC uint32_t get_ns_param_conn_max_concurrent_count(
-                                                 const networkstatus_t *ns);
-STATIC uint32_t get_ns_param_cc_circuit_max_count(const networkstatus_t *ns);
-STATIC uint32_t get_ns_param_cc_min_concurrent_connection(
-                                               const networkstatus_t *ns);
+STATIC uint32_t get_param_conn_max_concurrent_count(
+                                              const networkstatus_t *ns);
+STATIC uint32_t get_param_cc_circuit_max_count(const networkstatus_t *ns);
+STATIC uint32_t get_param_cc_min_concurrent_connection(
+                                            const networkstatus_t *ns);
 
-MOCK_DECL(STATIC unsigned int, get_ns_param_cc_enabled,
+MOCK_DECL(STATIC unsigned int, get_param_cc_enabled,
           (const networkstatus_t *ns));
-MOCK_DECL(STATIC unsigned int, get_ns_param_conn_enabled,
+MOCK_DECL(STATIC unsigned int, get_param_conn_enabled,
           (const networkstatus_t *ns));
 
 #endif /* TOR_DOS_PRIVATE */

@@ -241,6 +241,18 @@ static config_var_t option_vars_[] = {
   OBSOLETE("DynamicDHGroups"),
   VPORT(DNSPort,                     LINELIST, NULL),
   V(DNSListenAddress,            LINELIST, NULL),
+  /* DoS circuit creation options. */
+  V(DoSCircuitCreationEnabled,   AUTOBOOL, "auto"),
+  V(DoSCircuitCreationMinConnections,      AUTOBOOL, "auto"),
+  V(DoSCircuitCreationTimeRate,   AUTOBOOL, "auto"),
+  V(DoSCircuitCreationMaxCount,   AUTOBOOL, "auto"),
+  V(DoSCircuitCreationDefenseType,         AUTOBOOL, "auto"),
+  V(DoSCircuitCreationDefenseTimePeriod,   AUTOBOOL, "auto"),
+  /* DoS connection options. */
+  V(DoSConnectionEnabled,        AUTOBOOL, "auto"),
+  V(DoSConnectionMaxConcurrentCount,       AUTOBOOL, "auto"),
+  V(DoSConnectionDefenseType,    AUTOBOOL, "auto"),
+  /* DoS single hop client options. */
   V(DoSRefuseTor2webClient,      AUTOBOOL, "auto"),
   V(DownloadExtraInfo,           BOOL,     "0"),
   V(TestingEnableConnBwEvent,    BOOL,     "0"),
