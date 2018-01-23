@@ -1534,6 +1534,11 @@ typedef struct or_connection_t {
    * bytes TLS actually sent - used for overhead estimation for scheduling.
    */
   uint64_t bytes_xmitted, bytes_xmitted_by_tls;
+
+  /** True iff this is a client connection and its address has been put in the
+   * geoip cache. We use this in the DoS mitigation subsystem to insure we
+   * have a coherent count of concurrent connection count. */
+  unsigned int geoip_cached : 1;
 } or_connection_t;
 
 /** Subtype of connection_t for an "edge connection" -- that is, an entry (ap)

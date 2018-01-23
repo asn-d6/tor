@@ -690,8 +690,8 @@ connection_free,(connection_t *conn))
 #endif
 
   /* Notify the circuit creation DoS mitigation subsystem that an OR client
-   * connection has been closed. */
-  if (conn->type == CONN_TYPE_OR) {
+   * connection has been closed. And only do that if we track it. */
+  if (conn->type == CONN_TYPE_OR && TO_OR_CONN(conn)->geoip_cached) {
     dos_close_client_conn(&TO_OR_CONN(conn)->real_addr);
   }
 

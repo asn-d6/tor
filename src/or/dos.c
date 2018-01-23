@@ -291,21 +291,11 @@ cc_close_client_conn(const tor_addr_t *addr, dos_client_stats_t *stats)
   tor_assert(addr);
   tor_assert(stats);
 
-  /* Because the new client connection is noted when the channel becomes open,
-   * this means we can end up here if the connection was closed before it was
-   * ever opened leading to having this down to 0. Just ignore. */
-  if (stats->cc_stats.concurrent_count == 0) {
-    goto end;
-  }
-
   stats->cc_stats.concurrent_count--;
   stats->cc_stats.last_conn_ts = approx_time();
   log_debug(LD_DOS, "Client address %s has lost a connection. Concurrent "
                     "connections are now at %u",
             fmt_addr(addr), stats->cc_stats.concurrent_count);
-
- end:
-  return;
 }
 
 /* Return true iff the circuit bucket is down to 0 and the number of
