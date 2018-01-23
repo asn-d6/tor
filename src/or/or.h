@@ -4544,8 +4544,8 @@ typedef struct {
    * should be used against it. See the dos_conn_defense_type_t enum. */
   int DoSConnectionDefenseType;
 
-  /** Autobool: Do we refuse tor2web client establish rendezvous? */
-  int DoSRefuseTor2webClient;
+  /** Autobool: Do we refuse single hop client rendezvous? */
+  int DoSRefuseSingleHopClientRendezvous;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */

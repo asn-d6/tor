@@ -253,7 +253,7 @@ static config_var_t option_vars_[] = {
   V(DoSConnectionMaxConcurrentCount,       AUTOBOOL, "auto"),
   V(DoSConnectionDefenseType,    AUTOBOOL, "auto"),
   /* DoS single hop client options. */
-  V(DoSRefuseTor2webClient,      AUTOBOOL, "auto"),
+  V(DoSRefuseSingleHopClientRendezvous,    AUTOBOOL, "auto"),
   V(DownloadExtraInfo,           BOOL,     "0"),
   V(TestingEnableConnBwEvent,    BOOL,     "0"),
   V(TestingEnableCellStatsEvent, BOOL,     "0"),

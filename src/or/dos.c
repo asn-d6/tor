@@ -60,7 +60,7 @@ static uint64_t conn_num_addr_rejected;
  */
 
 /* Keep stats for the heartbeat. */
-static uint64_t num_tor2web_client_refused;
+static uint64_t num_single_hop_client_refused;
 
 /* Return true iff the circuit creation mitigation is enabled. We look at the
  * consensus for this else a default value is returned. */
@@ -517,24 +517,25 @@ dos_conn_addr_get_defense_type(const tor_addr_t *addr)
 
 /* General API */
 
-/* Note down that we've just refused a tor2web client. This increments a
+/* Note down that we've just refused a single hop client. This increments a
  * counter later used for the heartbeat. */
 void
-dos_note_refuse_tor2web_client(void)
+dos_note_refuse_single_hop_client(void)
 {
-  num_tor2web_client_refused++;
+  num_single_hop_client_refused++;
 }
 
-/* Return true iff tor2web client connection (ESTABLISH_RENDEZVOUS) should be
- * refused. */
+/* Return true iff single hop client connection (ESTABLISH_RENDEZVOUS) should
+ * be refused. */
 int
-dos_should_refuse_tor2web_client(void)
+dos_should_refuse_single_hop_client(void)
 {
-  if (get_options()->DoSRefuseTor2webClient != -1) {
-    return get_options()->DoSRefuseTor2webClient;
+  if (get_options()->DoSRefuseSingleHopClientRendezvous != -1) {
+    return get_options()->DoSRefuseSingleHopClientRendezvous;
   }
 
-  return (int) networkstatus_get_param(NULL, "DoSRefuseTor2webClient",
+  return (int) networkstatus_get_param(NULL,
+                                       "DoSRefuseSingleHopClientRendezvous",
                                        0 /* default */, 0, 1);
 }
 
@@ -544,7 +545,7 @@ dos_log_heartbeat(void)
 {
   char *conn_msg = NULL;
   char *cc_msg = NULL;
-  char *tor2web_msg = NULL;
+  char *single_hop_client_msg = NULL;
 
   if (!dos_is_enabled()) {
     goto end;
@@ -565,21 +566,21 @@ dos_log_heartbeat(void)
                  conn_num_addr_rejected);
   }
 
-  if (dos_should_refuse_tor2web_client()) {
-    tor_asprintf(&tor2web_msg,
-                 " %" PRIu64 " tor2web client refused.",
-                 num_tor2web_client_refused);
+  if (dos_should_refuse_single_hop_client()) {
+    tor_asprintf(&single_hop_client_msg,
+                 " %" PRIu64 " single hop client refused.",
+                 num_single_hop_client_refused);
   }
 
   log_notice(LD_HEARTBEAT,
              "DoS mitigation since startup:%s%s%s",
              (cc_msg != NULL) ? cc_msg : " [cc not enabled]",
              (conn_msg != NULL) ? conn_msg : " [conn not enabled]",
-             (tor2web_msg != NULL) ? tor2web_msg : "");
+             (single_hop_client_msg != NULL) ? single_hop_client_msg : "");
 
   tor_free(conn_msg);
   tor_free(cc_msg);
-  tor_free(tor2web_msg);
+  tor_free(single_hop_client_msg);
 
  end:
   return;
