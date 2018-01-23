@@ -586,10 +586,12 @@ dos_log_heartbeat(void)
 }
 
 /* Called when a new client connection has been established on the given
- * address. */
-void
+ * address. Return true iff the connection count was incremented thus
+ * accounted by this subsystem. */
+int
 dos_new_client_conn(const tor_addr_t *addr)
 {
+  int ret = 0;
   clientmap_entry_t *entry;
 
   tor_assert(addr);
@@ -608,12 +610,13 @@ dos_new_client_conn(const tor_addr_t *addr)
     goto end;
   }
 
+  ret = 1;
   entry->dos_stats.concurrent_count++;
   log_debug(LD_DOS, "Client address %s has now %u concurrent connections.",
             fmt_addr(addr), entry->dos_stats.concurrent_count);
 
  end:
-  return;
+  return ret;
 }
 
 /* Called when a client connection for the given IP address has been closed. */

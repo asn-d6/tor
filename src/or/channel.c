@@ -2606,9 +2606,11 @@ channel_do_open_actions(channel_t *chan)
                                now);
         tor_free(transport_name);
         /* Notify the DoS subsystem of a new client. */
-        dos_new_client_conn(&remote_addr);
-        /* Flag the connection that it is being tracked by the geoip cache. */
-        channel_set_geoip_cached_flag(chan);
+        if (dos_new_client_conn(&remote_addr)) {
+          /* Connection has been accounted for, flag the connection that it is
+           * being tracked by the geoip cache and by the DoS subsystem. */
+          channel_set_geoip_cached_flag(chan);
+        }
       }
       /* Otherwise the underlying transport can't tell us this, so skip it */
     }
