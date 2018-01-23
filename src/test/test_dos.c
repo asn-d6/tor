@@ -31,41 +31,43 @@ test_dos_conn_creation(void *arg)
   MOCK(get_param_conn_enabled, mock_enable_dos_protection);
 
   /* Initialize test data */
-  tor_addr_t addr;
+  or_connection_t or_conn;
   time_t now = 1281533250; /* 2010-08-11 13:27:30 UTC */
-  tt_int_op(AF_INET,OP_EQ, tor_addr_parse(&addr, "18.0.0.1"));
+  tt_int_op(AF_INET,OP_EQ, tor_addr_parse(&or_conn.real_addr,
+                                          "18.0.0.1"));
+  tor_addr_t *addr = &or_conn.real_addr;
 
   /* Get DoS subsystem limits */
   dos_init();
   uint32_t max_concurrent_conns = get_param_conn_max_concurrent_count(NULL);
 
   /* Introduce new client */
-  geoip_note_client_seen(GEOIP_CLIENT_CONNECT, &addr, NULL, now);
+  geoip_note_client_seen(GEOIP_CLIENT_CONNECT, addr, NULL, now);
   { /* Register many conns from this client but not enough to get it blocked */
     unsigned int i;
     for (i = 0; i < max_concurrent_conns; i++) {
-      dos_new_client_conn(&addr);
+      dos_new_client_conn(&or_conn);
     }
   }
 
   /* Check that new conns are still permitted */
   tt_int_op(DOS_CONN_DEFENSE_NONE, OP_EQ,
-            dos_conn_addr_get_defense_type(&addr));
+            dos_conn_addr_get_defense_type(addr));
 
   /* Register another conn and check that new conns are not allowed anymore */
-  dos_new_client_conn(&addr);
+  dos_new_client_conn(&or_conn);
   tt_int_op(DOS_CONN_DEFENSE_CLOSE, OP_EQ,
-            dos_conn_addr_get_defense_type(&addr));
+            dos_conn_addr_get_defense_type(addr));
 
   /* Close a client conn and see that a new conn will be permitted again */
-  dos_close_client_conn(&addr);
+  dos_close_client_conn(&or_conn);
   tt_int_op(DOS_CONN_DEFENSE_NONE, OP_EQ,
-            dos_conn_addr_get_defense_type(&addr));
+            dos_conn_addr_get_defense_type(addr));
 
   /* Register another conn and see that defense measures get reactivated */
-  dos_new_client_conn(&addr);
+  dos_new_client_conn(&or_conn);
   tt_int_op(DOS_CONN_DEFENSE_CLOSE, OP_EQ,
-            dos_conn_addr_get_defense_type(&addr));
+            dos_conn_addr_get_defense_type(addr));
 
  done:
   dos_free_all();
@@ -102,9 +104,11 @@ test_dos_circuit_creation(void *arg)
   chan->is_client = 1;
 
   /* Initialize test data */
-  tor_addr_t addr;
+  or_connection_t or_conn;
   time_t now = 1281533250; /* 2010-08-11 13:27:30 UTC */
-  tt_int_op(AF_INET,OP_EQ, tor_addr_parse(&addr, "18.0.0.1"));
+  tt_int_op(AF_INET,OP_EQ, tor_addr_parse(&or_conn.real_addr,
+                                          "18.0.0.1"));
+  tor_addr_t *addr = &or_conn.real_addr;
 
   /* Get DoS subsystem limits */
   dos_init();
@@ -114,9 +118,9 @@ test_dos_circuit_creation(void *arg)
 
   /* Introduce new client and establish enough connections to activate the
    * circuit counting subsystem */
-  geoip_note_client_seen(GEOIP_CLIENT_CONNECT, &addr, NULL, now);
+  geoip_note_client_seen(GEOIP_CLIENT_CONNECT, addr, NULL, now);
   for (i = 0; i < min_conc_conns_for_cc ; i++) {
-    dos_new_client_conn(&addr);
+    dos_new_client_conn(&or_conn);
   }
 
   /* Register new circuits for this client and conn, but not enough to get

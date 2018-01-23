@@ -586,15 +586,13 @@ dos_log_heartbeat(void)
 }
 
 /* Called when a new client connection has been established on the given
- * address. Return true iff the connection count was incremented thus
- * accounted by this subsystem. */
-int
-dos_new_client_conn(const tor_addr_t *addr)
+ * address. */
+void
+dos_new_client_conn(or_connection_t *or_conn)
 {
-  int ret = 0;
   clientmap_entry_t *entry;
 
-  tor_assert(addr);
+  tor_assert(or_conn);
 
   /* Past that point, we know we have at least one DoS detection subsystem
    * enabled so we'll start allocating stuff. */
@@ -603,38 +601,42 @@ dos_new_client_conn(const tor_addr_t *addr)
   }
 
   /* We are only interested in client connection from the geoip cache. */
-  entry = geoip_lookup_client(addr, NULL, GEOIP_CLIENT_CONNECT);
+  entry = geoip_lookup_client(&or_conn->real_addr, NULL,
+                              GEOIP_CLIENT_CONNECT);
   if (BUG(entry == NULL)) {
     /* Should never happen because we note down the address in the geoip
      * cache before this is called. */
     goto end;
   }
 
-  ret = 1;
   entry->dos_stats.concurrent_count++;
+  or_conn->tracked_for_dos_mitigation = 1;
   log_debug(LD_DOS, "Client address %s has now %u concurrent connections.",
-            fmt_addr(addr), entry->dos_stats.concurrent_count);
+            fmt_addr(&or_conn->real_addr),
+            entry->dos_stats.concurrent_count);
 
  end:
-  return ret;
+  return;
 }
 
 /* Called when a client connection for the given IP address has been closed. */
 void
-dos_close_client_conn(const tor_addr_t *addr)
+dos_close_client_conn(const or_connection_t *or_conn)
 {
   clientmap_entry_t *entry;
 
-  tor_assert(addr);
+  tor_assert(or_conn);
 
-  /* Past that point, we know we have at least one DoS detection subsystem so
-   * we should lookup anything related to this address. */
-  if (!dos_is_enabled()) {
+  /* Past that point, we know we have at least one DoS detection subsystem
+   * enabled. Also, we ignore if this connection is not in the geoip cache
+   * while that subsystem is enabled. */
+  if (!dos_is_enabled() || !or_conn->tracked_for_dos_mitigation) {
     goto end;
   }
 
   /* We are only interested in client connection from the geoip cache. */
-  entry = geoip_lookup_client(addr, NULL, GEOIP_CLIENT_CONNECT);
+  entry = geoip_lookup_client(&or_conn->real_addr, NULL,
+                              GEOIP_CLIENT_CONNECT);
   if (entry == NULL) {
     /* This can happen because we can close a connection before the channel
      * got to be noted down in the geoip cache. */
@@ -644,7 +646,8 @@ dos_close_client_conn(const tor_addr_t *addr)
   entry->dos_stats.concurrent_count--;
   log_debug(LD_DOS, "Client address %s has lost a connection. Concurrent "
                     "connections are now at %u",
-            fmt_addr(addr), entry->dos_stats.concurrent_count);
+            fmt_addr(&or_conn->real_addr),
+            entry->dos_stats.concurrent_count);
 
  end:
   return;

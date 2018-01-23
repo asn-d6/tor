@@ -2539,21 +2539,6 @@ channel_listener_process_incoming(channel_listener_t *listener)
   listener->incoming_list = NULL;
 }
 
-/* For the given channel, set the geoip cached flag in its or_connection_t if
- * any. */
-static void
-channel_set_geoip_cached_flag(channel_t *chan)
-{
-  channel_tls_t *tlschan;
-
-  tor_assert(chan);
-
-  tlschan = BASE_CHAN_TO_TLS(chan);
-  if (tlschan && tlschan->conn) {
-    tlschan->conn->geoip_cached = 1;
-  }
-}
-
 /**
  * Take actions required when a channel becomes open
  *
@@ -2598,6 +2583,7 @@ channel_do_open_actions(channel_t *chan)
     if (!router_get_by_id_digest(chan->identity_digest)) {
       if (channel_get_addr_if_possible(chan, &remote_addr)) {
         char *transport_name = NULL;
+        channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
         if (chan->get_transport_name(chan, &transport_name) < 0)
           transport_name = NULL;
 
@@ -2606,10 +2592,8 @@ channel_do_open_actions(channel_t *chan)
                                now);
         tor_free(transport_name);
         /* Notify the DoS subsystem of a new client. */
-        if (dos_new_client_conn(&remote_addr)) {
-          /* Connection has been accounted for, flag the connection that it is
-           * being tracked by the geoip cache and by the DoS subsystem. */
-          channel_set_geoip_cached_flag(chan);
+        if (tlschan && tlschan->conn) {
+          dos_new_client_conn(tlschan->conn);
         }
       }
       /* Otherwise the underlying transport can't tell us this, so skip it */

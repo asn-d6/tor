@@ -50,8 +50,8 @@ void dos_consensus_has_changed(const networkstatus_t *ns);
 int dos_enabled(void);
 void dos_log_heartbeat(void);
 
-int dos_new_client_conn(const tor_addr_t *addr);
-void dos_close_client_conn(const tor_addr_t *addr);
+void dos_new_client_conn(or_connection_t *or_conn);
+void dos_close_client_conn(const or_connection_t *or_conn);
 
 int dos_should_refuse_tor2web_client(void);
 void dos_note_refuse_tor2web_client(void);
