@@ -39,10 +39,9 @@ typedef struct clientmap_entry_t {
   unsigned int last_seen_in_minutes:30;
   unsigned int action:2;
 
-  /* If the DoS mitigation subsystem is enabled, this might be non NULL for
-   * any detection that is ongoing. This object is used to keep some
-   * statistics per client address. */
-  struct dos_client_stats_t *dos_stats;
+  /* This object is used to keep some statistics per client address for the
+   * DoS mitigation subsystem. */
+  dos_client_stats_t dos_stats;
 } clientmap_entry_t;
 
 int should_record_bridge_info(const or_options_t *options);
@@ -61,8 +60,6 @@ void geoip_remove_old_clients(time_t cutoff);
 clientmap_entry_t *geoip_lookup_client(const tor_addr_t *addr,
                                        const char *transport_name,
                                        geoip_client_action_t action);
-void geoip_for_each_client(geoip_client_action_t action, time_t now,
-                           void (*callback_fn)(clientmap_entry_t *, time_t));
 
 void geoip_note_ns_response(geoip_ns_response_t response);
 char *geoip_get_transport_history(void);

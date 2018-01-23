@@ -38,48 +38,11 @@ static int32_t dos_cc_defense_time_period;
 static uint64_t cc_num_rejected_cells;
 static uint32_t cc_num_marked_addrs;
 
-/* Structure that keeps stats of client connection per-IP. */
-typedef struct cc_client_stats_t {
-  /* Concurrent connection count from the specific address. 2^32 is most
-   * likely way too big for the amount of allowed file descriptors. */
-  uint32_t concurrent_count;
-
-  /* Number of allowed circuit rate that is this value is refilled at a rate
-   * defined by the consensus plus a bit of random. It is decremented every
-   * time a new circuit is seen for this client address and if the count goes
-   * to 0, we have a positive detection. */
-  uint32_t circuit_bucket;
-
-  /* When was the last time we've refilled the circuit bucket? This is used to
-   * know if we need to refill the bucket when a new circuit is seen. It is
-   * synchronized using approx_time(). */
-  time_t last_circ_bucket_refill_ts;
-
-  /* This client address was detected to be above the circuit creation rate
-   * and this timestamp indicates until when it should remain marked as
-   * detected so we can apply a defense for the address. It is synchronized
-   * using the approx_time(). */
-  time_t marked_until_ts;
-
-  /* Timestamp of when was the last connection received regardless of the
-   * connection count. We use this value to cleanup the DoS statistics from
-   * the geoip cache. It is synchronized using the approx_time() and never
-   * cleared until we clean it up from the cache. */
-  time_t last_conn_ts;
-} cc_client_stats_t;
-
 /*
  * Concurrent connection denial of service mitigation.
  *
  * Namespace used for this mitigation framework is "dos_conn_".
  */
-
-/* Structure that keeps stats of client connection per-IP. */
-typedef struct conn_client_stats_t {
-  /* Concurrent connection count from the specific address. 2^32 is most
-   * likely way too big for the amount of allowed file descriptors. */
-  uint32_t concurrent_count;
-} conn_client_stats_t;
 
 /* Is the connection DoS mitigation enabled? */
 static unsigned int dos_conn_enabled = 0;
@@ -96,33 +59,8 @@ static uint64_t conn_num_addr_rejected;
  * General interface of the denial of service mitigation subsystem.
  */
 
-/* This object is a top level object that contains everything related to the
- * per-IP client DoS mitigation. Because it is per-IP, it is used in the geoip
- * clientmap_entry_t object and opaque to that subsystem. */
-typedef struct dos_client_stats_t {
-  /* Circuit creation statistics. This is set only if the circuit creation
-   * subsystem has been enabled (dos_cc_enabled). */
-  cc_client_stats_t *cc_stats;
-
-  /* Concurrent connection statistics. This is set only if the subsystem has
-   * been enabled (dos_conn_enabled). */
-  conn_client_stats_t *conn_stats;
-} dos_client_stats_t;
-
-/* Used to count the number of entries removed when cleaning up the geoip
- * cache for dead connections. The cc_clean_unmarked_dead_conn_cb increments
- * it and the cc_cleanup function logs it and resets it to 0. */
-static unsigned int tmp_geoip_n_entries_cleaned_up = 0;
-
 /* Keep stats for the heartbeat. */
 static uint64_t num_tor2web_client_refused;
-
-/* Free a circuit creation client connection object. */
-static void
-cc_client_stats_free(cc_client_stats_t *obj)
-{
-  tor_free(obj);
-}
 
 /* Return true iff the circuit creation mitigation is enabled. We look at the
  * consensus for this else a default value is returned. */
@@ -232,29 +170,12 @@ set_parameters_from_ns(const networkstatus_t *ns)
   dos_conn_defense_type = get_ns_param_conn_defense_type(ns);
 }
 
-/* Free the circuit stats entry from a geoip client entry and set it to NULL
- * to indicate it is not used. */
-static void
-cc_free_stats_from_geoip_entry(clientmap_entry_t *entry, time_t now)
-{
-  (void) now;
-
-  tor_assert(entry);
-
-  if (entry->dos_stats && entry->dos_stats->cc_stats) {
-    cc_client_stats_free(entry->dos_stats->cc_stats);
-    entry->dos_stats->cc_stats = NULL;
-  }
-}
-
 /* Free everything for the circuit creation DoS mitigation subsystem. */
 static void
 cc_free_all(void)
 {
   /* If everything is freed, the circuit creation subsystem is not enabled. */
   dos_cc_enabled = 0;
-  geoip_for_each_client(GEOIP_CLIENT_CONNECT, 0,
-                        cc_free_stats_from_geoip_entry);
 }
 
 /* Called when the consensus has changed. Do appropriate actions for the
@@ -347,25 +268,18 @@ cc_stats_refill_bucket(cc_client_stats_t *stats, const tor_addr_t *addr)
   return;
 }
 
-/* Called when a new client connection has been established. Allocate the
- * circuit creation statistics object if needed in the stats object. The
- * address addr is for logging purposes only. */
+/* Called when a new client connection has been established. Increment the
+ * concurrent count of the circuit creation stats object. The address addr is
+ * for logging purposes only. */
 static void
 cc_new_client_conn(const tor_addr_t *addr, dos_client_stats_t *stats)
 {
   tor_assert(addr);
   tor_assert(stats);
 
-  if (stats->cc_stats == NULL) {
-    stats->cc_stats = tor_malloc_zero(sizeof(cc_client_stats_t));
-    /* Fill up the bucket to the expected values since this is a brand new
-     * address. */
-    cc_stats_refill_bucket(stats->cc_stats, addr);
-  }
-  stats->cc_stats->concurrent_count++;
-
+  stats->cc_stats.concurrent_count++;
   log_debug(LD_DOS, "Client address %s has now %u concurrent connections.",
-            fmt_addr(addr), stats->cc_stats->concurrent_count);
+            fmt_addr(addr), stats->cc_stats.concurrent_count);
 }
 
 /* Called when a new client connection has been established. Allocate the
@@ -377,23 +291,18 @@ cc_close_client_conn(const tor_addr_t *addr, dos_client_stats_t *stats)
   tor_assert(addr);
   tor_assert(stats);
 
-  if (stats->cc_stats == NULL) {
-    /* Nothing to do here. */
-    goto end;
-  }
-
   /* Because the new client connection is noted when the channel becomes open,
    * this means we can end up here if the connection was closed before it was
    * ever opened leading to having this down to 0. Just ignore. */
-  if (stats->cc_stats->concurrent_count == 0) {
+  if (stats->cc_stats.concurrent_count == 0) {
     goto end;
   }
 
-  stats->cc_stats->concurrent_count--;
-  stats->cc_stats->last_conn_ts = approx_time();
+  stats->cc_stats.concurrent_count--;
+  stats->cc_stats.last_conn_ts = approx_time();
   log_debug(LD_DOS, "Client address %s has lost a connection. Concurrent "
                     "connections are now at %u",
-            fmt_addr(addr), stats->cc_stats->concurrent_count);
+            fmt_addr(addr), stats->cc_stats.concurrent_count);
 
  end:
   return;
@@ -448,82 +357,20 @@ cc_channel_addr_is_marked(channel_t *chan)
 
   /* We are only interested in client connection from the geoip cache. */
   entry = geoip_lookup_client(&addr, NULL, GEOIP_CLIENT_CONNECT);
-  if (entry == NULL || entry->dos_stats == NULL) {
+  if (entry == NULL) {
     /* We can have a connection creating circuits but not tracked by the geoip
      * cache. Once this DoS subsystem is enabled, we can end up here with no
      * entry for the channel. */
     goto end;
   }
   now = approx_time();
-  stats = entry->dos_stats->cc_stats;
+  stats = &entry->dos_stats.cc_stats;
 
  end:
   return stats && stats->marked_until_ts >= now;
 }
 
-/* The lifetime of circuit creation stats if idle. */
-#define CC_STATS_LIFETIME_SEC (2 * 60)
-
-/* If the entry contains a circuit creation stats object, we'll free the
- * object if all of these requirements are met:
- *    1. It is unmarked or the marked timestamp has passed.
- *    2. Concurrent connection count is 0.
- *    3. The last seen connection was at least CC_STATS_LIFETIME_SEC ago.
- *
- * The generic DoS stats object remains untouched. */
-static void
-cc_clean_unmarked_dead_conn_cb(clientmap_entry_t *entry, time_t now)
-{
-  cc_client_stats_t *stats;
-
-  tor_assert(entry);
-
-  if (entry->dos_stats == NULL ||
-      entry->dos_stats->cc_stats == NULL) {
-    goto end;
-  }
-  stats = entry->dos_stats->cc_stats;
-
-  /* This connection is marked as malicious so we need to keep it alive until
-   * the defense time has passed. */
-  if (stats->marked_until_ts >= now) {
-    goto end;
-  }
-
-  /* No concurrent connection and the last connection is above its lifetime,
-   * we free the circuit creation stats object. */
-  if (stats->concurrent_count == 0 &&
-      (stats->last_conn_ts + CC_STATS_LIFETIME_SEC) <= now) {
-    cc_client_stats_free(stats);
-    entry->dos_stats->cc_stats = NULL;
-    tmp_geoip_n_entries_cleaned_up++;
-  }
-
- end:
-  return;
-}
-
-/* Garbage collect the circuit creation subsystem. */
-static void
-cc_cleanup(time_t now)
-{
-  /* Go over each client entry in the geoip cache and make it call our clean
-   * up unmarked connection function. */
-  geoip_for_each_client(GEOIP_CLIENT_CONNECT, now,
-                        cc_clean_unmarked_dead_conn_cb);
-  log_info(LD_DOS, "DoS circuit creation subsystem cleaned up %u entries.",
-           tmp_geoip_n_entries_cleaned_up);
-  tmp_geoip_n_entries_cleaned_up = 0;
-}
-
 /* Concurrent connection private API. */
-
-/* Free a connection client object. */
-static void
-conn_client_stats_free(conn_client_stats_t *obj)
-{
-  tor_free(obj);
-}
 
 /* Called when a client connection has closed. Update the connection stats
  * object if one exists and free it if concurrent count has reached 0. */
@@ -532,22 +379,9 @@ conn_close_client_conn(dos_client_stats_t *stats)
 {
   tor_assert(stats);
 
-  if (!stats->conn_stats) {
-    goto end;
+  if (stats->conn_stats.concurrent_count > 0) {
+    stats->conn_stats.concurrent_count--;
   }
-
-  if (stats->conn_stats->concurrent_count > 0) {
-    stats->conn_stats->concurrent_count--;
-  }
-
-  /* Cleanup the object if we've reached 0 as a concurrent count. */
-  if (stats->conn_stats->concurrent_count == 0) {
-    conn_client_stats_free(stats->conn_stats);
-    stats->conn_stats = NULL;
-  }
-
- end:
-  return;
 }
 
 /* New client connection seen from address addr. Update the connection stats
@@ -556,26 +390,7 @@ static void
 conn_new_client_conn(dos_client_stats_t *stats)
 {
   tor_assert(stats);
-
-  if (stats->conn_stats == NULL) {
-    stats->conn_stats = tor_malloc_zero(sizeof(conn_client_stats_t));
-  }
-  stats->conn_stats->concurrent_count++;
-}
-
-/* Free the connection stats entry from a geoip client entry and set it to
- * NULL to indicate it is not used. */
-static void
-conn_free_stats_from_geoip_entry(clientmap_entry_t *entry, time_t now)
-{
-  (void) now;
-
-  tor_assert(entry);
-
-  if (entry->dos_stats && entry->dos_stats->conn_stats) {
-    conn_client_stats_free(entry->dos_stats->conn_stats);
-    entry->dos_stats->conn_stats = NULL;
-  }
+  stats->conn_stats.concurrent_count++;
 }
 
 /* Free everything for the connection DoS mitigation subsystem. */
@@ -583,8 +398,6 @@ static void
 conn_free_all(void)
 {
   dos_conn_enabled = 0;
-  geoip_for_each_client(GEOIP_CLIENT_CONNECT, 0,
-                        conn_free_stats_from_geoip_entry);
 }
 
 /* Called when the consensus has changed. Do appropriate actions for the
@@ -642,12 +455,6 @@ dos_cc_new_create_cell(channel_t *chan)
      * entry for the channel. */
     goto end;
   }
-  /* Same possibility as the above condition but in that case, we can recover
-   * by initializing. */
-  if (entry->dos_stats == NULL || entry->dos_stats->cc_stats == NULL) {
-    dos_new_client_conn(&addr);
-  }
-  tor_assert(entry->dos_stats->cc_stats);
 
   /* General comment. Even though the client can already be marked as
    * malicious, we continue to track statistics. If it keeps going above
@@ -656,26 +463,26 @@ dos_cc_new_create_cell(channel_t *chan)
 
   /* First of all, we'll try to refill the circuit bucket opportunistically
    * before we assess. */
-  cc_stats_refill_bucket(entry->dos_stats->cc_stats, &addr);
+  cc_stats_refill_bucket(&entry->dos_stats.cc_stats, &addr);
 
   /* Take a token out of the circuit bucket if we are above 0 so we don't
    * underflow the bucket. */
-  if (entry->dos_stats->cc_stats->circuit_bucket > 0) {
-    entry->dos_stats->cc_stats->circuit_bucket--;
+  if (entry->dos_stats.cc_stats.circuit_bucket > 0) {
+    entry->dos_stats.cc_stats.circuit_bucket--;
   }
 
   /* This is the detection. Assess at every CREATE cell if the client should
    * get marked as malicious. This should be kept as fast as possible. */
-  if (cc_has_exhausted_circuits(entry->dos_stats->cc_stats)) {
+  if (cc_has_exhausted_circuits(&entry->dos_stats.cc_stats)) {
     /* If this is the first time we mark this entry, log it a info level.
      * Under heavy DDoS, logging each time we mark would results in lots and
      * lots of logs. */
-    if (entry->dos_stats->cc_stats->marked_until_ts == 0) {
+    if (entry->dos_stats.cc_stats.marked_until_ts == 0) {
       log_debug(LD_DOS, "Detected circuit creation DoS by address: %s",
                 fmt_addr(&addr));
       cc_num_marked_addrs++;
     }
-    cc_mark_client(entry->dos_stats->cc_stats);
+    cc_mark_client(&entry->dos_stats.cc_stats);
   }
 
  end:
@@ -732,9 +539,8 @@ dos_conn_addr_get_defense_type(const tor_addr_t *addr)
 
   /* Need to be above the maximum concurrent connection count to trigger a
    * defense. */
-  if (entry->dos_stats->conn_stats &&
-      (entry->dos_stats->conn_stats->concurrent_count >
-       dos_conn_max_concurrent_count)) {
+  if (entry->dos_stats.conn_stats.concurrent_count >
+      dos_conn_max_concurrent_count) {
     conn_num_addr_rejected++;
     return dos_conn_defense_type;
   }
@@ -836,19 +642,13 @@ dos_new_client_conn(const tor_addr_t *addr)
     goto end;
   }
 
-  /* It might be the first time we see this address so allocate a DoS client
-   * address statistics object. */
-  if (entry->dos_stats == NULL) {
-    entry->dos_stats = tor_malloc_zero(sizeof(dos_client_stats_t));
-  }
-
   /* If we have the circuit creation detection enabled, notify it. */
   if (dos_cc_enabled) {
-    cc_new_client_conn(addr, entry->dos_stats);
+    cc_new_client_conn(addr, &entry->dos_stats);
   }
-  /* If we have the connection detection enabled, allocate stats. */
+  /* If we have the connection detection enabled, notify it. */
   if (dos_conn_enabled) {
-    conn_new_client_conn(entry->dos_stats);
+    conn_new_client_conn(&entry->dos_stats);
   }
 
  end:
@@ -877,45 +677,17 @@ dos_close_client_conn(const tor_addr_t *addr)
     goto end;
   }
 
-  /* This could happen if we free a connection object before the channel was
-   * ever opened. */
-  if (entry->dos_stats == NULL) {
-    goto end;
-  }
-
   /* If we have the circuit creation detection enabled, notify it. */
   if (dos_cc_enabled) {
-    cc_close_client_conn(addr, entry->dos_stats);
+    cc_close_client_conn(addr, &entry->dos_stats);
   }
   /* If we have the connection detection enabled, try to clean it. */
   if (dos_conn_enabled) {
-    conn_close_client_conn(entry->dos_stats);
+    conn_close_client_conn(&entry->dos_stats);
   }
 
  end:
   return;
-}
-
-/* Free the given dos_client_stats_t object. */
-void
-dos_client_stats_free(dos_client_stats_t *obj)
-{
-  if (obj == NULL) {
-    return;
-  }
-  cc_client_stats_free(obj->cc_stats);
-  conn_client_stats_free(obj->conn_stats);
-  tor_free(obj);
-}
-
-/* Cleanup anything that is unused. In other words, this is an opportunity to
- * garbage collect. Called by the main loop every 5 minutes. */
-void
-dos_cleanup(time_t now)
-{
-  if (dos_cc_enabled) {
-    cc_cleanup(now);
-  }
 }
 
 /* Called when the consensus has changed. We might have new consensus

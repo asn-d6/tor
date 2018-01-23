@@ -9,23 +9,66 @@
 #ifndef TOR_DOS_H
 #define TOR_DOS_H
 
-/* General API. */
+/* Structure that keeps stats of client connection per-IP. */
+typedef struct cc_client_stats_t {
+  /* Concurrent connection count from the specific address. 2^32 is most
+   * likely way too big for the amount of allowed file descriptors. */
+  uint32_t concurrent_count;
 
-/* Stub so the pointer is opaque. The geoip subsystem uses this in the per-IP
- * client map. */
-struct dos_client_stats_t;
+  /* Number of allowed circuit rate that is this value is refilled at a rate
+   * defined by the consensus plus a bit of random. It is decremented every
+   * time a new circuit is seen for this client address and if the count goes
+   * to 0, we have a positive detection. */
+  uint32_t circuit_bucket;
+
+  /* When was the last time we've refilled the circuit bucket? This is used to
+   * know if we need to refill the bucket when a new circuit is seen. It is
+   * synchronized using approx_time(). */
+  time_t last_circ_bucket_refill_ts;
+
+  /* This client address was detected to be above the circuit creation rate
+   * and this timestamp indicates until when it should remain marked as
+   * detected so we can apply a defense for the address. It is synchronized
+   * using the approx_time(). */
+  time_t marked_until_ts;
+
+  /* Timestamp of when was the last connection received regardless of the
+   * connection count. We use this value to cleanup the DoS statistics from
+   * the geoip cache. It is synchronized using the approx_time() and never
+   * cleared until we clean it up from the cache. */
+  time_t last_conn_ts;
+} cc_client_stats_t;
+
+/* Structure that keeps stats of client connection per-IP. */
+typedef struct conn_client_stats_t {
+  /* Concurrent connection count from the specific address. 2^32 is most
+   * likely way too big for the amount of allowed file descriptors. */
+  uint32_t concurrent_count;
+} conn_client_stats_t;
+
+/* This object is a top level object that contains everything related to the
+ * per-IP client DoS mitigation. Because it is per-IP, it is used in the geoip
+ * clientmap_entry_t object. */
+typedef struct dos_client_stats_t {
+  /* Circuit creation statistics. This is only used if the circuit creation
+   * subsystem has been enabled (dos_cc_enabled). */
+  cc_client_stats_t cc_stats;
+
+  /* Concurrent connection statistics. This is only used if the subsystem has
+   * been enabled (dos_conn_enabled). */
+  conn_client_stats_t conn_stats;
+} dos_client_stats_t;
+
+/* General API. */
 
 void dos_init(void);
 void dos_free_all(void);
 void dos_consensus_has_changed(const networkstatus_t *ns);
-void dos_cleanup(time_t now);
 int dos_enabled(void);
 void dos_log_heartbeat(void);
 
 void dos_new_client_conn(const tor_addr_t *addr);
 void dos_close_client_conn(const tor_addr_t *addr);
-
-void dos_client_stats_free(struct dos_client_stats_t *obj);
 
 int dos_should_refuse_tor2web_client(void);
 void dos_note_refuse_tor2web_client(void);

@@ -516,7 +516,6 @@ clientmap_entry_free(clientmap_entry_t *ent)
   if (!ent)
     return;
 
-  dos_client_stats_free(ent->dos_stats);
   tor_free(ent->transport_name);
   tor_free(ent);
 }
@@ -534,23 +533,6 @@ client_history_clear(void)
       clientmap_entry_free(this);
     } else {
       next = HT_NEXT(clientmap, &client_history, ent);
-    }
-  }
-}
-
-/* For each client map entry matching the given action, call the given
- * callback function with the entry. */
-void
-geoip_for_each_client(geoip_client_action_t action, time_t now,
-                      void (*callback_fn)(clientmap_entry_t *, time_t))
-{
-  clientmap_entry_t **ent;
-
-  tor_assert(callback_fn);
-
-  HT_FOREACH(ent, clientmap, &client_history) {
-    if ((*ent)->action == action) {
-      callback_fn(*ent, now);
     }
   }
 }
