@@ -268,44 +268,14 @@ cc_stats_refill_bucket(cc_client_stats_t *stats, const tor_addr_t *addr)
   return;
 }
 
-/* Called when a new client connection has been established. Increment the
- * concurrent count of the circuit creation stats object. The address addr is
- * for logging purposes only. */
-static void
-cc_new_client_conn(const tor_addr_t *addr, dos_client_stats_t *stats)
-{
-  tor_assert(addr);
-  tor_assert(stats);
-
-  stats->cc_stats.concurrent_count++;
-  log_debug(LD_DOS, "Client address %s has now %u concurrent connections.",
-            fmt_addr(addr), stats->cc_stats.concurrent_count);
-}
-
-/* Called when a new client connection has been established. Allocate the
- * circuit creation statistics object if needed in the stats object. The
- * address addr is for logging purposes only. */
-static void
-cc_close_client_conn(const tor_addr_t *addr, dos_client_stats_t *stats)
-{
-  tor_assert(addr);
-  tor_assert(stats);
-
-  stats->cc_stats.concurrent_count--;
-  stats->cc_stats.last_conn_ts = approx_time();
-  log_debug(LD_DOS, "Client address %s has lost a connection. Concurrent "
-                    "connections are now at %u",
-            fmt_addr(addr), stats->cc_stats.concurrent_count);
-}
-
 /* Return true iff the circuit bucket is down to 0 and the number of
  * concurrent connections is greater or equal the minimum threshold set the
  * consensus parameter. */
 static int
-cc_has_exhausted_circuits(const cc_client_stats_t *stats)
+cc_has_exhausted_circuits(const dos_client_stats_t *stats)
 {
   tor_assert(stats);
-  return stats->circuit_bucket == 0 &&
+  return stats->cc_stats.circuit_bucket == 0 &&
          stats->concurrent_count >= dos_cc_min_concurrent_conn;
 }
 
@@ -361,27 +331,6 @@ cc_channel_addr_is_marked(channel_t *chan)
 }
 
 /* Concurrent connection private API. */
-
-/* Called when a client connection has closed. Update the connection stats
- * object if one exists and free it if concurrent count has reached 0. */
-static void
-conn_close_client_conn(dos_client_stats_t *stats)
-{
-  tor_assert(stats);
-
-  if (stats->conn_stats.concurrent_count > 0) {
-    stats->conn_stats.concurrent_count--;
-  }
-}
-
-/* New client connection seen from address addr. Update the connection stats
- * object in the given stats and increment the concurrent count. */
-static void
-conn_new_client_conn(dos_client_stats_t *stats)
-{
-  tor_assert(stats);
-  stats->conn_stats.concurrent_count++;
-}
 
 /* Free everything for the connection DoS mitigation subsystem. */
 static void
@@ -463,7 +412,7 @@ dos_cc_new_create_cell(channel_t *chan)
 
   /* This is the detection. Assess at every CREATE cell if the client should
    * get marked as malicious. This should be kept as fast as possible. */
-  if (cc_has_exhausted_circuits(&entry->dos_stats.cc_stats)) {
+  if (cc_has_exhausted_circuits(&entry->dos_stats)) {
     /* If this is the first time we mark this entry, log it a info level.
      * Under heavy DDoS, logging each time we mark would results in lots and
      * lots of logs. */
@@ -529,8 +478,7 @@ dos_conn_addr_get_defense_type(const tor_addr_t *addr)
 
   /* Need to be above the maximum concurrent connection count to trigger a
    * defense. */
-  if (entry->dos_stats.conn_stats.concurrent_count >
-      dos_conn_max_concurrent_count) {
+  if (entry->dos_stats.concurrent_count > dos_conn_max_concurrent_count) {
     conn_num_addr_rejected++;
     return dos_conn_defense_type;
   }
@@ -632,14 +580,9 @@ dos_new_client_conn(const tor_addr_t *addr)
     goto end;
   }
 
-  /* If we have the circuit creation detection enabled, notify it. */
-  if (dos_cc_enabled) {
-    cc_new_client_conn(addr, &entry->dos_stats);
-  }
-  /* If we have the connection detection enabled, notify it. */
-  if (dos_conn_enabled) {
-    conn_new_client_conn(&entry->dos_stats);
-  }
+  entry->dos_stats.concurrent_count++;
+  log_debug(LD_DOS, "Client address %s has now %u concurrent connections.",
+            fmt_addr(addr), entry->dos_stats.concurrent_count);
 
  end:
   return;
@@ -667,14 +610,10 @@ dos_close_client_conn(const tor_addr_t *addr)
     goto end;
   }
 
-  /* If we have the circuit creation detection enabled, notify it. */
-  if (dos_cc_enabled) {
-    cc_close_client_conn(addr, &entry->dos_stats);
-  }
-  /* If we have the connection detection enabled, try to clean it. */
-  if (dos_conn_enabled) {
-    conn_close_client_conn(&entry->dos_stats);
-  }
+  entry->dos_stats.concurrent_count--;
+  log_debug(LD_DOS, "Client address %s has lost a connection. Concurrent "
+                    "connections are now at %u",
+            fmt_addr(addr), entry->dos_stats.concurrent_count);
 
  end:
   return;

@@ -11,10 +11,6 @@
 
 /* Structure that keeps stats of client connection per-IP. */
 typedef struct cc_client_stats_t {
-  /* Concurrent connection count from the specific address. 2^32 is most
-   * likely way too big for the amount of allowed file descriptors. */
-  uint32_t concurrent_count;
-
   /* Number of allowed circuit rate that is this value is refilled at a rate
    * defined by the consensus plus a bit of random. It is decremented every
    * time a new circuit is seen for this client address and if the count goes
@@ -31,32 +27,19 @@ typedef struct cc_client_stats_t {
    * detected so we can apply a defense for the address. It is synchronized
    * using the approx_time(). */
   time_t marked_until_ts;
-
-  /* Timestamp of when was the last connection received regardless of the
-   * connection count. We use this value to cleanup the DoS statistics from
-   * the geoip cache. It is synchronized using the approx_time() and never
-   * cleared until we clean it up from the cache. */
-  time_t last_conn_ts;
 } cc_client_stats_t;
-
-/* Structure that keeps stats of client connection per-IP. */
-typedef struct conn_client_stats_t {
-  /* Concurrent connection count from the specific address. 2^32 is most
-   * likely way too big for the amount of allowed file descriptors. */
-  uint32_t concurrent_count;
-} conn_client_stats_t;
 
 /* This object is a top level object that contains everything related to the
  * per-IP client DoS mitigation. Because it is per-IP, it is used in the geoip
  * clientmap_entry_t object. */
 typedef struct dos_client_stats_t {
+  /* Concurrent connection count from the specific address. 2^32 is most
+   * likely way too big for the amount of allowed file descriptors. */
+  uint32_t concurrent_count;
+
   /* Circuit creation statistics. This is only used if the circuit creation
    * subsystem has been enabled (dos_cc_enabled). */
   cc_client_stats_t cc_stats;
-
-  /* Concurrent connection statistics. This is only used if the subsystem has
-   * been enabled (dos_conn_enabled). */
-  conn_client_stats_t conn_stats;
 } dos_client_stats_t;
 
 /* General API. */
