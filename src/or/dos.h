@@ -126,6 +126,10 @@ STATIC uint32_t get_param_cc_circuit_max_count(const networkstatus_t *ns);
 STATIC uint32_t get_param_cc_min_concurrent_connection(
                                             const networkstatus_t *ns);
 
+STATIC double get_circuit_rate_per_second(void);
+STATIC void cc_stats_refill_bucket(cc_client_stats_t *stats,
+                                   const tor_addr_t *addr);
+
 MOCK_DECL(STATIC unsigned int, get_param_cc_enabled,
           (const networkstatus_t *ns));
 MOCK_DECL(STATIC unsigned int, get_param_conn_enabled,

@@ -218,10 +218,20 @@ cc_consensus_has_changed(const networkstatus_t *ns)
   }
 }
 
+/** Return the number of circuits we allow per second under the current
+ *  configuration. */
+STATIC double
+get_circuit_rate_per_second(void)
+{
+  /* Calculate circuit rate using the maximum count and time rate from the
+   * consensus. */
+  return (double) dos_cc_circuit_max_count / (double) dos_cc_circuit_time_rate;
+}
+
 /* Given the circuit creation client statistics object, refill the circuit
  * bucket if needed. This also works if the bucket was never filled in the
  * first place. The addr is only used for logging purposes. */
-static void
+STATIC void
 cc_stats_refill_bucket(cc_client_stats_t *stats, const tor_addr_t *addr)
 {
   uint32_t new_circuit_bucket_count;
@@ -242,10 +252,9 @@ cc_stats_refill_bucket(cc_client_stats_t *stats, const tor_addr_t *addr)
 
   /* At this point, we know we need to add token to the bucket. We'll first
    * compute the circuit rate that is how many circuit are we allowed to do
-   * per second. For this, we take the maximum count and time rate from the
-   * consensus. */
-  circuit_rate = (double) dos_cc_circuit_max_count /
-                 (double) dos_cc_circuit_time_rate;
+   * per second. */
+  circuit_rate = get_circuit_rate_per_second();
+
   /* Safety checks here. 2^16 circuits per second is insanely high so cap it
    * just to be safe. Because the above is controlled by the consensus, this
    * should really never happen. */

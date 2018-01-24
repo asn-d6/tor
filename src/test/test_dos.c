@@ -146,12 +146,103 @@ test_dos_circuit_creation(void *arg)
   dos_free_all();
 }
 
-struct testcase_t dos_tests[] = {
-  { "conn_creation", test_dos_conn_creation, TT_FORK,
-    NULL, NULL },
-  { "circuit_creation", test_dos_circuit_creation, TT_FORK,
-    NULL, NULL },
+/** Test that the DoS subsystem properly refills the circuit token buckets. */
+static void
+test_dos_bucket_refill(void *arg)
+{
+  (void) arg;
+  int i;
+  /* For this test, this variable is set to the current circ count of the token
+   * bucket. */
+  uint32_t current_circ_count;
 
+  MOCK(get_param_cc_enabled, mock_enable_dos_protection);
+  MOCK(get_param_conn_enabled, mock_enable_dos_protection);
+  MOCK(channel_get_addr_if_possible,
+       mock_channel_get_addr_if_possible);
+
+  time_t now = 1281533250; /* 2010-08-11 13:27:30 UTC */
+  update_approx_time(now);
+
+  /* Initialize channels/conns/circs that will be used */
+  channel_t *chan = tor_malloc_zero(sizeof(channel_t));
+  channel_init(chan);
+  chan->is_client = 1;
+  or_connection_t or_conn;
+  tt_int_op(AF_INET,OP_EQ, tor_addr_parse(&or_conn.real_addr,
+                                          "18.0.0.1"));
+  tor_addr_t *addr = &or_conn.real_addr;
+
+  /* Initialize DoS subsystem and get relevant limits */
+  dos_init();
+  uint32_t max_circuit_count = get_param_cc_circuit_max_count(NULL);
+  int circ_rate = tor_lround(get_circuit_rate_per_second());
+  /* Check that the circuit rate is a positive number and smaller than the max
+   * circuit count */
+  tt_int_op(circ_rate, OP_GT, 1);
+  tt_int_op(circ_rate, OP_LT, max_circuit_count);
+
+  /* Register this client */
+  geoip_note_client_seen(GEOIP_CLIENT_CONNECT, addr, NULL, now);
+  dos_new_client_conn(&or_conn);
+
+  /* Fetch this client from the geoip cache and get its DoS structs */
+  clientmap_entry_t *entry = geoip_lookup_client(addr, NULL,
+                                                 GEOIP_CLIENT_CONNECT);
+  tt_assert(entry);
+  dos_client_stats_t* dos_stats = &entry->dos_stats;
+  /* Check that the circuit bucket is still uninitialized */
+  tt_uint_op(dos_stats->cc_stats.circuit_bucket, OP_EQ, 0);
+
+  /* Send a create cell: then check that the circ token bucket got initialized
+   * and one circ was subtracted. */
+  dos_cc_new_create_cell(chan);
+  current_circ_count = max_circuit_count - 1;
+  tt_uint_op(dos_stats->cc_stats.circuit_bucket, OP_EQ, current_circ_count);
+
+  /* Now send 29 more CREATEs and ensure that the bucket is missing 30
+   * tokens */
+  for (i=0; i < 29; i++) {
+   dos_cc_new_create_cell(chan);
+   current_circ_count--;
+  }
+  tt_uint_op(dos_stats->cc_stats.circuit_bucket, OP_EQ, current_circ_count);
+
+  /* OK! Progress time forward one sec, refill the bucket and check that the
+   * refill happened correctly. */
+  now += 1;
+  update_approx_time(now);
+  cc_stats_refill_bucket(&dos_stats->cc_stats, addr);
+  /* check refill */
+  current_circ_count += circ_rate;
+  tt_uint_op(dos_stats->cc_stats.circuit_bucket, OP_EQ, current_circ_count);
+
+  /* Now send as many CREATE cells as needed to deplete our token bucket
+   * completely */
+  for (; current_circ_count != 0; current_circ_count--) {
+   dos_cc_new_create_cell(chan);
+  }
+  tt_uint_op(current_circ_count, OP_EQ, 0);
+  tt_uint_op(dos_stats->cc_stats.circuit_bucket, OP_EQ, current_circ_count);
+
+  /* Now progress time a week forward, and check that the token bucket does not
+   * have more than max_circs allowance, even tho we let it simmer for so
+   * long. */
+  now += 604800; /* a week */
+  update_approx_time(now);
+  cc_stats_refill_bucket(&dos_stats->cc_stats, addr);
+  current_circ_count += max_circuit_count;
+  tt_uint_op(dos_stats->cc_stats.circuit_bucket, OP_EQ, current_circ_count);
+
+ done:
+  tor_free(chan);
+  dos_free_all();
+}
+
+struct testcase_t dos_tests[] = {
+  { "conn_creation", test_dos_conn_creation, TT_FORK, NULL, NULL },
+  { "circuit_creation", test_dos_circuit_creation, TT_FORK, NULL, NULL },
+  { "bucket_refill", test_dos_bucket_refill, TT_FORK, NULL, NULL },
   END_OF_TESTCASES
 };
 
