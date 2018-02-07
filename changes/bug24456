@@ -1,0 +1,4 @@
+  o Removed features:
+    - The guardfraction feature of proposal 236 has been partially removed from
+      the Tor codebase since it's been buggy and unused for years. Addresses
+      parts of ticket 24456.

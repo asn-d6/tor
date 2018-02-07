@@ -180,16 +180,10 @@ STATIC int dirserv_query_measured_bw_cache_kb(const char *node_id,
                                               time_t *as_of_out);
 STATIC int dirserv_has_measured_bw(const char *node_id);
 
-STATIC int
-dirserv_read_guardfraction_file_from_str(const char *guardfraction_file_str,
-                                      smartlist_t *vote_routerstatuses);
 #endif /* defined(DIRSERV_PRIVATE) */
 
 int dirserv_read_measured_bandwidths(const char *from_file,
                                      smartlist_t *routerstatuses);
-
-int dirserv_read_guardfraction_file(const char *fname,
-                                 smartlist_t *vote_routerstatuses);
 
 spooled_resource_t *spooled_resource_new(dir_spool_source_t source,
                                          const uint8_t *digest,
