@@ -28,6 +28,7 @@
  * part of a subclass (channel_tls_t).
  */
 #define TOR_CHANNEL_INTERNAL_
+#define CONNECTION_OR_PRIVATE
 #include "channel.h"
 #include "channeltls.h"
 #include "circuitbuild.h"
@@ -1241,7 +1242,7 @@ note_unknown_or_connect_failure(const or_connection_t *or_conn)
 
 /* Note down in the connection failure cache that a failure occurred on the
  * given or_conn. */
-static void
+STATIC void
 note_or_connect_failed(const or_connection_t *or_conn)
 {
   node_t *node;
@@ -1300,7 +1301,7 @@ or_connect_failure_map_cleanup(time_t cutoff)
  *
  * The or_conn MUST have gone through connection_or_check_canonicity() so the
  * base address is properly set to what we know or doesn't know. */
-static int
+STATIC int
 or_can_connect(const or_connection_t *or_conn)
 {
   time_t now, cutoff;
