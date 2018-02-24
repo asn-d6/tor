@@ -109,6 +109,9 @@ static inline int proxy_configuration_finished(const managed_proxy_t *mp);
 
 static void handle_finished_proxy(managed_proxy_t *mp);
 static void parse_method_error(const char *line, int is_server_method);
+static int parse_method_line_helper(const char *line,
+                                    managed_proxy_t *mp,
+                                    int is_smethod);
 #define parse_server_method_error(l) parse_method_error(l, 1)
 #define parse_client_method_error(l) parse_method_error(l, 0)
 
@@ -131,6 +134,10 @@ static void parse_method_error(const char *line, int is_server_method);
 
 /** A list of pluggable transports found in torrc. */
 static smartlist_t *transport_list = NULL;
+
+/** No of arguments required to parse in a method line */
+#define CMETHOD_MIN_ARGS_COUNT 4
+#define SMETHOD_MIN_ARGS_COUNT 3
 
 /** Returns a transport_t struct for a transport proxy supporting the
     protocol <b>name</b> listening at <b>addr</b>:<b>port</b> using
@@ -1025,45 +1032,77 @@ parse_method_error(const char *line, int is_server)
            line+strlen(error)+1);
 }
 
-/** Parses an SMETHOD <b>line</b> and if well-formed it registers the
- *  new transport in <b>mp</b>. */
-STATIC int
-parse_smethod_line(const char *line, managed_proxy_t *mp)
+/** A helper for parse_{c,s}method_line(), bootstraps its
+ *  functionalities. If <b>is_smethod</b> is true then the
+ *  the line to parse is a SMETHOD line otherwise it is a
+ *  CMETHOD line*/
+static int
+parse_method_line_helper(const char *line,
+                         managed_proxy_t *mp,
+                         int is_smethod)
 {
+  int item_index = 0;
   int r;
-  smartlist_t *items = NULL;
 
   char *method_name=NULL;
   char *args_string=NULL;
   char *addrport=NULL;
-  tor_addr_t tor_addr;
+  char *socks_ver_str=NULL;
+  int socks_ver=PROXY_NONE;
   char *address=NULL;
+  const char *proto_method=is_smethod
+                           ? PROTO_SMETHOD
+                           : PROTO_CMETHOD;
+  const int min_args_count=is_smethod
+                           ? SMETHOD_MIN_ARGS_COUNT
+                           : CMETHOD_MIN_ARGS_COUNT;
   uint16_t port = 0;
 
+  tor_addr_t tor_addr;
   transport_t *transport=NULL;
+  smartlist_t *items=NULL;
 
   items = smartlist_new();
+
   smartlist_split_string(items, line, NULL,
                          SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, -1);
-  if (smartlist_len(items) < 3) {
-    log_warn(LD_CONFIG, "Server managed proxy sent us a SMETHOD line "
-             "with too few arguments.");
+  if (smartlist_len(items) < min_args_count) {
+    log_warn(LD_CONFIG, "%s managed proxy sent us a %s line "
+             "with too few arguments.",
+             is_smethod ? "Server" : "Client",
+             proto_method);
     goto err;
   }
 
-  /* Example of legit SMETHOD line:
-     SMETHOD obfs2 0.0.0.0:25612 ARGS:secret=supersekrit,key=superkey */
+  tor_assert(!strcmp(smartlist_get(items, item_index),proto_method));
+  ++item_index;
 
-  tor_assert(!strcmp(smartlist_get(items,0),PROTO_SMETHOD));
-
-  method_name = smartlist_get(items,1);
+  method_name = smartlist_get(items,item_index);
+  ++item_index;
   if (!string_is_C_identifier(method_name)) {
     log_warn(LD_CONFIG, "Transport name is not a C identifier (%s).",
              method_name);
     goto err;
   }
 
-  addrport = smartlist_get(items, 2);
+  /** Check for the proxy method sent to us in CMETHOD line. */
+  if (!is_smethod) {
+    socks_ver_str = smartlist_get(items,item_index);
+    ++item_index;
+
+    if (!strcmp(socks_ver_str,"socks4")) {
+      socks_ver = PROXY_SOCKS4;
+    } else if (!strcmp(socks_ver_str,"socks5")) {
+      socks_ver = PROXY_SOCKS5;
+    } else {
+      log_warn(LD_CONFIG, "Client managed proxy sent us a proxy protocol "
+               "we don't recognize. (%s)", socks_ver_str);
+      goto err;
+    }
+  }
+
+  addrport = smartlist_get(items, item_index);
+  ++item_index;
   if (tor_addr_port_split(LOG_WARN, addrport, &address, &port)<0) {
     log_warn(LD_CONFIG, "Error parsing transport "
              "address '%s'", addrport);
@@ -1081,10 +1120,12 @@ parse_smethod_line(const char *line, managed_proxy_t *mp)
     goto err;
   }
 
-  if (smartlist_len(items) > 3) {
+  /** Check for options in the SMETHOD line. */
+  if (is_smethod &&
+      smartlist_len(items) > min_args_count) {
     /* Seems like there are also some [options] in the SMETHOD line.
        Let's see if we can parse them. */
-    char *options_string = smartlist_get(items, 3);
+    char *options_string = smartlist_get(items, item_index);
     log_debug(LD_CONFIG, "Got options_string: %s", options_string);
     if (!strcmpstart(options_string, "ARGS:")) {
       args_string = options_string+strlen("ARGS:");
@@ -1093,14 +1134,21 @@ parse_smethod_line(const char *line, managed_proxy_t *mp)
   }
 
   transport = transport_new(&tor_addr, port, method_name,
-                            PROXY_NONE, args_string);
+                            socks_ver, args_string);
 
   smartlist_add(mp->transports, transport);
 
-  /* For now, notify the user so that they know where the server
-     transport is listening. */
-  log_info(LD_CONFIG, "Server transport %s at %s:%d.",
-           method_name, address, (int)port);
+  /** Logs info about line parsing success for client or server */
+  if (is_smethod) {
+    /* For now, notify the user so that they know where the server
+       transport is listening. */
+    log_info(LD_CONFIG, "Server transport %s at %s:%d.",
+             method_name, address, (int)port);
+  } else {
+    log_info(LD_CONFIG, "Transport %s at %s:%d with SOCKS %d. "
+             "Attached to managed proxy.",
+             method_name, address, (int)port, socks_ver);
+  }
 
   r=0;
   goto done;
@@ -1115,93 +1163,24 @@ parse_smethod_line(const char *line, managed_proxy_t *mp)
   return r;
 }
 
+/** Parses an SMETHOD <b>line</b> and if well-formed it registers the
+ *  new transport in <b>mp</b>. */
+STATIC int
+parse_smethod_line(const char *line, managed_proxy_t *mp)
+{
+  /* Example of legit SMETHOD line:
+     SMETHOD obfs2 0.0.0.0:25612 ARGS:secret=supersekrit,key=superkey */
+  return parse_method_line_helper(line, mp, 1);
+}
+
 /** Parses a CMETHOD <b>line</b>, and if well-formed it registers
  *  the new transport in <b>mp</b>. */
 STATIC int
 parse_cmethod_line(const char *line, managed_proxy_t *mp)
 {
-  int r;
-  smartlist_t *items = NULL;
-
-  char *method_name=NULL;
-
-  char *socks_ver_str=NULL;
-  int socks_ver=PROXY_NONE;
-
-  char *addrport=NULL;
-  tor_addr_t tor_addr;
-  char *address=NULL;
-  uint16_t port = 0;
-
-  transport_t *transport=NULL;
-
-  items = smartlist_new();
-  smartlist_split_string(items, line, NULL,
-                         SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, -1);
-  if (smartlist_len(items) < 4) {
-    log_warn(LD_CONFIG, "Client managed proxy sent us a CMETHOD line "
-             "with too few arguments.");
-    goto err;
-  }
-
-  tor_assert(!strcmp(smartlist_get(items,0),PROTO_CMETHOD));
-
-  method_name = smartlist_get(items,1);
-  if (!string_is_C_identifier(method_name)) {
-    log_warn(LD_CONFIG, "Transport name is not a C identifier (%s).",
-             method_name);
-    goto err;
-  }
-
-  socks_ver_str = smartlist_get(items,2);
-
-  if (!strcmp(socks_ver_str,"socks4")) {
-    socks_ver = PROXY_SOCKS4;
-  } else if (!strcmp(socks_ver_str,"socks5")) {
-    socks_ver = PROXY_SOCKS5;
-  } else {
-    log_warn(LD_CONFIG, "Client managed proxy sent us a proxy protocol "
-             "we don't recognize. (%s)", socks_ver_str);
-    goto err;
-  }
-
-  addrport = smartlist_get(items, 3);
-  if (tor_addr_port_split(LOG_WARN, addrport, &address, &port)<0) {
-    log_warn(LD_CONFIG, "Error parsing transport "
-             "address '%s'", addrport);
-    goto err;
-  }
-
-  if (!port) {
-    log_warn(LD_CONFIG,
-             "Transport address '%s' has no port.", addrport);
-    goto err;
-  }
-
-  if (tor_addr_parse(&tor_addr, address) < 0) {
-    log_warn(LD_CONFIG, "Error parsing transport address '%s'", address);
-    goto err;
-  }
-
-  transport = transport_new(&tor_addr, port, method_name, socks_ver, NULL);
-
-  smartlist_add(mp->transports, transport);
-
-  log_info(LD_CONFIG, "Transport %s at %s:%d with SOCKS %d. "
-           "Attached to managed proxy.",
-           method_name, address, (int)port, socks_ver);
-
-  r=0;
-  goto done;
-
- err:
-  r = -1;
-
- done:
-  SMARTLIST_FOREACH(items, char*, s, tor_free(s));
-  smartlist_free(items);
-  tor_free(address);
-  return r;
+  /* Example of legit CMETHOD line:
+     CMETHOD obfs2 socks5 127.0.0.1:35713 */
+  return parse_method_line_helper(line, mp, 0);
 }
 
 /** Parses an PROXY-ERROR <b>line</b> and warns the user accordingly. */
