@@ -589,7 +589,7 @@ typedef enum {
 /** True iff this circuit purpose should count towards the global
  * pending rate limit (set by MaxClientCircuitsPending). We count all
  * general purpose circuits, as well as the first step of client onion
- * service connections (hsdirs gets). */
+ * service connections (HSDir gets). */
 #define CIRCUIT_PURPOSE_COUNTS_TOWARDS_MAXPENDING(p) \
     ((p) == CIRCUIT_PURPOSE_C_GENERAL || \
      (p) == CIRCUIT_PURPOSE_C_HSDIR_GET)
