@@ -1,0 +1,4 @@
+  o Minor bugfixes (configuration):
+    - Rename the HSLayer{2,3}Nodes options to start with double underscores,
+      for consistency with other options recommended for controller-only
+      use-cases. Fixes bug 25581; bugfix on 0.3.3.1-alpha
