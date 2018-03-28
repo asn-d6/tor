@@ -47,6 +47,7 @@
 #include "control.h"
 #include "cpuworker.h"
 #include "dos.h"
+#include "entrynodes.h"
 #include "hibernate.h"
 #include "nodelist.h"
 #include "onion.h"
@@ -593,6 +594,9 @@ command_process_destroy_cell(cell_t *cell, channel_t *chan)
   } else { /* the destroy came from ahead */
     circuit_set_n_circid_chan(circ, 0, NULL);
     if (CIRCUIT_IS_ORIGIN(circ)) {
+      /* Check whether this DESTROY cell is a reason to switch guards */
+      entry_guard_maybe_sent_destroy_cell(circ, reason);
+      /* We received a DESTROY: close this circuit. */
       circuit_mark_for_close(circ, reason|END_CIRC_REASON_FLAG_REMOTE);
     } else {
       char payload[1];

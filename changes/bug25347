@@ -1,0 +1,4 @@
+  o Minor bugfixes (entry guards):
+    - Clients mark their guard as unreachable upon receiving a RESOURCELIMIT
+      cell. This should stop Tor clients from continuously hammering guards
+      that are overworked. Fixes bug 25347; bugfix on 0.3.0.1-alpha.

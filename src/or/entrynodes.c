@@ -2380,6 +2380,39 @@ entry_guard_chan_failed(channel_t *chan)
   smartlist_free(pending);
 }
 
+/** We received a DESTROY cell in a circuit. Check if the DESTROY was sent by
+ *  our guard node, and whether it's a reason to mark this guard as unreachable
+ *  for now */
+void
+entry_guard_maybe_sent_destroy_cell(circuit_t *circ, int destroy_reason)
+{
+  /* First of all check whether the DESTROY cell reason is signalling us to
+   * ditch this guard. i.e. If it's a RESOURCELIMIT DESTROY cell, the guard is
+   * overworked and won't be able to handle any new traffic, so we should stop
+   * using it for some time. */
+  if (destroy_reason != END_CIRC_REASON_RESOURCELIMIT) {
+    return;
+  }
+
+  tor_assert(CIRCUIT_IS_ORIGIN(circ));
+  origin_circuit_t *origin_circ = TO_ORIGIN_CIRCUIT(circ);
+
+  /* Now check whether the DESTROY cell surely came from the guard. We are not
+   * interested in this circuit if it has extended past the guard, because then
+   * the DESTROY cell might have come from any circuit node. */
+  if (circuit_get_cpath_opened_len(origin_circ) > 0) {
+    return;
+  }
+
+  /* If this DESTROY came from the guard and it's a RESOURCELIMIT, mark this
+   * guard as unreachable for now, since it's overworked and needs space. */
+  if (origin_circ->guard_state) {
+    log_info(LD_GUARD, "Received signal from our guard node that it's "
+             "overworked, attempting to switch to other guard.");
+    entry_guard_failed(&origin_circ->guard_state);
+  }
+}
+
 /**
  * Return true iff every primary guard in <b>gs</b> is believed to
  * be unreachable.

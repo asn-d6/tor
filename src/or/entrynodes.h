@@ -378,6 +378,7 @@ guard_usable_t entry_guard_succeeded(circuit_guard_state_t **guard_state_p);
 void entry_guard_failed(circuit_guard_state_t **guard_state_p);
 void entry_guard_cancel(circuit_guard_state_t **guard_state_p);
 void entry_guard_chan_failed(channel_t *chan);
+void entry_guard_maybe_sent_destroy_cell(circuit_t *circ, int destroy_reason);
 int entry_guards_update_all(guard_selection_t *gs);
 int entry_guards_upgrade_waiting_circuits(guard_selection_t *gs,
                                           const smartlist_t *all_circuits,
