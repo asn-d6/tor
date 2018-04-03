@@ -1755,7 +1755,7 @@ make_guard_confirmed(guard_selection_t *gs, entry_guard_t *guard)
   const int GUARD_LIFETIME = get_guard_lifetime();
   guard->confirmed_on_date = randomize_time(approx_time(), GUARD_LIFETIME/10);
 
-  log_info(LD_GUARD, "Marking %s as a confirmed guard (index %d)",
+  log_warn(LD_GUARD, "Marking %s as a confirmed guard (index %d)",
            entry_guard_describe(guard),
            gs->next_confirmed_idx);
 
@@ -1860,11 +1860,11 @@ entry_guards_update_primary(guard_selection_t *gs)
   }
 
   if (any_change) {
-    log_info(LD_GUARD, "Primary entry guards have changed. "
+    log_warn(LD_GUARD, "Primary entry guards have changed. "
              "New primary guard list is: ");
     int n = smartlist_len(new_primary_guards);
     SMARTLIST_FOREACH_BEGIN(new_primary_guards, entry_guard_t *, g) {
-      log_info(LD_GUARD, "  %d/%d: %s%s%s",
+      log_warn(LD_GUARD, "  %d/%d: %s%s%s",
                g_sl_idx+1, n, entry_guard_describe(g),
                g->confirmed_idx >= 0 ? " (confirmed)" : "",
                g->is_filtered_guard ? "" : " (excluded by filter)");
@@ -1938,7 +1938,7 @@ entry_guard_consider_retry(entry_guard_t *guard)
     /* We should mark this retriable. */
     char tbuf[ISO_TIME_LEN+1];
     format_local_iso_time(tbuf, last_attempt);
-    log_info(LD_GUARD, "Marked %s%sguard %s for possible retry, since we "
+    log_warn(LD_GUARD, "Marked %s%sguard %s for possible retry, since we "
              "haven't tried to use it since %s.",
              guard->is_primary?"primary ":"",
              guard->confirmed_idx>=0?"confirmed ":"",
@@ -2004,7 +2004,7 @@ select_entry_guard_for_circuit(guard_selection_t *gs,
   if (smartlist_len(usable_primary_guards)) {
     entry_guard_t *guard = smartlist_choose(usable_primary_guards);
     smartlist_free(usable_primary_guards);
-    log_info(LD_GUARD, "Selected primary guard %s for circuit.",
+    log_warn(LD_GUARD, "Selected primary guard %s for circuit.",
              entry_guard_describe(guard));
     return guard;
   }
@@ -2026,7 +2026,7 @@ select_entry_guard_for_circuit(guard_selection_t *gs,
       guard->is_pending = 1;
       guard->last_tried_to_connect = approx_time();
       *state_out = GUARD_CIRC_STATE_USABLE_IF_NO_BETTER_GUARD;
-      log_info(LD_GUARD, "No primary guards available. Selected confirmed "
+      log_warn(LD_GUARD, "No primary guards available. Selected confirmed "
                "guard %s for circuit. Will try other guards before using "
                "this circuit.",
                entry_guard_describe(guard));
@@ -2048,7 +2048,7 @@ select_entry_guard_for_circuit(guard_selection_t *gs,
                                                    SAMPLE_EXCLUDE_PENDING |
                                                    flags);
     if (guard == NULL) {
-      log_info(LD_GUARD, "Absolutely no sampled guards were available. "
+      log_warn(LD_GUARD, "Absolutely no sampled guards were available. "
                "Marking all guards for retry and starting from top again.");
       mark_all_guards_maybe_reachable(gs);
       return NULL;
@@ -2056,7 +2056,7 @@ select_entry_guard_for_circuit(guard_selection_t *gs,
     guard->is_pending = 1;
     guard->last_tried_to_connect = approx_time();
     *state_out = GUARD_CIRC_STATE_USABLE_IF_NO_BETTER_GUARD;
-    log_info(LD_GUARD, "No primary or confirmed guards available. Selected "
+    log_warn(LD_GUARD, "No primary or confirmed guards available. Selected "
              "random guard %s for circuit. Will try other guards before "
              "using this circuit.",
              entry_guard_describe(guard));
@@ -2081,7 +2081,7 @@ entry_guards_note_guard_failure(guard_selection_t *gs,
   if (guard->failing_since == 0)
     guard->failing_since = approx_time();
 
-  log_info(LD_GUARD, "Recorded failure for %s%sguard %s",
+  log_warn(LD_GUARD, "Recorded failure for %s%sguard %s",
            guard->is_primary?"primary ":"",
            guard->confirmed_idx>=0?"confirmed ":"",
            entry_guard_describe(guard));
@@ -2150,7 +2150,7 @@ entry_guards_note_guard_success(guard_selection_t *gs,
     }
   }
 
-  log_info(LD_GUARD, "Recorded success for %s%sguard %s",
+  log_warn(LD_GUARD, "Recorded success for %s%sguard %s",
            guard->is_primary?"primary ":"",
            guard->confirmed_idx>=0?"confirmed ":"",
            entry_guard_describe(guard));
@@ -2584,7 +2584,7 @@ entry_guards_upgrade_waiting_circuits(guard_selection_t *gs,
     ++n_succeeded;
   } SMARTLIST_FOREACH_END(circ);
 
-  log_info(LD_GUARD, "Considered upgrading guard-stalled circuits: found "
+  log_warn(LD_GUARD, "Considered upgrading guard-stalled circuits: found "
            "%d guard-stalled, %d complete. %d of the guard-stalled "
            "circuit(s) had high enough priority to upgrade.",
            n_waiting, n_complete, n_succeeded);

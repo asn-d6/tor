@@ -522,6 +522,9 @@ pathbias_count_build_success(origin_circuit_t *circ)
         pb->circ_successes++;
         entry_guards_changed();
 
+        log_warn(LD_GENERAL, "[*] Completed circuit over guard %s",
+                 entry_guard_describe(guard));
+
         log_info(LD_CIRC, "Got success count %f/%f for guard %s",
                  pb->circ_successes, pb->circ_attempts,
                  entry_guard_describe(guard));
