@@ -244,7 +244,7 @@ GENERAL OPTIONS
     from a non-relay. (Default: 0)
 
 [[PerConnBWBurst]] **PerConnBWBurst** __N__ **bytes**|**KBytes**|**MBytes**|**GBytes**|**TBytes**|**KBits**|**MBits**|**GBits**|**TBits**::
-    If this option is set manually, or via the "perconnbwrate" consensus
+    If this option is set manually, or via the "perconnbwburst" consensus
     field, Tor will use it for separate rate limiting for each connection
     from a non-relay. (Default: 0)
 
