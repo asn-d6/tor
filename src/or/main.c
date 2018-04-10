@@ -110,6 +110,7 @@
 #include "tor_api_internal.h"
 #include "util_process.h"
 #include "ext_orport.h"
+#include "ns_api.h"
 #ifdef USE_DMALLOC
 #include <dmalloc.h>
 #endif
@@ -1638,6 +1639,9 @@ run_scheduled_events(time_t now)
   if (dir_server_mode(options)) {
     consdiffmgr_rescan();
   }
+
+  /* 13. check pending unconfigured name system modules */
+  ns_api_configure_remaining_modules();
 }
 
 /* Periodic callback: rotate the onion keys after the period defined by the
@@ -3488,6 +3492,7 @@ tor_free_all(int postfork)
   consdiffmgr_free_all();
   hs_free_all();
   dos_free_all();
+  ns_api_free_all();
   if (!postfork) {
     config_free_all();
     or_state_free_all();

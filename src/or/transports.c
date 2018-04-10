@@ -618,6 +618,7 @@ configure_proxy(managed_proxy_t *mp)
 
   /* if we haven't launched the proxy yet, do it now */
   if (mp->conf_state == PT_PROTO_INFANT) {
+    /* LAUNCHING  */
     if (launch_managed_proxy(mp) < 0) { /* launch fail */
       mp->conf_state = PT_PROTO_FAILED_LAUNCH;
       handle_finished_proxy(mp);

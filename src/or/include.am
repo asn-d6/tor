@@ -72,6 +72,7 @@ LIBTOR_A_SOURCES = \
 	src/or/main.c					\
 	src/or/microdesc.c				\
 	src/or/networkstatus.c				\
+	src/or/ns_api.c				\
 	src/or/nodelist.c				\
 	src/or/onion.c					\
 	src/or/onion_fast.c				\
@@ -217,6 +218,7 @@ ORHEADERS = \
 	src/or/microdesc.h				\
 	src/or/networkstatus.h				\
 	src/or/nodelist.h				\
+	src/or/ns_api.h				\
 	src/or/ntmain.h					\
 	src/or/onion.h					\
 	src/or/onion_fast.h				\

@@ -3867,6 +3867,8 @@ typedef struct {
   /** List of options that must be passed to pluggable transports. */
   config_line_t *ServerTransportOptions;
 
+  config_line_t *OnionNamePlugin; /**< List of NS API plugins */
+
   int BridgeRelay; /**< Boolean: are we acting as a bridge relay? We make
                     * this explicit so we can change how we behave in the
                     * future. */

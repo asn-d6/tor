@@ -104,6 +104,7 @@
 #include "statefile.h"
 #include "transports.h"
 #include "ext_orport.h"
+#include "ns_api.h"
 #ifdef _WIN32
 #include <shlobj.h>
 #endif
@@ -270,6 +271,7 @@ static config_var_t option_vars_[] = {
   V(ClientPreferIPv6DirPort,     AUTOBOOL, "auto"),
   V(ClientRejectInternalAddresses, BOOL,   "1"),
   V(ClientTransportPlugin,       LINELIST, NULL),
+  V(OnionNamePlugin,             LINELIST, NULL),
   V(ClientUseIPv6,               BOOL,     "0"),
   V(ClientUseIPv4,               BOOL,     "1"),
   V(ConsensusParams,             STRING,   NULL),
@@ -1781,6 +1783,85 @@ options_transition_affects_guards(const or_options_t *old_options,
   return 0;
 }
 
+static int
+parse_onion_name_plugin_line(or_options_t *options, const char *line,
+                             int validate_only)
+{
+  smartlist_t *items = NULL;
+  int line_length;
+
+  (void) options; /* XXX */
+  (void) validate_only; /* XXX */
+
+  /* Split the line into space-separated tokens */
+  items = smartlist_new();
+  smartlist_split_string(items, line, NULL,
+                         SPLIT_SKIP_SPACE|SPLIT_IGNORE_BLANK, -1);
+  line_length = smartlist_len(items);
+
+  if (line_length < 3) {
+    log_warn(LD_CONFIG,
+             "Too few arguments on OnionNamePlugin line %s.", line);
+    goto err;
+  }
+
+  /* First arg is priority */
+  const char *priority = smartlist_get(items, 0);
+  /* Second arg is tld */
+  const char *tld = smartlist_get(items, 1);
+  /* All the rest arguments are the argv. Let's get it: */
+  char **plugin_argv = NULL;
+
+  { /* Setup the argv of this plugin */
+    /* XXX dup code with parse_transport_line() */
+    char **tmp = NULL;
+    int plugin_argc = line_length - 2;
+    tor_assert(plugin_argc > 0);
+
+    plugin_argv = tor_calloc((plugin_argc + 1), sizeof(char *));
+    tmp = plugin_argv;
+
+    for (int i = 0; i < plugin_argc; i++) {
+      /* store arguments */
+      *tmp++ = smartlist_get(items, 2);
+      smartlist_del_keeporder(items, 2);
+    }
+    *tmp = NULL; /* terminated with NULL, just like execve() likes it */
+  }
+
+  if (ns_api_register_plugin(priority, tld, plugin_argv) < 0) {
+    log_warn(LD_GENERAL, "NS API burped");
+    goto err;
+  }
+
+  return 0;
+
+ err:
+  return -1;
+}
+
+static int
+handle_onion_name_plugins(or_options_t *options)
+{
+  config_line_t *cl;
+
+  /* XXX SIGHUP stuff see make_transport_list() and sweep_transport_list() */
+  if (options->OnionNamePlugin) {
+    for (cl = options->OnionNamePlugin; cl; cl = cl->next) {
+      if (parse_onion_name_plugin_line(options, cl->value, 0) < 0) {
+          // LCOV_EXCL_START
+          log_warn(LD_BUG,
+                   "Previously validated ServerTransportPlugin line "
+                   "could not be added!");
+          return -1;
+          // LCOV_EXCL_STOP
+      }
+    }
+  }
+
+  return 0;
+}
+
 /** Fetch the active option list, and take actions based on it. All of the
  * things we do should survive being done repeatedly.  If present,
  * <b>old_options</b> contains the previous value of the options.
@@ -1991,7 +2072,13 @@ options_act(const or_options_t *old_options)
      here, we also figure out which proxies need to be restarted and
      which not. */
   if (pt_proxies_configuration_pending() && !net_is_disabled())
-    pt_configure_remaining_proxies();
+    pt_configure_remaining_proxies(); /* Configure happens */
+
+  /* DOCDOCDOC */
+  if (handle_onion_name_plugins(options) < 0) {
+    log_warn(LD_GENERAL, "XXX");
+    return -1;
+  }
 
   /* Bail out at this point if we're not going to be a client or server:
    * we want to not fork, and to log stuff to stderr. */
