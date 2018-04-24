@@ -2447,10 +2447,6 @@ cpath_get_n_hops(crypt_path_t **head_ptr)
 /**
  * Build a list of nodes to exclude from the choice of this middle
  * hop, based on already chosen nodes.
- *
- * XXX: At present, this function does not exclude any nodes from
- * the vanguard circuits. See
- * https://trac.torproject.org/projects/tor/ticket/24487
  */
 static smartlist_t *
 build_middle_exclude_list(uint8_t purpose,
@@ -2465,9 +2461,12 @@ build_middle_exclude_list(uint8_t purpose,
 
   excluded = smartlist_new();
 
-  /* XXX: Do not consider subnet and family for vanguards. This is to
-   * avoid impossible-to-build circuit paths, or just situations where
-   * our earlier guards prevent us from using most of our later ones.
+  /* For vanguard circuits we exclude all the already chosen nodes (including
+   * the exit) from being middle hops.
+   *
+   * However, we don't apply any subnet or family restrictions. This is to
+   * avoid impossible-to-build circuit paths, or just situations where our
+   * earlier guards prevent us from using most of our later ones.
    *
    * The alternative is building the circuit in reverse. Reverse calls to
    * onion_extend_cpath() (ie: select outer hops first) would then have the
@@ -2494,12 +2493,15 @@ build_middle_exclude_list(uint8_t purpose,
     return excluded;
   }
 
-  /* Add the exit to the exclude list (note that the exit/last hop is always
-   * chosen first in circuit_establish_circuit()). */
+  /* For non-vanguard circuits, add the exit and its family to the exclude list
+   * (note that the exit/last hop is always chosen first in
+   * circuit_establish_circuit()). */
   if ((r = build_state_get_exit_node(state))) {
     nodelist_add_node_and_family(excluded, r);
   }
 
+  /* for non-vanguard circuits, also exclude all other already chosen nodes and
+   * their family */
   for (i = 0, cpath = head; cpath && i < cur_len; ++i, cpath=cpath->next) {
     if ((r = node_get_by_id(cpath->extend_info->identity_digest))) {
       nodelist_add_node_and_family(excluded, r);
