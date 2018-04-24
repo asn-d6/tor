@@ -315,6 +315,22 @@ ed25519_donna_blind_public_key(unsigned char *out, const unsigned char *inp,
   return 0;
 }
 
+/* DOCDOCDOC Get (R, S mod l) */
+void
+ed25519_donna_get_replay_token(const unsigned char *RS_in,
+                               unsigned char *replay_token_out)
+{
+  bignum256modm S_prime;
+
+  /* copy R in */
+  memcpy(replay_token_out, RS_in, 32);
+
+  /* do S' = S mod l */
+  expand_raw256_modm(S_prime, RS_in+32);
+  /* copy S' in */
+  contract256_modm(replay_token_out+32, S_prime);
+}
+
 int
 ed25519_donna_pubkey_from_curve25519_pubkey(unsigned char *out,
   const unsigned char *inp, int signbit)

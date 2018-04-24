@@ -31,4 +31,7 @@ int
 ed25519_ref10_scalarmult_with_group_order(unsigned char *out,
                                           const unsigned char *pubkey);
 
+void ed25519_ref10_get_replay_token(const unsigned char *RS_in,
+                                    unsigned char *replay_token_out);
+
 #endif

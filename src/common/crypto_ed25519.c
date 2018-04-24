@@ -62,6 +62,9 @@ typedef struct {
 
   int (*ed25519_scalarmult_with_group_order)(unsigned char *,
                                              const unsigned char *);
+
+  void (*get_replay_token_from_sig)(const unsigned char *,
+                                            unsigned char *);
 } ed25519_impl_t;
 
 /** The Ref10 Ed25519 implementation. This one is pure C and lightly
@@ -83,6 +86,8 @@ static const ed25519_impl_t impl_ref10 = {
 
   ed25519_ref10_pubkey_from_curve25519_pubkey,
   ed25519_ref10_scalarmult_with_group_order,
+
+  ed25519_ref10_get_replay_token,
 };
 
 /** The Ref10 Ed25519 implementation. This one is heavily optimized, but still
@@ -104,6 +109,7 @@ static const ed25519_impl_t impl_donna = {
 
   ed25519_donna_pubkey_from_curve25519_pubkey,
   ed25519_donna_scalarmult_with_group_order,
+  ed25519_donna_get_replay_token,
 };
 
 /** Which Ed25519 implementation are we using?  NULL if we haven't decided
@@ -538,6 +544,15 @@ ed25519_public_blind(ed25519_public_key_t *out,
                      const uint8_t *param)
 {
   return get_ed_impl()->blind_public_key(out->pubkey, inp->pubkey, param);
+}
+
+/* DOCDOCDOC Given legit (R,S) sig, return (R, S mod l) */
+void
+ed25519_get_replay_token_from_sig(const ed25519_signature_t *sig_in,
+                                  unsigned char *replay_cache_token_out)
+{
+  return get_ed_impl()->get_replay_token_from_sig(sig_in->sig,
+                                                  replay_cache_token_out);
 }
 
 /**

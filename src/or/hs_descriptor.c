@@ -1914,6 +1914,22 @@ desc_sig_is_valid(const char *b64_sig,
     log_warn(LD_REND, "Invalid signature on service descriptor");
     goto err;
   }
+
+  /*   service->state.replay_cache_rend_cookie = replaycache_new(REND_REPLAY_TIME_INTERVAL, REND_REPLAY_TIME_INTERVAL); */
+
+  /* Check replay cache for this sig. Add it if it's not there. Reject if it is
+   * there. */
+  unsigned char hs_desc_replay_cache_token[64];
+  time_t elapsed;
+
+  ed25519_get_replay_token_from_sig(&sig, hs_desc_replay_cache_token);
+
+  if (replaycache_add_test_and_elapsed(XXX, hs_desc_replay_cache_token,
+                                       sizeof(hs_desc_replay_cache_token),
+                                       &elapsed)) {
+    ;
+  }
+
   /* Valid signature! All is good. */
   ret = 1;
 

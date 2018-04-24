@@ -128,6 +128,7 @@ cache_store_v3_as_dir(hs_cache_dir_descriptor_t *desc)
    * if we should replace it? */
   cache_entry = lookup_v3_desc_as_dir(desc->key);
   if (cache_entry != NULL) {
+    /* XXX Replay cache verification needs to happen here */
     /* Only replace descriptor if revision-counter is greater than the one
      * in our cache */
     if (cache_entry->plaintext_data->revision_counter >=

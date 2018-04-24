@@ -41,3 +41,19 @@ int crypto_sign_open(
 badsig:
   return -1;
 }
+
+/* XXX move to other file */
+/* DOCDOCDOC Get (R, S mod l) */
+void
+ed25519_ref10_get_replay_token(const unsigned char *RS_in,
+                               unsigned char *replay_token_out)
+{
+  unsigned char scopy[32];
+
+  /* Copy R in */
+  memmove(replay_token_out, RS_in, 32);
+
+  /* Get S' = S mod l */
+  memmove(scopy, RS_in + 32, 32);
+  /* XXX unifinished */
+}

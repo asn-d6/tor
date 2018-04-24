@@ -35,4 +35,8 @@ int
 ed25519_donna_scalarmult_with_group_order(unsigned char *out,
                                           const unsigned char *pubkey);
 
+void
+ed25519_donna_get_replay_token(const unsigned char *RS_in,
+                               unsigned char *replay_token_out);
+
 #endif
