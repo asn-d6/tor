@@ -3764,6 +3764,11 @@ options_validate(or_options_t *old_options, or_options_t *options,
              "http://freehaven.net/anonbib/#hs-attack06 for details.");
   }
 
+  if (options->NumPrimaryGuards && options->NumEntryGuards &&
+      options->NumEntryGuards > options->NumPrimaryGuards) {
+    REJECT("NumEntryGuards must not be greater than NumPrimaryGuards.");
+  }
+
   if (options->EntryNodes &&
       routerset_is_list(options->EntryNodes) &&
       (routerset_len(options->EntryNodes) == 1) &&
