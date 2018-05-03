@@ -135,13 +135,12 @@ cache_check_replay_as_dir(const hs_cache_dir_descriptor_t *desc)
 {
   int ret = 0;
   time_t elapsed;
-  const char *start_of_desc, *end_of_desc;
+  const char *start_of_sig;
 
   tor_assert(desc);
 
-  hs_desc_get_offset_without_sig(desc->encoded_desc, &start_of_desc,
-                                 &end_of_desc);
-  if (BUG(start_of_desc == NULL)) {
+  start_of_sig = hs_desc_get_start_of_sig(desc->encoded_desc);
+  if (BUG(start_of_sig == NULL)) {
     /* We shouldn't get here because we previously parsed the descriptor in
      * order to extract the plaintext data. */
     goto end;
@@ -149,8 +148,8 @@ cache_check_replay_as_dir(const hs_cache_dir_descriptor_t *desc)
 
   /* Query our global v3 directory replay cache for this descriptor body. */
   if (replaycache_add_test_and_elapsed(desc_replay_cache_v3_dir,
-                                       start_of_desc,
-                                       end_of_desc - start_of_desc,
+                                       desc->encoded_desc,
+                                       start_of_sig - desc->encoded_desc,
                                        &elapsed)) {
     log_warn(LD_REND, "Possible descriptor replay detected. The same "
                       "descriptor was seen %ld seconds ago. Ignoring.",
@@ -1026,17 +1025,18 @@ hs_cache_free_all(void)
 
 #ifdef TOR_UNIT_TESTS
 
+/** Remove entry from HS descriptor replaycache. Used only by unittests. */
 void
 hs_cache_remove_replaycache_entry(const char *desc)
 {
-  const char *start_of_desc, *end_of_desc;
+  const char *start_of_sig;
 
-  hs_desc_get_offset_without_sig(desc, &start_of_desc, &end_of_desc);
-  if (!start_of_desc) {
+  start_of_sig = hs_desc_get_start_of_sig(desc);
+  if (!start_of_sig) {
     return;
   }
   replaycache_remove_entry(desc_replay_cache_v3_dir, desc,
-                           end_of_desc - start_of_desc);
+                           start_of_sig - desc);
 }
 
 #endif /* TOR_UNIT_TESTS */

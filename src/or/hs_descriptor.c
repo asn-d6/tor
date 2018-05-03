@@ -1871,7 +1871,7 @@ desc_sig_is_valid(const char *b64_sig,
 {
   int ret = 0;
   ed25519_signature_t sig;
-  const char *start_of_desc, *end_of_desc;
+  const char *sig_start;
 
   tor_assert(b64_sig);
   tor_assert(signing_pubkey);
@@ -1895,10 +1895,10 @@ desc_sig_is_valid(const char *b64_sig,
   }
 
   /* Find the start of signature. */
-  hs_desc_get_offset_without_sig(encoded_desc, &start_of_desc, &end_of_desc);
+  sig_start = hs_desc_get_start_of_sig(encoded_desc);
   /* Getting here means the token parsing worked for the signature so if we
    * can't find the start of the signature, we have a code flow issue. */
-  if (!start_of_desc) {
+  if (!sig_start) {
     log_warn(LD_GENERAL, "Malformed signature line. Rejecting.");
     goto err;
   }
@@ -1906,7 +1906,7 @@ desc_sig_is_valid(const char *b64_sig,
   /* Validate signature with the full body of the descriptor. */
   if (ed25519_checksig_prefixed(&sig,
                                 (const uint8_t *) encoded_desc,
-                                end_of_desc - start_of_desc,
+                                sig_start - encoded_desc,
                                 str_desc_sig_prefix,
                                 signing_pubkey) != 0) {
     log_warn(LD_REND, "Invalid signature on service descriptor");
@@ -2607,36 +2607,31 @@ hs_desc_lspec_to_trunnel(const hs_desc_link_specifier_t *spec)
   return ls;
 }
 
-/* Using the given valid encoded descriptor, find the start and end of the
- * descriptor body without the signature.
+/* Using the given valid encoded descriptor, find the end of the descriptor
+ * body without the signature (aka the beginning of the signature).
  *
  * This is used to extract the descriptor body for signature validation and
  * for the directory replay cache entry.
  *
- * On success, both start and end points inside encoded_desc. Else, start and
- * end are set to NULL. */
-void
-hs_desc_get_offset_without_sig(const char *encoded_desc, const char **start,
-                               const char **end)
+ * On success, return a pointer to the start of the signature, else return
+ * NULL. */
+const char *
+hs_desc_get_start_of_sig(const char *encoded_desc)
 {
   const char *start_of_sig;
 
   tor_assert(encoded_desc);
 
-  /* Nullify both. We only set them if we are sure that we can get both else
-   * they stay NULL. */
-  *start = *end = NULL;
-
   /* We do look at newline + signature string so we make sure the siganture
    * starts right after the encrypted MESSAGE. */
   start_of_sig = tor_memstr(encoded_desc, strlen(encoded_desc),
                             "\n" str_signature);
-  if (start_of_sig != NULL) {
-    /* Skip newline. */
-    start_of_sig++;
-    /* We found the start of the signature, set both values. */
-    *start = encoded_desc;
-    *end = start_of_sig;
+  if (!start_of_sig) {
+    return NULL;
   }
+
+  /* Skip newline so that we get to start of sig. */
+  start_of_sig++;
+  return start_of_sig;
 }
 
