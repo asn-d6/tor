@@ -131,9 +131,9 @@ cache_get_dir_entry_size(const hs_cache_dir_descriptor_t *entry)
  * stored in the directory cache. Else, return 0 indicating the descriptor
  * should be tossed away. */
 static int
-cache_check_replay_as_dir(const hs_cache_dir_descriptor_t *desc)
+hs_descriptor_is_replay(const hs_cache_dir_descriptor_t *desc)
 {
-  int ret = 0;
+  int ret = 1;
   time_t elapsed;
   const char *start_of_sig;
 
@@ -158,7 +158,7 @@ cache_check_replay_as_dir(const hs_cache_dir_descriptor_t *desc)
   }
   /* We added this descriptor body to the replay cache which means we can
    * store it safely since we've never seen that descriptor. */
-  ret = 1;
+  ret = 0;
 
  end:
   return ret;
@@ -178,7 +178,7 @@ cache_store_v3_as_dir(hs_cache_dir_descriptor_t *desc)
   /* Do we have this descriptor in our replaycache? If we do it means we
    * either have it already cached or this is a replay of an old descriptor.
    * Either way, we stop now. */
-  if (!cache_check_replay_as_dir(desc)) {
+  if (hs_descriptor_is_replay(desc)) {
     goto err;
   }
 
