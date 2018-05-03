@@ -28,11 +28,11 @@ static int cached_client_descriptor_has_expired(time_t now,
 /* Directory descriptor cache. Map indexed by blinded key. */
 static digest256map_t *hs_cache_v3_dir;
 
-/* Expiry time of an entry in the descriptor replay cache. This is currently
- * twice as big as the maximum lifetime of an HS descriptor (12h max, default
- * 3h). Which means that the descriptor should get removed from the directory
- * cache at most 12h before it gets removed from the replay cache. */
-#define DESC_REPLAY_EXPIRY_TIME (24 * 60 * 60)
+/* Expiry time of an entry in the descriptor replay cache. This is currently 36
+ * hours which covers the time period between the generation of a fresh SRV
+ * (which is when onion services start uploading their "second descriptor") and
+ * the time where clients will stop using it (when the TP changes). */
+#define DESC_REPLAY_EXPIRY_TIME (36 * 60 * 60)
 
 /* Descriptor replay cache. We keep a hash of the descriptor without the
  * signature indexed by blinded key. */
