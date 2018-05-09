@@ -2662,9 +2662,17 @@ dirserv_read_guardfraction_file(const char *fname,
  * Helper function to parse out a line in the measured bandwidth file
  * into a measured_bw_line_t output structure. Returns -1 on failure
  * or 0 on success.
+ * When <b>end_header</b> is 0 and there're incomplete bw lines, returns -1
+ * but stop giving warnings about tehm, since they could be additional header
+ * lines, as introduced in Bandwidth List spec version 1.1.0.
+ * When <b>end_header</b> is 0 and there's a complete bw line, it means the
+ * the header ends.
+ * When <b>end_header</b> is 1, and there're incomplete bw lines, returns -1
+ * and give warnings, since it's not part of the header.
  */
 STATIC int
-measured_bw_line_parse(measured_bw_line_t *out, const char *orig_line)
+measured_bw_line_parse(measured_bw_line_t *out, const char *orig_line,
+                       int end_header)
 {
   char *line = tor_strdup(orig_line);
   char *cp = line;
@@ -2732,6 +2740,13 @@ measured_bw_line_parse(measured_bw_line_t *out, const char *orig_line)
   if (got_bw && got_node_id) {
     tor_free(line);
     return 0;
+  } else if (end_header == 0) {
+    /* There could be additional header lines, therefore do not give warnings
+     * but returns -1 since it's not a complete bw line. */
+    log_debug(LD_DIRSERV, "Missing bw or node_id in bandwidth file line: %s",
+             escaped(orig_line));
+    tor_free(line);
+    return -1;
   } else {
     log_warn(LD_DIRSERV, "Incomplete line in bandwidth file: %s",
              escaped(orig_line));
@@ -2780,6 +2795,11 @@ dirserv_read_measured_bandwidths(const char *from_file,
   int applied_lines = 0;
   time_t file_time, now;
   int ok;
+   /* This flag will be 1 only when the first successful bw measurement line
+   * has been encountered, so that measured_bw_line_parse don't give warnings
+   * if there're additional header lines, as introduced in Bandwidth List spec
+   * version 1.1.0 */
+  int end_header = 0;
 
   /* Initialise line, so that we can't possibly run off the end. */
   memset(line, 0, sizeof(line));
@@ -2827,7 +2847,10 @@ dirserv_read_measured_bandwidths(const char *from_file,
   while (!feof(fp)) {
     measured_bw_line_t parsed_line;
     if (fgets(line, sizeof(line), fp) && strlen(line)) {
-      if (measured_bw_line_parse(&parsed_line, line) != -1) {
+      if (measured_bw_line_parse(&parsed_line, line, end_header) != -1) {
+        /* This condition will be true when the first complete valide bw line
+         * has been encounter, what means the end of the header lines. */
+        end_header = 1;
         /* Also cache the line for dirserv_get_bandwidth_for_router() */
         dirserv_cache_measured_bw(&parsed_line, file_time);
         if (measured_bw_line_apply(&parsed_line, routerstatuses) > 0)
