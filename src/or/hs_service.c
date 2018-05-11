@@ -83,7 +83,7 @@ static smartlist_t *hs_service_staging_list;
 static int consider_republishing_hs_descriptors = 0;
 
 /* Static declaration. */
-static void set_descriptor_revision_counter(hs_descriptor_t *hs_desc);
+static void set_descriptor_revision_counter(hs_service_descriptor_t *hs_desc);
 static void move_descriptors(hs_service_t *src, hs_service_t *dst);
 
 /* Helper: Function to compare two objects in the service map. Return 1 if the
@@ -1441,7 +1441,7 @@ build_service_descriptor(hs_service_t *service, time_t now,
   }
 
   /* Set the revision counter for this descriptor */
-  set_descriptor_revision_counter(desc->desc);
+  set_descriptor_revision_counter(desc);
 
   /* Let's make sure that we've created a descriptor that can actually be
    * encoded properly. This function also checks if the encoded output is
@@ -2506,16 +2506,57 @@ increment_descriptor_revision_counter(hs_descriptor_t *hs_desc)
   update_revision_counters_in_state();
 }
 
-/** Set the revision counter in <b>hs_desc</b>, using the state file to find
- *  the current counter value if it exists. */
+/** Set the revision counter in <b>hs_desc</b>. */
 static void
-set_descriptor_revision_counter(hs_descriptor_t *hs_desc)
+set_descriptor_revision_counter(hs_service_descriptor_t *hs_desc)
 {
-  /* Find stored rev counter if it exists */
-  uint64_t rev_counter =
-    get_rev_counter_for_service(&hs_desc->plaintext_data.blinded_pubkey);
+  uint64_t rev_counter = 0;
 
-  hs_desc->plaintext_data.revision_counter = rev_counter;
+  /* Get current time */
+  time_t now = approx_time();
+  /* When did the time period for this descriptor start? */
+  time_t tp_start = hs_get_start_time_of_time_period(hs_desc->time_period_num);
+
+  log_debug(LD_REND, "Setting rev counter for TP #%lu: started at %d, now %d",
+            hs_desc->time_period_num, (int)tp_start, (int)now);
+
+  tor_assert_nonfatal(now >= tp_start);
+
+  /* Compute seconds elapsed since the start of the time period. That's the
+   * number of seconds of how long this blinded key has been active. */
+  time_t seconds_since_start_of_tp = now - tp_start;
+
+  log_info(LD_REND, "Encrypting revision counter %d",
+           (int) seconds_since_start_of_tp);
+
+  /* Check for too big inputs. */
+  if (BUG(seconds_since_start_of_tp > OPE_INPUT_MAX)) {
+    seconds_since_start_of_tp = OPE_INPUT_MAX;
+  }
+
+  /* Compute OPE key as: K = H("rev-counter-generation" | S) */
+  const uint8_t key[32] = { 0 };
+  {
+    crypto_digest_t *digest = crypto_digest256_new(DIGEST_SHA3_256);
+    const char ope_key_prefix[] = "rev-counter-generation";
+    ed25519_secret_key_t *eph_privkey = &hs_desc->blinded_kp.seckey;
+    crypto_digest_add_bytes(digest, ope_key_prefix, sizeof(ope_key_prefix));
+    crypto_digest_add_bytes(digest, (char*)eph_privkey->seckey,
+                            sizeof(eph_privkey->seckey));
+    crypto_digest_get_digest(digest, (char *)key, sizeof(key));
+    crypto_digest_free(digest);
+  }
+
+  {
+    crypto_ope_t *ope = NULL;
+    ope = crypto_ope_new(key);
+    rev_counter = crypto_ope_encrypt(ope, seconds_since_start_of_tp);
+    crypto_ope_free(ope);
+  }
+
+  //  (void) get_rev_counter_for_service(&hs_desc->plaintext_data.blinded_pubkey);
+
+  hs_desc->desc->plaintext_data.revision_counter = rev_counter;
 }
 
 /* Encode and sign the service descriptor desc and upload it to the
