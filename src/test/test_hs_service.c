@@ -1374,6 +1374,8 @@ test_upload_descriptors(void *arg)
                            &mock_ns.fresh_until);
   tt_int_op(ret, OP_EQ, 0);
 
+  update_approx_time(mock_ns.valid_after + 40);
+
   /* Create a service with no descriptor. It's added to the global map. */
   service = hs_service_new(get_options());
   tt_assert(service);
