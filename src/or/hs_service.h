@@ -342,18 +342,10 @@ STATIC void build_all_descriptors(time_t now);
 STATIC void update_all_descriptors(time_t now);
 STATIC void run_upload_descriptor_event(time_t now);
 
-STATIC char *
-encode_desc_rev_counter_for_state(const hs_service_descriptor_t *desc);
-
 STATIC void service_descriptor_free_(hs_service_descriptor_t *desc);
 #define service_descriptor_free(d) \
   FREE_AND_NULL(hs_service_descriptor_t, \
                            service_descriptor_free_, (d))
-
-STATIC uint64_t
-check_state_line_for_service_rev_counter(const char *state_line,
-                                    const ed25519_public_key_t *blinded_pubkey,
-                                    int *service_found_out);
 
 STATIC int
 write_address_to_file(const hs_service_t *service, const char *fname_);
@@ -367,6 +359,9 @@ STATIC void service_desc_schedule_upload(hs_service_descriptor_t *desc,
 
 STATIC int service_desc_hsdirs_changed(const hs_service_t *service,
                                 const hs_service_descriptor_t *desc);
+
+STATIC uint64_t
+compute_blinded_revision_counter(const ed25519_public_key_t *eph_pubkey);
 
 #endif /* defined(HS_SERVICE_PRIVATE) */
 

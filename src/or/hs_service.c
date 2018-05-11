@@ -2303,6 +2303,7 @@ upload_descriptor_to_hsdir(const hs_service_t *service,
   return;
 }
 
+#if 0
 /** Return a newly-allocated string for our state file which contains revision
  *  counter information for <b>desc</b>. The format is:
  *
@@ -2365,7 +2366,9 @@ update_revision_counters_in_state(void)
     or_state_mark_dirty(state, 0);
   }
 }
+#endif
 
+#if 0
 /** Scan the string <b>state_line</b> for the revision counter of the service
  *  with <b>blinded_pubkey</b>. Set <b>service_found_out</b> to True if the
  *  line is relevant to this service, and return the cached revision
@@ -2462,36 +2465,40 @@ get_rev_counter_for_service(const ed25519_public_key_t *blinded_pubkey)
  done:
   return final_rev_counter;
 }
+#endif
 
-/** Update the value of the revision counter for <b>hs_desc</b> and save it on
-    our state file. */
-static void
-increment_descriptor_revision_counter(hs_descriptor_t *hs_desc)
+/** Compute the revision counter as follows:
+ *
+ *    uint32_t BLINDING_FACTOR = SHA3(ephemeral_blinding_key)[4]
+ *    uint64_t REV_COUNTER = now + BLINDING_FACTOR
+ */
+STATIC uint64_t
+compute_blinded_revision_counter(const ed25519_public_key_t *eph_pubkey)
 {
-  /* Find stored rev counter if it exists */
-  uint64_t rev_counter =
-    get_rev_counter_for_service(&hs_desc->plaintext_data.blinded_pubkey);
+  time_t now = approx_time();
+  uint32_t blinding_factor = 0;
 
-  /* Increment the revision counter of <b>hs_desc</b> so the next update (which
-   * will trigger an upload) will have the right value. We do this at this
-   * stage to only do it once because a descriptor can have many updates before
-   * being uploaded. By doing it at upload, we are sure to only increment by 1
-   * and thus avoid leaking how many operations we made on the descriptor from
-   * the previous one before uploading. */
-  rev_counter++;
-  hs_desc->plaintext_data.revision_counter = rev_counter;
+  {
+    uint8_t pubkey_hash[sizeof(uint32_t)];
+    crypto_digest_t *digest = crypto_digest256_new(DIGEST_SHA3_256);
+    crypto_digest_add_bytes(digest,(char *) eph_pubkey->pubkey,
+                            sizeof(eph_pubkey->pubkey));
+    crypto_digest_get_digest(digest, (char *)pubkey_hash, sizeof(pubkey_hash));
+    crypto_digest_free(digest);
+    blinding_factor = get_uint32(pubkey_hash);
+  }
 
-  update_revision_counters_in_state();
+  /* We add a time_t (max value can be INT64_MAX) and a uint32_t to produce a
+   * uint64_t; no overflow should be possible. */
+  return (uint64_t) now + (uint64_t) blinding_factor;
 }
 
-/** Set the revision counter in <b>hs_desc</b>, using the state file to find
- *  the current counter value if it exists. */
+/** Set the revision counter in <b>hs_desc</b>. */
 static void
 set_descriptor_revision_counter(hs_descriptor_t *hs_desc)
 {
-  /* Find stored rev counter if it exists */
   uint64_t rev_counter =
-    get_rev_counter_for_service(&hs_desc->plaintext_data.blinded_pubkey);
+    compute_blinded_revision_counter(&hs_desc->plaintext_data.blinded_pubkey);
 
   hs_desc->plaintext_data.revision_counter = rev_counter;
 }
@@ -2550,9 +2557,6 @@ upload_descriptor_to_all(const hs_service_t *service,
     log_debug(LD_REND, "Service %s set to upload a descriptor at %s",
               safe_str_client(service->onion_address), fmt_next_time);
   }
-
-  /* Update the revision counter of this descriptor */
-  increment_descriptor_revision_counter(desc->desc);
 
   smartlist_free(responsible_dirs);
   return;
