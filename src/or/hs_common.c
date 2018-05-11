@@ -305,21 +305,28 @@ hs_get_previous_time_period_num(time_t now)
   return hs_get_time_period_num(now) - 1;
 }
 
+/** Return the start time of time period <b>time_period_num</b>. */
+time_t
+hs_get_start_time_of_time_period(uint64_t time_period_num)
+{
+  uint64_t time_period_length = get_time_period_length();
+
+  uint64_t start_of_tp_in_mins = time_period_num * time_period_length;
+
+  /* Apply rotation offset as specified by prop224 section [TIME-PERIODS] */
+  unsigned int time_period_rotation_offset = sr_state_get_phase_duration();
+  return (time_t)(start_of_tp_in_mins * 60 + time_period_rotation_offset);
+}
+
 /* Return the start time of the upcoming time period based on <b>now</b>. If
    <b>now</b> is not set, we try to get the time ourselves from a live
    consensus. */
 time_t
 hs_get_start_time_of_next_time_period(time_t now)
 {
-  uint64_t time_period_length = get_time_period_length();
-
   /* Get start time of next time period */
   uint64_t next_time_period_num = hs_get_next_time_period_num(now);
-  uint64_t start_of_next_tp_in_mins = next_time_period_num *time_period_length;
-
-  /* Apply rotation offset as specified by prop224 section [TIME-PERIODS] */
-  unsigned int time_period_rotation_offset = sr_state_get_phase_duration();
-  return (time_t)(start_of_next_tp_in_mins * 60 + time_period_rotation_offset);
+  return hs_get_start_time_of_time_period(next_time_period_num);
 }
 
 /* Create a new rend_data_t for a specific given <b>version</b>.
