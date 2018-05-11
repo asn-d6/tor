@@ -746,8 +746,8 @@ get_uint16(const void *cp)
  * *(uint32_t*)(cp), but will not cause segfaults on platforms that forbid
  * unaligned memory access.
  */
-uint32_t
-get_uint32(const void *cp)
+MOCK_IMPL(uint32_t,
+get_uint32,(const void *cp))
 {
   uint32_t v;
   memcpy(&v,cp,4);

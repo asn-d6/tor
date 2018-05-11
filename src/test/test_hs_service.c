@@ -1407,66 +1407,6 @@ test_upload_descriptors(void *arg)
   UNMOCK(get_or_state);
 }
 
-/** Test the functions that save and load HS revision counters to state. */
-static void
-test_revision_counter_state(void *arg)
-{
-  char *state_line_one = NULL;
-  char *state_line_two = NULL;
-
-  hs_service_descriptor_t *desc_one = service_descriptor_new();
-  hs_service_descriptor_t *desc_two = service_descriptor_new();
-
-  (void) arg;
-
-  /* Prepare both descriptors */
-  desc_one->desc->plaintext_data.revision_counter = 42;
-  desc_two->desc->plaintext_data.revision_counter = 240;
-  memset(&desc_one->blinded_kp.pubkey.pubkey, 66,
-         sizeof(desc_one->blinded_kp.pubkey.pubkey));
-  memset(&desc_two->blinded_kp.pubkey.pubkey, 240,
-         sizeof(desc_one->blinded_kp.pubkey.pubkey));
-
-  /* Turn the descriptor rev counters into state lines */
-  state_line_one = encode_desc_rev_counter_for_state(desc_one);
-  tt_str_op(state_line_one, OP_EQ,
-            "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI 42");
-
-  state_line_two = encode_desc_rev_counter_for_state(desc_two);
-  tt_str_op(state_line_two, OP_EQ,
-            "8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PA 240");
-
-  /* Now let's test our state parsing function: */
-  int service_found;
-  uint64_t cached_rev_counter;
-
-  /* First's try with wrong pubkey and check that no service was found */
-  cached_rev_counter =check_state_line_for_service_rev_counter(state_line_one,
-                                                 &desc_two->blinded_kp.pubkey,
-                                                               &service_found);
-  tt_int_op(service_found, OP_EQ, 0);
-  tt_u64_op(cached_rev_counter, OP_EQ, 0);
-
-  /* Now let's try with the right pubkeys */
-  cached_rev_counter =check_state_line_for_service_rev_counter(state_line_one,
-                                                 &desc_one->blinded_kp.pubkey,
-                                                               &service_found);
-  tt_int_op(service_found, OP_EQ, 1);
-  tt_u64_op(cached_rev_counter, OP_EQ, 42);
-
-  cached_rev_counter =check_state_line_for_service_rev_counter(state_line_two,
-                                                 &desc_two->blinded_kp.pubkey,
-                                                               &service_found);
-  tt_int_op(service_found, OP_EQ, 1);
-  tt_u64_op(cached_rev_counter, OP_EQ, 240);
-
- done:
-  tor_free(state_line_one);
-  tor_free(state_line_two);
-  service_descriptor_free(desc_one);
-  service_descriptor_free(desc_two);
-}
-
 /** Global vars used by test_rendezvous1_parsing() */
 static char rend1_payload[RELAY_PAYLOAD_SIZE];
 static size_t rend1_payload_len = 0;
@@ -1591,6 +1531,68 @@ test_rendezvous1_parsing(void *arg)
   UNMOCK(relay_send_command_from_edge_);
 }
 
+/* Helper for rev counter test: Returns max value */
+static uint32_t
+mock_get_uint32(const void *cp)
+{
+  (void) cp;
+  return UINT32_MAX;
+}
+
+static void
+test_revision_counter_monotonicity(void *arg)
+{
+  (void) arg;
+
+  uint64_t prev_rev_counter;
+  uint64_t rev_counter;
+
+  /* Here is an all-zeroes test pubkey */
+  ed25519_public_key_t pubkey;
+  memset(pubkey.pubkey, 0, sizeof(pubkey.pubkey));
+
+  /* Compute rev counter at time=42 */
+  update_approx_time(42);
+  prev_rev_counter = compute_blinded_revision_counter(&pubkey);
+
+  /* Compute rev counter at time=43 */
+  update_approx_time(43);
+  rev_counter = compute_blinded_revision_counter(&pubkey);
+
+  /* Check that the diff of those rev counters is 1 and that monotonicity is
+   * maintained */
+  tt_uint_op(rev_counter - prev_rev_counter, OP_EQ, 1);
+
+  /* Check it again with bigger number and make sure the difference is still
+   * right */
+  update_approx_time(1337);
+  rev_counter = compute_blinded_revision_counter(&pubkey);
+  tt_uint_op(rev_counter - prev_rev_counter, OP_EQ, 1295);
+
+  /* If we are in a platform that supports 64-bit times, let's test some
+   * extreme values, since the rev counter is a 64-bit unsigned (uint64_t). */
+#if SIZEOF_TIME_T == 8
+  update_approx_time(INT64_MAX-16);
+  /* apply largest blinding factor possible */
+  MOCK(get_uint32, mock_get_uint32);
+  prev_rev_counter = compute_blinded_revision_counter(&pubkey);
+
+  /* apply largest time_t possible (time_ts are always signed) */
+  update_approx_time(INT64_MAX);
+  rev_counter = compute_blinded_revision_counter(&pubkey);
+
+  /* Check that the difference is right */
+  tt_uint_op(rev_counter, OP_GT, prev_rev_counter);
+  tt_uint_op(rev_counter, OP_GT, INT64_MAX);
+  tt_uint_op(rev_counter - prev_rev_counter, OP_EQ, 16);
+#else
+  (void) mock_get_uint32(NULL);
+#endif
+
+ done:
+  ;
+}
+
 struct testcase_t hs_service_tests[] = {
   { "e2e_rend_circuit_setup", test_e2e_rend_circuit_setup, TT_FORK,
     NULL, NULL },
@@ -1620,10 +1622,10 @@ struct testcase_t hs_service_tests[] = {
     NULL, NULL },
   { "upload_descriptors", test_upload_descriptors, TT_FORK,
     NULL, NULL },
-  { "revision_counter_state", test_revision_counter_state, TT_FORK,
-    NULL, NULL },
   { "rendezvous1_parsing", test_rendezvous1_parsing, TT_FORK,
     NULL, NULL },
+  { "revision_counter_monotonicity", test_revision_counter_monotonicity,
+    TT_FORK, NULL, NULL },
 
   END_OF_TESTCASES
 };

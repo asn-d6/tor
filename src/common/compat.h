@@ -654,7 +654,7 @@ typedef enum {
 MOCK_DECL(const char *, get_uname, (void));
 
 uint16_t get_uint16(const void *cp) ATTR_NONNULL((1));
-uint32_t get_uint32(const void *cp) ATTR_NONNULL((1));
+MOCK_DECL(uint32_t, get_uint32,(const void *cp)) ATTR_NONNULL((1));
 uint64_t get_uint64(const void *cp) ATTR_NONNULL((1));
 void set_uint16(void *cp, uint16_t v) ATTR_NONNULL((1));
 void set_uint32(void *cp, uint32_t v) ATTR_NONNULL((1));
