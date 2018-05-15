@@ -1137,6 +1137,7 @@ test_build_update_descriptors(void *arg)
   time_t now = time(NULL);
   node_t *node;
   hs_service_t *service;
+  time_t tp_start;
   hs_service_intro_point_t *ip_cur, *ip_next;
   routerinfo_t ri;
 
@@ -1151,12 +1152,29 @@ test_build_update_descriptors(void *arg)
 
   dummy_state = tor_malloc_zero(sizeof(or_state_t));
 
-  ret = parse_rfc1123_time("Sat, 26 Oct 1985 03:00:00 UTC",
-                           &mock_ns.valid_after);
-  tt_int_op(ret, OP_EQ, 0);
-  ret = parse_rfc1123_time("Sat, 26 Oct 1985 04:00:00 UTC",
-                           &mock_ns.fresh_until);
-  tt_int_op(ret, OP_EQ, 0);
+  /* First calculate consensus timings */
+  {
+    ret = parse_rfc1123_time("Sat, 26 Oct 1985 03:00:00 UTC",
+                             &mock_ns.valid_after);
+    tt_int_op(ret, OP_EQ, 0);
+    ret = parse_rfc1123_time("Sat, 26 Oct 1985 04:00:00 UTC",
+                             &mock_ns.fresh_until);
+    tt_int_op(ret, OP_EQ, 0);
+    voting_schedule_recalculate_timing(get_options(), mock_ns.valid_after);
+  }
+
+  /* Now set the consensus time between SRV#N and TP#N */
+  if (hs_in_period_between_tp_and_srv(NULL, now)) {
+    uint64_t prev_tp = hs_get_previous_time_period_num(now);
+    tp_start = hs_get_start_time_of_time_period(prev_tp);
+  } else {
+    uint64_t curr_tp = hs_get_time_period_num(now);
+    tp_start = hs_get_start_time_of_time_period(curr_tp);
+  }
+  /* Set valid_after to 03:00 UTC and fresh_until to 04:00 UTC.
+  *  Time periods start at 12:00, so 03:00 is 15 hours after. */
+  mock_ns.valid_after = tp_start + 3600*15;
+  mock_ns.fresh_until = tp_start + 3600*16;
   voting_schedule_recalculate_timing(get_options(), mock_ns.valid_after);
 
   /* Create a service without a current descriptor to trigger a build. */
@@ -1292,13 +1310,8 @@ test_build_update_descriptors(void *arg)
 
   /* Now, we will try to set up a service after a new time period has started
    * and see if it behaves as expected. */
-
-  ret = parse_rfc1123_time("Sat, 26 Oct 1985 13:00:00 UTC",
-                           &mock_ns.valid_after);
-  tt_int_op(ret, OP_EQ, 0);
-  ret = parse_rfc1123_time("Sat, 26 Oct 1985 14:00:00 UTC",
-                           &mock_ns.fresh_until);
-  tt_int_op(ret, OP_EQ, 0);
+  mock_ns.valid_after = tp_start + 3600;
+  mock_ns.valid_after = tp_start + 3600*2;
 
   /* Create a service without a current descriptor to trigger a build. */
   service = helper_create_service();
