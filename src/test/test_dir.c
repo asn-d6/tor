@@ -1538,15 +1538,17 @@ test_dir_measured_bw_kb(void *arg)
   (void)arg;
   for (i = 0; strcmp(lines_fail[i], "end"); i++) {
     //fprintf(stderr, "Testing: %s\n", lines_fail[i]);
-    /* Testing only with end_header = 1. Tests with end_header = 0 in 
-     * test_dir_measured_bw_kb_end_header */
+    /* Testing only with line_is_after_headers = 1. Tests with
+     * line_is_after_headers = 0 in
+     * test_dir_measured_bw_kb_line_is_after_headers */
     tt_assert(measured_bw_line_parse(&mbwl, lines_fail[i], 1) == -1);
   }
 
   for (i = 0; strcmp(lines_pass[i], "end"); i++) {
     //fprintf(stderr, "Testing: %s %d\n", lines_pass[i], TOR_ISSPACE('\n'));
-    /* Testing only with end_header = 1. Tests with end_header = 0 in 
-     * test_dir_measured_bw_kb_end_header */
+    /* Testing only with line_is_after_headers = 1. Tests with
+     * line_is_after_headers = 0 in
+     * test_dir_measured_bw_kb_line_is_after_headers */
     tt_assert(measured_bw_line_parse(&mbwl, lines_pass[i], 1) == 0);
     tt_assert(mbwl.bw_kb == 1024);
     tt_assert(strcmp(mbwl.node_hex,
@@ -1557,12 +1559,12 @@ test_dir_measured_bw_kb(void *arg)
   return;
 }
 
-/* Unit tests for measured_bw_line_parse using end_header flag.
+/* Unit tests for measured_bw_line_parse using line_is_after_headers flag.
  * When the end of the header is detected (a first complete bw line is parsed),
- * incomplete lines fail and give warnings, but do not give warnings if 
+ * incomplete lines fail and give warnings, but do not give warnings if
  * the header is not ended, allowing to ignore additional header lines. */
 static void
-test_dir_measured_bw_kb_end_header(void *arg)
+test_dir_measured_bw_kb_line_is_after_headers(void *arg)
 {
   (void)arg;
   measured_bw_line_t mbwl;
@@ -1595,7 +1597,6 @@ test_dir_measured_bw_kb_end_header(void *arg)
   }
 
   tt_assert(measured_bw_line_parse(&mbwl, line_pass, 0) == 0);
-
 
  done:
   teardown_capture_of_logs();
@@ -6325,7 +6326,7 @@ struct testcase_t dir_tests[] = {
   DIR_LEGACY(fp_pairs),
   DIR(split_fps, 0),
   DIR_LEGACY(measured_bw_kb),
-  DIR_LEGACY(measured_bw_kb_end_header),
+  DIR_LEGACY(measured_bw_kb_line_is_after_headers),
   DIR_LEGACY(measured_bw_kb_cache),
   DIR_LEGACY(dirserv_read_measured_bandwidths),
   DIR_LEGACY(param_voting),
