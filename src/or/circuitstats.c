@@ -1908,7 +1908,7 @@ cbt_control_event_buildtimeout_set(const circuit_build_times_t *cbt,
 
   /* The timeout rate is the ratio of the timeout count over
    * the total number of circuits attempted. The total number of
-   * circuits is (timeouts+succeeded), since a circuit every circuit
+   * circuits is (timeouts+succeeded), since every circuit
    * either succeeds, or times out. "Closed" circuits are
    * MEASURE_TIMEOUT circuits whose measurement period expired.
    * All MEASURE_TIMEOUT circuits are counted in the timeouts stat
