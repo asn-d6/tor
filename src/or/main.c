@@ -109,6 +109,7 @@
 #include "tor_api.h"
 #include "tor_api_internal.h"
 #include "util_process.h"
+#include "voting_schedule.h"
 #include "ext_orport.h"
 #ifdef USE_DMALLOC
 #include <dmalloc.h>
@@ -2539,6 +2540,8 @@ static monotime_coarse_t current_second_last_changed;
 void
 update_current_time(time_t now)
 {
+  bool clock_jumped = false;
+
   if (PREDICT_LIKELY(now == current_second)) {
     /* We call this function a lot.  Most frequently, the current second
      * will not have changed, so we just return. */
@@ -2578,7 +2581,7 @@ update_current_time(time_t now)
      * time, we've probably just been idle for a while, with no events firing.
      * we tolerate much more of that.
      */
-    const bool clock_jumped = abs(discrepancy) > 2;
+    clock_jumped = abs(discrepancy) > 2;
 
     if (clock_jumped || seconds_elapsed >= NUM_IDLE_SECONDS_BEFORE_WARN) {
       circuit_note_clock_jumped(seconds_elapsed, ! clock_jumped);
@@ -2589,6 +2592,27 @@ update_current_time(time_t now)
 
   update_approx_time(now);
   current_second = now;
+
+  /* If the clock just jumped forward, we might be stuck with a consensus we
+   * fetched back when our clock was skewed. Let's do a few things:
+   *
+   * We want to recalculate our voting schedule because we don't want to be
+   * stuck with a voting schedule computed with a bad clock. Also repopulate
+   * the nodelist based on the consensus and the current time because some of
+   * the nodelist data depend on having the right time (e.g. hsdir v3 indexes).
+   *
+   * We do this down here because we want an updated approx_time() since the v3
+   * functions use approx_time() and not time(NULL).
+   */
+  if (clock_jumped && seconds_elapsed > 0) {
+    log_info(LD_GENERAL, "Clock jump forward: Recalculate consensus data.");
+    networkstatus_t *consensus = networkstatus_get_live_consensus(now);
+
+    voting_schedule_recalculate_timing(get_options(), now);
+    if (consensus) {
+      nodelist_set_consensus(consensus);
+    }
+  }
 }
 
 /** Libevent callback: invoked once every second. */

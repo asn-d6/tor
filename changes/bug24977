@@ -1,0 +1,4 @@
+  o Minor bugfixes (client):):
+    - Recompute some consensus information after detecting a clock skew to
+      avoid leaving our state with outdated data that could impact
+      next-generation onion services. Fixes bug 24977; bugfix on 0.3.2.1-alpha.
