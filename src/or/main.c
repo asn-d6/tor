@@ -2606,10 +2606,10 @@ update_current_time(time_t now)
    */
   if (clock_jumped && seconds_elapsed > 0) {
     log_info(LD_GENERAL, "Clock jump forward: Recalculate consensus data.");
-    networkstatus_t *consensus = networkstatus_get_live_consensus(now);
 
-    voting_schedule_recalculate_timing(get_options(), now);
+    networkstatus_t *consensus = networkstatus_get_live_consensus(now);
     if (consensus) {
+      voting_schedule_recalculate_timing(get_options(), now);
       nodelist_set_consensus(consensus);
     }
   }
