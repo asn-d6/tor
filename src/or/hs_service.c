@@ -83,7 +83,7 @@ static smartlist_t *hs_service_staging_list;
 static int consider_republishing_hs_descriptors = 0;
 
 /* Static declaration. */
-static void set_descriptor_revision_counter(hs_service_descriptor_t *hs_desc);
+static void set_descriptor_revision_counter(hs_service_descriptor_t *hs_desc, bool is_current);
 static void move_descriptors(hs_service_t *src, hs_service_t *dst);
 
 /* Helper: Function to compare two objects in the service map. Return 1 if the
@@ -1412,11 +1412,14 @@ build_service_desc_keys(const hs_service_t *service,
  * the update function. On success, desc_out will point to the newly allocated
  * descriptor object.
  *
+ * XXX is_current
+ *
  * This can error if we are unable to create keys or certificate. */
 static void
 build_service_descriptor(hs_service_t *service, time_t now,
                          uint64_t time_period_num,
-                         hs_service_descriptor_t **desc_out)
+                         hs_service_descriptor_t **desc_out,
+                         bool is_current)
 {
   char *encoded_desc;
   hs_service_descriptor_t *desc;
@@ -1441,7 +1444,7 @@ build_service_descriptor(hs_service_t *service, time_t now,
   }
 
   /* Set the revision counter for this descriptor */
-  set_descriptor_revision_counter(desc);
+  set_descriptor_revision_counter(desc, is_current);
 
   /* Let's make sure that we've created a descriptor that can actually be
    * encoded properly. This function also checks if the encoded output is
@@ -1507,9 +1510,9 @@ build_descriptors_for_new_service(hs_service_t *service, time_t now)
 
   /* Build descriptors. */
   build_service_descriptor(service, now, current_desc_tp,
-                           &service->desc_current);
+                           &service->desc_current, 1);
   build_service_descriptor(service, now, next_desc_tp,
-                           &service->desc_next);
+                           &service->desc_next, 0);
   log_info(LD_REND, "Hidden service %s has just started. Both descriptors "
                     "built. Now scheduled for upload.",
            safe_str_client(service->onion_address));
@@ -1540,7 +1543,7 @@ build_all_descriptors(time_t now)
 
     if (service->desc_next == NULL) {
       build_service_descriptor(service, now, hs_get_next_time_period_num(0),
-                               &service->desc_next);
+                               &service->desc_next, 0);
       log_info(LD_REND, "Hidden service %s next descriptor successfully "
                         "built. Now scheduled for upload.",
                safe_str_client(service->onion_address));
@@ -2508,26 +2511,51 @@ increment_descriptor_revision_counter(hs_descriptor_t *hs_desc)
 
 /** Set the revision counter in <b>hs_desc</b>. */
 static void
-set_descriptor_revision_counter(hs_service_descriptor_t *hs_desc)
+set_descriptor_revision_counter(hs_service_descriptor_t *hs_desc, bool is_current)
 {
   uint64_t rev_counter = 0;
 
   /* Get current time */
   time_t now = approx_time();
-  /* When did the time period for this descriptor start? */
-  time_t tp_start = hs_get_start_time_of_time_period(hs_desc->time_period_num);
+  time_t srv_start = 0;
 
-  log_debug(LD_REND, "Setting rev counter for TP #%lu: started at %d, now %d",
-            hs_desc->time_period_num, (int)tp_start, (int)now);
+  /* XXX */
+  if (is_current) {
+    srv_start = sr_state_get_start_time_of_previous_protocol_run(now);
+  } else {
+    srv_start = sr_state_get_start_time_of_current_protocol_run(now);
+  }
 
-  tor_assert_nonfatal(now >= tp_start);
+  log_debug(LD_REND, "Setting rev counter for TP #%lu: SRV started at %d, now %d",
+            hs_desc->time_period_num, (int)srv_start, (int)now);
+
+  tor_assert_nonfatal(now >= srv_start);
 
   /* Compute seconds elapsed since the start of the time period. That's the
    * number of seconds of how long this blinded key has been active. */
-  time_t seconds_since_start_of_tp = now - tp_start;
+  time_t seconds_since_start_of_tp = now - srv_start;
 
-  log_info(LD_REND, "Encrypting revision counter %d",
-           (int) seconds_since_start_of_tp);
+  /***
+Jun 01 01:14:54.000 [warn] Setting rev counter for TP #17683: started at 1527854400, now 1527815694
+Jun 01 01:14:54.000 [warn] tor_bug_occurred_(): Bug: src/or/hs_service.c:2523: set_descriptor_revision_counter: Non-fatal assertion now >= tp_start failed. (on Tor 0.3.4
+.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug: Non-fatal assertion now >= tp_start failed in set_descriptor_revision_counter at src/or/hs_service.c:2523. Stack trace: (on Tor 0.3.4.1-a
+lpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(log_backtrace+0x42) [0x7fbc48b14ca2] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(tor_bug_occurred_+0xb7) [0x7fbc48b2f927] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(+0x16e4c2) [0x7fbc48aff4c2] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(hs_service_run_scheduled_events+0xf3c) [0x7fbc48b03a0c] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(+0x4d771) [0x7fbc489de771] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(+0x695d1) [0x7fbc489fa5d1] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     /usr/lib/x86_64-linux-gnu/libevent-2.0.so.5(event_base_loop+0x7fc) [0x7fbc480143dc] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(do_main_loop+0x203) [0x7fbc489e2f63] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(tor_run_main+0x275) [0x7fbc489e4445] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(tor_main+0x3a) [0x7fbc489dd54a] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(main+0x19) [0x7fbc489dd2b9] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0xf1) [0x7fbc472072b1] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Bug:     ./tor/src/or/tor(_start+0x2a) [0x7fbc489dd30a] (on Tor 0.3.4.1-alpha-dev e465f042fd1006d0)
+Jun 01 01:14:54.000 [warn] Encrypted revision counter -38706 to -1
+  */
 
   /* Check for too big inputs. */
   if (BUG(seconds_since_start_of_tp > OPE_INPUT_MAX)) {
@@ -2553,6 +2581,9 @@ set_descriptor_revision_counter(hs_service_descriptor_t *hs_desc)
     rev_counter = crypto_ope_encrypt(ope, seconds_since_start_of_tp);
     crypto_ope_free(ope);
   }
+
+  log_info(LD_REND, "Encrypting revision counter %d to %ld",
+           (int) seconds_since_start_of_tp, (long int) rev_counter);
 
   //  (void) get_rev_counter_for_service(&hs_desc->plaintext_data.blinded_pubkey);
 

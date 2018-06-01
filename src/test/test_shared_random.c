@@ -225,7 +225,7 @@ test_get_start_time_of_current_run(void *arg)
 {
   int retval;
   char tbuf[ISO_TIME_LEN + 1];
-  time_t current_time, run_start_time;
+  time_t current_time, run_start_time, previous_run_start_time;
 
   (void) arg;
 
@@ -248,10 +248,14 @@ test_get_start_time_of_current_run(void *arg)
     voting_schedule_recalculate_timing(get_options(), current_time);
     run_start_time =
       sr_state_get_start_time_of_current_protocol_run(current_time);
+    previous_run_start_time =
+      sr_state_get_start_time_of_previous_protocol_run(current_time);
 
     /* Compare it with the correct result */
     format_iso_time(tbuf, run_start_time);
     tt_str_op("2015-04-20 00:00:00", OP_EQ, tbuf);
+    format_iso_time(tbuf, previous_run_start_time);
+    tt_str_op("2015-04-19 00:00:00", OP_EQ, tbuf);
   }
 
   {
@@ -261,10 +265,14 @@ test_get_start_time_of_current_run(void *arg)
     voting_schedule_recalculate_timing(get_options(), current_time);
     run_start_time =
       sr_state_get_start_time_of_current_protocol_run(current_time);
+    previous_run_start_time =
+      sr_state_get_start_time_of_previous_protocol_run(current_time);
 
     /* Compare it with the correct result */
     format_iso_time(tbuf, run_start_time);
     tt_str_op("2015-04-20 00:00:00", OP_EQ, tbuf);
+    format_iso_time(tbuf, previous_run_start_time);
+    tt_str_op("2015-04-19 00:00:00", OP_EQ, tbuf);
   }
 
   {
@@ -274,10 +282,14 @@ test_get_start_time_of_current_run(void *arg)
     voting_schedule_recalculate_timing(get_options(), current_time);
     run_start_time =
       sr_state_get_start_time_of_current_protocol_run(current_time);
+    previous_run_start_time =
+      sr_state_get_start_time_of_previous_protocol_run(current_time);
 
     /* Compare it with the correct result */
     format_iso_time(tbuf, run_start_time);
     tt_str_op("2015-04-20 00:00:00", OP_EQ, tbuf);
+    format_iso_time(tbuf, previous_run_start_time);
+    tt_str_op("2015-04-19 00:00:00", OP_EQ, tbuf);
   }
 
   /* Next test is testing it without a consensus to use the testing voting
@@ -297,10 +309,14 @@ test_get_start_time_of_current_run(void *arg)
     voting_schedule_recalculate_timing(get_options(), current_time);
     run_start_time =
       sr_state_get_start_time_of_current_protocol_run(current_time);
+    previous_run_start_time =
+      sr_state_get_start_time_of_previous_protocol_run(current_time);
 
     /* Compare it with the correct result */
     format_iso_time(tbuf, run_start_time);
     tt_str_op("2015-04-20 00:12:00", OP_EQ, tbuf);
+    format_iso_time(tbuf, previous_run_start_time);
+    tt_str_op("2015-04-20 00:08:00", OP_EQ, tbuf);
   }
 
  done:
