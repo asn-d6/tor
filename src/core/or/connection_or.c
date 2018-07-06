@@ -2247,6 +2247,10 @@ connection_or_write_cell_to_buf(const cell_t *cell, or_connection_t *conn)
   if (cell->command == CELL_PADDING)
     rep_hist_padding_count_write(PADDING_TYPE_CELL);
 
+  log_warn(LD_GENERAL, "cell: %s:%u,%d,%d",
+           conn->base_.address, conn->base_.port,
+           cell->command, (int) cell_network_size);
+
   connection_buf_add(networkcell.body, cell_network_size, TO_CONN(conn));
 
   /* Touch the channel's active timestamp if there is one */
@@ -2277,6 +2281,11 @@ connection_or_write_var_cell_to_buf,(const var_cell_t *cell,
   tor_assert(cell);
   tor_assert(conn);
   n = var_cell_pack_header(cell, hdr, conn->wide_circ_ids);
+
+  log_warn(LD_GENERAL, "varcell: %s:%u,%d,%d,%d",
+           conn->base_.address, conn->base_.port,
+           cell->command, n, (int)  cell->payload_len);
+
   connection_buf_add(hdr, n, TO_CONN(conn));
   connection_buf_add((char*)cell->payload,
                           cell->payload_len, TO_CONN(conn));
