@@ -1074,6 +1074,7 @@ service_descriptor_free_(hs_service_descriptor_t *desc)
     SMARTLIST_FOREACH(desc->previous_hsdirs, char *, s, tor_free(s));
     smartlist_free(desc->previous_hsdirs);
   }
+  crypto_ope_free(desc->ope_cipher);
   tor_free(desc);
 }
 
@@ -1378,13 +1379,38 @@ build_service_desc_plaintext(const hs_service_t *service,
   return ret;
 }
 
+/** Compute the descriptor's OPE cipher for encrypting revision counters. */
+static void
+compute_ope_cipher_for_desc(hs_service_descriptor_t *hs_desc)
+{
+  /* Clean up old OPE cipher if it exists */
+  crypto_ope_free(hs_desc->ope_cipher);
+
+  /* Compute OPE key as H("rev-counter-generation" | blinded privkey) */
+  uint8_t key[DIGEST256_LEN];
+  {
+    crypto_digest_t *digest = crypto_digest256_new(DIGEST_SHA3_256);
+    const char ope_key_prefix[] = "rev-counter-generation";
+    ed25519_secret_key_t *eph_privkey = &hs_desc->blinded_kp.seckey;
+    crypto_digest_add_bytes(digest, ope_key_prefix, sizeof(ope_key_prefix));
+    crypto_digest_add_bytes(digest, (char*)eph_privkey->seckey,
+                            sizeof(eph_privkey->seckey));
+    crypto_digest_get_digest(digest, (char *)key, sizeof(key));
+    crypto_digest_free(digest);
+  }
+
+  hs_desc->ope_cipher = crypto_ope_new(key);
+}
+
 /* For the given service and descriptor object, create the key material which
- * is the blinded keypair and the descriptor signing keypair. Return 0 on
- * success else -1 on error where the generated keys MUST be ignored. */
+ * is the blinded keypair and the descriptor signing keypair. If
+ * <b>new_time_period</b> is set, the time period changed since we last built
+ * this descriptor (if ever). Return 0 on success else -1 on error where the
+ * generated keys MUST be ignored. */
 static int
 build_service_desc_keys(const hs_service_t *service,
                         hs_service_descriptor_t *desc,
-                        uint64_t time_period_num)
+                        bool new_time_period)
 {
   int ret = 0;
   ed25519_keypair_t kp;
@@ -1400,9 +1426,18 @@ build_service_desc_keys(const hs_service_t *service,
   memcpy(&kp.pubkey, &service->keys.identity_pk, sizeof(kp.pubkey));
   memcpy(&kp.seckey, &service->keys.identity_sk, sizeof(kp.seckey));
   /* Build blinded keypair for this time period. */
-  hs_build_blinded_keypair(&kp, NULL, 0, time_period_num, &desc->blinded_kp);
+  hs_build_blinded_keypair(&kp, NULL, 0, desc->time_period_num,
+                           &desc->blinded_kp);
   /* Let's not keep too much traces of our keys in memory. */
   memwipe(&kp, 0, sizeof(kp));
+
+  /* If this is a new time period, we need to re-compute our OPE cipher, since
+     it's tied to the current blinded key (and hence time period). */
+  if (new_time_period) {
+    log_info(LD_GENERAL, "New time period: Computing OPE cipher for %u",
+             (unsigned) desc->time_period_num);
+    compute_ope_cipher_for_desc(desc);
+  }
 
   /* No need for extra strong, this is a temporary key only for this
    * descriptor. Nothing long term. */
@@ -1433,15 +1468,24 @@ build_service_descriptor(hs_service_t *service, time_t now,
 {
   char *encoded_desc;
   hs_service_descriptor_t *desc;
+  /* Did the time period for this descriptor change since last time? */
+  bool new_time_period = false;
 
   tor_assert(service);
   tor_assert(desc_out);
 
   desc = service_descriptor_new();
+
+  /* Check if the time period changed */
+  if (desc->time_period_num != time_period_num) {
+    new_time_period = true;
+  }
+
+  /* Set current time period */
   desc->time_period_num = time_period_num;
 
   /* Create the needed keys so we can setup the descriptor content. */
-  if (build_service_desc_keys(service, desc, time_period_num) < 0) {
+  if (build_service_desc_keys(service, desc, new_time_period) < 0) {
     goto err;
   }
   /* Setup plaintext descriptor content. */
@@ -2395,28 +2439,11 @@ set_descriptor_revision_counter(hs_service_descriptor_t *hs_desc, time_t now,
     seconds_since_start_of_srv = OPE_INPUT_MAX;
   }
 
-  /* Now we compute the actual revision counter value by encrypting the
-     plaintext using an OPE construction: */
-
-  /* First, compute OPE key as: K = H("rev-counter-generation" | S) */
-  uint8_t key[DIGEST256_LEN];
-  {
-    crypto_digest_t *digest = crypto_digest256_new(DIGEST_SHA3_256);
-    const char ope_key_prefix[] = "rev-counter-generation";
-    ed25519_secret_key_t *eph_privkey = &hs_desc->blinded_kp.seckey;
-    crypto_digest_add_bytes(digest, ope_key_prefix, sizeof(ope_key_prefix));
-    crypto_digest_add_bytes(digest, (char*)eph_privkey->seckey,
-                            sizeof(eph_privkey->seckey));
-    crypto_digest_get_digest(digest, (char *)key, sizeof(key));
-    crypto_digest_free(digest);
-  }
-
-  { /* Now encrypt the revision counter! */
-    crypto_ope_t *ope = NULL;
-    ope = crypto_ope_new(key);
-    rev_counter = crypto_ope_encrypt(ope, (int) seconds_since_start_of_srv);
-    crypto_ope_free(ope);
-  }
+  /* Now we compute the final revision counter value by encrypting the
+     plaintext using our OPE cipher: */
+  tor_assert(hs_desc->ope_cipher);
+  rev_counter = crypto_ope_encrypt(hs_desc->ope_cipher,
+                                   (int) seconds_since_start_of_srv);
 
   /* The OPE module returns UINT64_MAX in case of errors. */
   tor_assert_nonfatal(rev_counter < UINT64_MAX);
