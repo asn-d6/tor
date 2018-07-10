@@ -1520,9 +1520,9 @@ build_descriptors_for_new_service(hs_service_t *service, time_t now)
 
   /* Build descriptors. */
   build_service_descriptor(service, now, current_desc_tp,
-                           &service->desc_current, 1);
+                           &service->desc_current, true);
   build_service_descriptor(service, now, next_desc_tp,
-                           &service->desc_next, 0);
+                           &service->desc_next, false);
   log_info(LD_REND, "Hidden service %s has just started. Both descriptors "
                     "built. Now scheduled for upload.",
            safe_str_client(service->onion_address));
@@ -1553,7 +1553,7 @@ build_all_descriptors(time_t now)
 
     if (service->desc_next == NULL) {
       build_service_descriptor(service, now, hs_get_next_time_period_num(0),
-                               &service->desc_next, 0);
+                               &service->desc_next, false);
       log_info(LD_REND, "Hidden service %s next descriptor successfully "
                         "built. Now scheduled for upload.",
                safe_str_client(service->onion_address));
