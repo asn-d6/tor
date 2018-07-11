@@ -1434,7 +1434,7 @@ build_service_desc_keys(const hs_service_t *service,
   /* If this is a new time period, we need to re-compute our OPE cipher, since
      it's tied to the current blinded key (and hence time period). */
   if (new_time_period) {
-    log_info(LD_GENERAL, "New time period: Computing OPE cipher for %u",
+    log_warn(LD_GENERAL, "New time period: Computing OPE cipher for %u",
              (unsigned) desc->time_period_num);
     compute_ope_cipher_for_desc(desc);
   }
@@ -2343,6 +2343,14 @@ upload_descriptor_to_hsdir(const hs_service_t *service,
     goto end;
   }
 
+  /* DOCDOC */
+  /* Set the revision counter for this descriptor */
+  bool is_current = false;
+  if (service->desc_current == desc) {
+    is_current = true;
+  }
+  set_descriptor_revision_counter(desc, approx_time(), is_current);
+
   /* First of all, we'll encode the descriptor. This should NEVER fail but
    * just in case, let's make sure we have an actual usable descriptor. */
   if (BUG(hs_desc_encode_descriptor(desc->desc, &desc->signing_kp,
@@ -2363,13 +2371,17 @@ upload_descriptor_to_hsdir(const hs_service_t *service,
     int is_next_desc = (service->desc_next == desc);
     const uint8_t *idx = (is_next_desc) ? hsdir->hsdir_index.store_second:
                                           hsdir->hsdir_index.store_first;
+    char *blinded_pubkey_log_str =
+      tor_strdup(hex_str((char*)&desc->blinded_kp.pubkey.pubkey, 32));
     log_info(LD_REND, "Service %s %s descriptor of revision %" PRIu64
-                      " initiated upload request to %s with index %s",
+                      " initiated upload request to %s with index %s (%s)",
              safe_str_client(service->onion_address),
              (is_next_desc) ? "next" : "current",
              desc->desc->plaintext_data.revision_counter,
              safe_str_client(node_describe(hsdir)),
-             safe_str_client(hex_str((const char *) idx, 32)));
+             safe_str_client(hex_str((const char *) idx, 32)),
+             safe_str_client(blinded_pubkey_log_str));
+    tor_free(blinded_pubkey_log_str);
 
     /* Fire a UPLOAD control port event. */
     hs_control_desc_event_upload(service->onion_address, hsdir->identity,
@@ -2413,13 +2425,15 @@ set_descriptor_revision_counter(hs_service_descriptor_t *hs_desc, time_t now,
    * the current SRV for uploading the descriptor.  and hence we use the start
    * time of the current protocol run.
    */
+  const networkstatus_t *ns = networkstatus_get_live_consensus(now);
+  tor_assert(ns);
   if (is_current) {
-    srv_start = sr_state_get_start_time_of_previous_protocol_run(now);
+    srv_start = sr_state_get_start_time_of_previous_protocol_run(ns->valid_after);
   } else {
-    srv_start = sr_state_get_start_time_of_current_protocol_run(now);
+    srv_start = sr_state_get_start_time_of_current_protocol_run(ns->valid_after);
   }
 
-  log_info(LD_REND, "Setting rev counter for TP #%u: "
+  log_warn(LD_REND, "Setting rev counter for TP #%u: "
            "SRV started at %d, now %d (%s)",
            (unsigned) hs_desc->time_period_num, (int)srv_start,
            (int)now, is_current ? "current" : "next");
@@ -2448,7 +2462,7 @@ set_descriptor_revision_counter(hs_service_descriptor_t *hs_desc, time_t now,
   /* The OPE module returns CRYPTO_OPE_ERROR in case of errors. */
   tor_assert_nonfatal(rev_counter < CRYPTO_OPE_ERROR);
 
-  log_info(LD_REND, "Encrypted revision counter %d to %ld",
+  log_warn(LD_REND, "Encrypted revision counter %d to %ld",
            (int) seconds_since_start_of_srv, (long int) rev_counter);
 
   hs_desc->desc->plaintext_data.revision_counter = rev_counter;
