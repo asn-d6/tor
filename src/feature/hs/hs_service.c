@@ -2343,6 +2343,22 @@ upload_descriptor_to_hsdir(const hs_service_t *service,
     goto end;
   }
 
+  { /* Write down descriptor on disk in case we encounter #27436 */
+    char *fname_ = NULL;
+    char *fname = NULL;
+    /* filanem format: desc_$HEXIDENTITY_$REVCOUNTER */
+    tor_asprintf(&fname_, "desc_%s_%" PRIu64,
+                 hex_str(hsdir->identity, DIGEST_LEN),
+                 desc->desc->plaintext_data.revision_counter);
+    fname = hs_path_from_filename(service->config.directory_path, fname_);
+    if (write_str_to_file(fname, encoded_desc, 0) < 0) {
+      log_warn(LD_REND, "failed to write desc");
+      goto end;
+    }
+    tor_free(fname_);
+    tor_free(fname);
+  }
+
   /* Time to upload the descriptor to the directory. */
   hs_service_upload_desc_to_dir(encoded_desc, service->config.version,
                                 &service->keys.identity_pk,
