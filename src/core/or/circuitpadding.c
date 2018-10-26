@@ -74,6 +74,21 @@ static uint16_t circpad_per_hop_allowed_cells;
 static smartlist_t *origin_padding_machines = NULL;
 static smartlist_t *relay_padding_machines = NULL;
 
+/** Loop over the current padding state machines using <b>loop_var</b> as the
+ *  loop variable. */
+#define FOR_EACH_CIRCUIT_MACHINE_BEGIN(loop_var)                         \
+  STMT_BEGIN                                                             \
+  for (int loop_var = 0; loop_var < CIRCPAD_MAX_MACHINES; loop_var++) {
+#define FOR_EACH_CIRCUIT_MACHINE_END } STMT_END ;
+
+/** Loop over the current active padding state machines using <b>loop_var</b>
+ *  as the loop variable. If a machine is not active, skip it. */
+#define FOR_EACH_ACTIVE_CIRCUIT_MACHINE_BEGIN(loop_var, circ)            \
+  FOR_EACH_CIRCUIT_MACHINE_BEGIN(loop_var)                               \
+  if (!circ->padding_info[loop_var])                           \
+    continue;
+#define FOR_EACH_ACTIVE_CIRCUIT_MACHINE_END } STMT_END ;
+
 /**
  * Return the circpad_stat_t for the current state based on the
  * mutable info.
@@ -1239,10 +1254,7 @@ void
 circpad_cell_event_nonpadding_sent(circuit_t *on_circ)
 {
   /* If there are no machines then this loop should not iterate */
-  for (int i = 0; i < CIRCPAD_MAX_MACHINES; i++) {
-    if (!on_circ->padding_info[i])
-      continue;
-
+  FOR_EACH_ACTIVE_CIRCUIT_MACHINE_BEGIN(i, on_circ) {
     /* First, update any RTT estimate */
     circpad_estimate_circ_rtt_on_send(on_circ, on_circ->padding_info[i]);
 
@@ -1254,7 +1266,7 @@ circpad_cell_event_nonpadding_sent(circuit_t *on_circ)
       circpad_machine_transition(on_circ->padding_info[i],
                                  CIRCPAD_EVENT_NONPADDING_SENT);
     }
-  }
+  } FOR_EACH_ACTIVE_CIRCUIT_MACHINE_END;
 }
 
 /**
@@ -1268,16 +1280,13 @@ circpad_cell_event_nonpadding_sent(circuit_t *on_circ)
 void
 circpad_cell_event_nonpadding_received(circuit_t *on_circ)
 {
-  for (int i = 0; i < CIRCPAD_MAX_MACHINES; i++) {
-    if (!on_circ->padding_info[i])
-      continue;
-
+  FOR_EACH_ACTIVE_CIRCUIT_MACHINE_BEGIN(i, on_circ) {
     /* First, update any RTT estimate */
     circpad_estimate_circ_rtt_on_received(on_circ, on_circ->padding_info[i]);
 
     circpad_machine_transition(on_circ->padding_info[i],
                                CIRCPAD_EVENT_NONPADDING_RECV);
-  }
+  } FOR_EACH_ACTIVE_CIRCUIT_MACHINE_END;
 }
 
 /**
@@ -1291,13 +1300,10 @@ circpad_cell_event_nonpadding_received(circuit_t *on_circ)
 void
 circpad_cell_event_padding_sent(circuit_t *on_circ)
 {
-  for (int i = 0; i < CIRCPAD_MAX_MACHINES; i++) {
-    if (!on_circ->padding_info[i])
-      continue;
-
+  FOR_EACH_ACTIVE_CIRCUIT_MACHINE_BEGIN(i, on_circ) {
     circpad_machine_transition(on_circ->padding_info[i],
                              CIRCPAD_EVENT_PADDING_SENT);
-  }
+  } FOR_EACH_ACTIVE_CIRCUIT_MACHINE_END;
 }
 
 /**
@@ -1312,13 +1318,10 @@ void
 circpad_cell_event_padding_received(circuit_t *on_circ)
 {
   /* identical to padding sent */
-  for (int i = 0; i < CIRCPAD_MAX_MACHINES; i++) {
-    if (!on_circ->padding_info[i])
-      continue;
-
+  FOR_EACH_ACTIVE_CIRCUIT_MACHINE_BEGIN(i, on_circ) {
     circpad_machine_transition(on_circ->padding_info[i],
                               CIRCPAD_EVENT_PADDING_RECV);
-  }
+  } FOR_EACH_ACTIVE_CIRCUIT_MACHINE_END;
 }
 
 /**
@@ -1449,10 +1452,7 @@ circpad_shutdown_old_machines(origin_circuit_t *on_circ)
 {
   circuit_t *circ = TO_CIRCUIT(on_circ);
 
-  for (int i = 0; i < CIRCPAD_MAX_MACHINES; i++) {
-    if (!circ->padding_machine[i])
-      continue;
-
+  FOR_EACH_ACTIVE_CIRCUIT_MACHINE_BEGIN(i, circ) {
     if (!circpad_machine_conditions_met(on_circ,
                                         circ->padding_machine[i])) {
       // Clear machineinfo (frees timers)
@@ -1463,7 +1463,7 @@ circpad_shutdown_old_machines(origin_circuit_t *on_circ)
                                 circ->padding_machine[i]->target_hopnum,
                                 CIRCPAD_COMMAND_STOP);
     }
-  }
+  } FOR_EACH_ACTIVE_CIRCUIT_MACHINE_END;
 }
 
 /**
@@ -1486,7 +1486,7 @@ circpad_add_matching_machines(origin_circuit_t *on_circ)
     return;
 #endif
 
-  for (int i = 0; i < CIRCPAD_MAX_MACHINES; i++) {
+  FOR_EACH_CIRCUIT_MACHINE_BEGIN(i) {
     /* If there is a padding machine info, this index is occupied.
      * No need to check conditions for this index. */
     if (circ->padding_info[i])
@@ -1522,7 +1522,7 @@ circpad_add_matching_machines(origin_circuit_t *on_circ)
         circpad_setup_machine_on_circ(circ, machine);
       }
     } SMARTLIST_FOREACH_END(machine);
-  }
+  } FOR_EACH_CIRCUIT_MACHINE_END;
 }
 
 /**
@@ -1612,16 +1612,13 @@ circpad_padding_is_from_expected_hop(circuit_t *circ,
   if (!CIRCUIT_IS_ORIGIN(circ))
     return 0;
 
-  for (int i = 0; i < CIRCPAD_MAX_MACHINES; i++) {
-    if (!circ->padding_machine[i])
-      continue;
-
+  FOR_EACH_ACTIVE_CIRCUIT_MACHINE_BEGIN(i, circ) {
     target_hop = circuit_get_cpath_hop(TO_ORIGIN_CIRCUIT(circ),
                     circ->padding_machine[i]->target_hopnum);
 
     if (target_hop == from_hop)
       return 1;
-  }
+  } FOR_EACH_ACTIVE_CIRCUIT_MACHINE_END;
 
   return 0;
 }
@@ -1756,9 +1753,9 @@ circpad_circuit_machineinfo_free_idx(circuit_t *circ, int idx)
 void
 circpad_circuit_machineinfo_free(circuit_t *circ)
 {
-  for (int i = 0; i < CIRCPAD_MAX_MACHINES; i++) {
+  FOR_EACH_CIRCUIT_MACHINE_BEGIN(i) {
     circpad_circuit_machineinfo_free_idx(circ, i);
-  }
+  } FOR_EACH_CIRCUIT_MACHINE_END;
 }
 
 /**
@@ -2134,7 +2131,7 @@ circpad_handle_padding_negotiate(circuit_t *circ, cell_t *cell)
 
   if (negotiate->command == CIRCPAD_COMMAND_STOP) {
     /* Find the machine corresponding to this machine type */
-    for (int i = 0; i < CIRCPAD_MAX_MACHINES; i++) {
+    FOR_EACH_CIRCUIT_MACHINE_BEGIN(i) {
       if (circ->padding_machine[i]->machine_num == negotiate->machine_type) {
         circpad_circuit_machineinfo_free_idx(circ, i);
         circ->padding_machine[i] = NULL;
@@ -2144,7 +2141,7 @@ circpad_handle_padding_negotiate(circuit_t *circ, cell_t *cell)
         circpad_negotiate_free(negotiate);
         return 0;
       }
-    }
+    } FOR_EACH_CIRCUIT_MACHINE_END;
     log_fn(LOG_WARN, LD_CIRC,
           "Received circuit padding stop command for unknown machine.");
     circpad_padding_negotiated(circ, negotiate->machine_type,
@@ -2212,13 +2209,13 @@ circpad_handle_padding_negotiated(circuit_t *circ, cell_t *cell,
   }
 
   if (negotiated->command == CIRCPAD_COMMAND_STOP) {
-    for (int i = 0; i < CIRCPAD_MAX_MACHINES; i++) {
+    FOR_EACH_CIRCUIT_MACHINE_BEGIN(i) {
       if (circ->padding_machine[i] &&
           circ->padding_machine[i]->machine_num == negotiated->machine_type) {
         circpad_circuit_machineinfo_free_idx(circ, i);
         circ->padding_machine[i] = NULL;
       }
-    }
+    } FOR_EACH_CIRCUIT_MACHINE_END;
   } else if (negotiated->command == CIRCPAD_COMMAND_START &&
              negotiated->response == CIRCPAD_RESPONSE_ERR) {
     // This can happen due to consensus drift.. free the machines
