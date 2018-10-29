@@ -90,6 +90,34 @@ static smartlist_t *relay_padding_machines = NULL;
 #define FOR_EACH_ACTIVE_CIRCUIT_MACHINE_END } STMT_END ;
 
 /**
+ * Return a human-readable description for a circuit padding state.
+ */
+static const char *
+circpad_state_to_string(circpad_statenum_t state)
+{
+  const char *descr;
+
+  switch (state) {
+  case CIRCPAD_STATE_START:
+    descr = "START";
+    break;
+  case CIRCPAD_STATE_BURST:
+    descr = "BURST";
+    break;
+  case CIRCPAD_STATE_GAP:
+    descr = "GAP";
+    break;
+  case CIRCPAD_STATE_END:
+    descr = "END";
+    break;
+  default:
+    descr ="INVALID";
+  }
+
+  return descr;
+}
+
+/**
  * Return the circpad_stat_t for the current state based on the
  * mutable info.
  */
@@ -772,9 +800,6 @@ circpad_send_command_to_hop(origin_circuit_t *circ, int hopnum,
     return -1;
   }
 
-  log_fn(LOG_INFO,LD_CIRC, "Negotiating padding on circuit %u.",
-          circ->global_identifier);
-
   /* Send the drop command to the second hop */
   ret = relay_send_command_from_edge(0, TO_CIRCUIT(circ), relay_command,
                                      (const char*)payload, payload_len,
@@ -822,15 +847,16 @@ circpad_send_padding_cell_for_callback(circpad_machineinfo_t *mi)
     mi->nonpadding_sent /= 2;
   }
 
-  log_fn(LOG_INFO,LD_CIRC, "Padding callback. Sending.");
-
   if (CIRCUIT_IS_ORIGIN(mi->on_circ)) {
     circpad_send_command_to_hop(TO_ORIGIN_CIRCUIT(mi->on_circ),
                                 CIRCPAD_GET_MACHINE(mi)->target_hopnum,
                                 RELAY_COMMAND_DROP, NULL, 0);
+    log_fn(LOG_WARN,LD_CIRC, "Callback: Sending padding to origin circuit %u.",
+           TO_ORIGIN_CIRCUIT(mi->on_circ)->global_identifier);
   } else {
     // If we're a non-origin circ, we can just send from here as if we're the
     // edge.
+    log_fn(LOG_WARN,LD_CIRC, "Callback: Sending padding to non-origin circuit.");
     relay_send_command_from_edge(0, mi->on_circ, RELAY_COMMAND_DROP, NULL,
                                  0, NULL);
   }
@@ -981,7 +1007,6 @@ circpad_machine_schedule_padding(circpad_machineinfo_t *mi)
     return CIRCPAD_STATE_UNCHANGED;
   }
 
-  log_fn(LOG_INFO, LD_CIRC, "Scheduling padding?");
   if (mi->padding_timer_scheduled) {
     /* Cancel current timer (if any) */
     timer_disable(mi->padding_timer);
@@ -991,7 +1016,7 @@ circpad_machine_schedule_padding(circpad_machineinfo_t *mi)
   /* in_us = in microseconds */
   in_us = circpad_machine_sample_delay(mi);
   mi->padding_scheduled_at_us = monotime_absolute_usec();
-  log_fn(LOG_INFO,LD_CIRC,"Padding in %u usec\n", in_us);
+  log_fn(LOG_WARN,LD_CIRC,"\tPadding in %u usec", in_us);
 
   // Don't schedule if we have infinite delay.
   if (in_us == CIRCPAD_DELAY_INFINITE) {
@@ -1016,7 +1041,7 @@ circpad_machine_schedule_padding(circpad_machineinfo_t *mi)
   timeout.tv_sec = in_us/USEC_PER_SEC;
   timeout.tv_usec = (in_us%USEC_PER_SEC);
 
-  log_fn(LOG_INFO, LD_CIRC, "Padding in %u sec, %u usec\n",
+  log_fn(LOG_WARN, LD_CIRC, "\tPadding in %u sec, %u usec",
           (unsigned)timeout.tv_sec, (unsigned)timeout.tv_usec);
 
   if (!mi->on_circ->padding_handles[mi->machine_index]) {
@@ -1083,6 +1108,11 @@ circpad_machine_transition(circpad_machineinfo_t *mi,
    */
   for (uint8_t s = CIRCPAD_STATE_START; s < CIRCPAD_NUM_STATES; s++) {
     if (state->transition_events[s] & event) {
+
+      log_warn(LD_CIRC, "Circpad machine %d transitioning from %s to %s",
+               mi->machine_index, circpad_state_to_string(mi->current_state),
+               circpad_state_to_string(s));
+
       /* If this is not the same state, switch and init tokens,
        * otherwise just reschedule padding. */
       if (mi->current_state != s) {
@@ -1689,7 +1719,9 @@ circpad_deliver_recognized_relay_cell_events(circuit_t *circ,
        destination, which means that we received a padding cell. We might be
        the client or the Middle node, still, because leaky-pipe. */
     circpad_cell_event_padding_received(circ);
-    log_notice(LD_OR,"Got padding cell!");
+    log_notice(LD_OR,"Got padding cell on %s circuit %u.",
+               CIRCUIT_IS_ORIGIN(circ) ? "origin" : "non-origin",
+               CIRCUIT_IS_ORIGIN(circ) ? TO_ORIGIN_CIRCUIT(circ)->global_identifier : 0);
   } else {
     /* We received a non-padding cell on the edge */
     circpad_cell_event_nonpadding_received(circ);
@@ -1975,7 +2007,8 @@ static bool
 circpad_node_supports_padding(const node_t *node)
 {
   if (node->rs) {
-    log_fn(LOG_INFO, LD_CIRC, "Checking padding..");
+    log_fn(LOG_WARN, LD_CIRC, "Checking padding: %s",
+           node->rs->pv.supports_padding ? "supported" : "unsupported");
     return node->rs->pv.supports_padding;
   }
 
@@ -2052,6 +2085,9 @@ circpad_negotiate_padding(origin_circuit_t *circ,
   if ((len = circpad_negotiate_encode(cell.payload, CELL_PAYLOAD_SIZE,
         &type)) < 0)
     return 0;
+
+  log_fn(LOG_WARN,LD_CIRC, "Negotiating padding on circuit %u",
+         circ->global_identifier);
 
   return circpad_send_command_to_hop(circ, target_hopnum,
                                      RELAY_COMMAND_PADDING_NEGOTIATE,
