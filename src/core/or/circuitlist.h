@@ -206,6 +206,8 @@ origin_circuit_t *circuit_get_next_intro_circ(const origin_circuit_t *start,
                                               bool want_client_circ);
 origin_circuit_t *circuit_get_next_service_rp_circ(origin_circuit_t *start);
 origin_circuit_t *circuit_get_next_service_hsdir_circ(origin_circuit_t *start);
+origin_circuit_t *circuit_get_next_client_intro_circ(
+                                          const origin_circuit_t *start);
 origin_circuit_t *circuit_find_to_cannibalize(uint8_t purpose,
                                               extend_info_t *info, int flags);
 void circuit_mark_all_unused_circs(void);
