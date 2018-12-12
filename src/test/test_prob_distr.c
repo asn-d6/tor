@@ -1000,18 +1000,33 @@ bin_cdfs(const struct dist *dist, double lo, double hi, double *logP, size_t n)
 
   x_1 = lo;
   logP[0] = log(CDF(x_1) - 0); /* 0 = CDF(-inf) */
+  printf("CDF(x_1) = CDF(%a) = %a, logP[0]: %a\n", x_1, CDF(x_1), logP[0]);
   for (i = 1; i < n2; i++) {
     x_0 = x_1;
     x_1 = lo + i*w;
     logP[i] = log(CDF(x_1) - CDF(x_0));
+    printf("CDF(x_1) = CDF(%a) = %a, CDF(x_0) = CDF(%a) = %a, logP[%u]: %a\n",
+           x_1, CDF(x_1),
+           x_0, CDF(x_0),
+           i, logP[i]);
   }
   x_0 = hi;
   logP[n - 1] = log(SF(x_0) - 0); /* 0 = SF(+inf) = 1 - CDF(+inf) */
+  printf("SF(x_0) = SF(%a) = %a, logP[%u]: %a\n",
+         x_0, SF(x_0),
+         n-1,
+         logP[n-1]);
   for (i = 1; i < n - n2; i++) {
     x_1 = x_0;
     x_0 = hi - i*w;
     logP[n - i - 1] = log(SF(x_0) - SF(x_1));
+    printf("SF(x_0) = SF(%a) = %a, SF(x_1) = SF(%a) = %a, logP[%u]: %a\n",
+           x_0, SF(x_0),
+           x_1, SF(x_1),
+           i,
+           n-i-1,logP[n-i-1]);
   }
+
 #undef SF
 #undef CDF
 }
@@ -1028,6 +1043,7 @@ bin_samples(const struct dist *dist, double lo, double hi, size_t *C, size_t n)
   size_t i;
 
   for (i = 0; i < NSAMPLES; i++) {
+    printf("Sample #%u:\n", i);
     double x = dist->ops->sample(dist);
     size_t bin;
 
@@ -1037,6 +1053,8 @@ bin_samples(const struct dist *dist, double lo, double hi, size_t *C, size_t n)
       bin = 1 + floor_to_size_t((x - lo)/w);
     else
       bin = n - 1;
+
+    printf("\t bin: %u\n", bin);
     tor_assert(bin < n);
     C[bin]++;
   }
@@ -1280,14 +1298,16 @@ test_stochastic_log_logistic(void *arg)
   bool ok = 0;
   (void) arg;
 
-  ok = test_stochastic_log_logistic_impl(1, 1);
-  tt_assert(ok);
-  ok = test_stochastic_log_logistic_impl(1, 10);
-  tt_assert(ok);
+  MOCK(crypto_rand, crypto_rand_deterministic);
+
+  /* ok = test_stochastic_log_logistic_impl(1, 1); */
+  /* tt_assert(ok); */
+  /* ok = test_stochastic_log_logistic_impl(1, 10); */
+  /* tt_assert(ok); */
   ok = test_stochastic_log_logistic_impl(M_E, 1e-1);
   tt_assert(ok);
-  ok = test_stochastic_log_logistic_impl(exp(-10), 1e-2);
-  tt_assert(ok);
+  /* ok = test_stochastic_log_logistic_impl(exp(-10), 1e-2); */
+  /* tt_assert(ok); */
 
  done:
   ;

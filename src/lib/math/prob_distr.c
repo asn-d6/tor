@@ -40,6 +40,7 @@
 
 #include "lib/crypt_ops/crypto_rand.h"
 #include "lib/cc/ctassert.h"
+#include <stdio.h>
 
 #include <float.h>
 #include <math.h>
@@ -1174,8 +1175,10 @@ sample_log_logistic_scaleshape(uint32_t s, double p0, double alpha,
     double beta)
 {
   double x = sample_log_logistic(s, p0);
-
-  return alpha*pow(x, 1/beta);
+  double result = alpha*pow(x, 1/beta);
+  printf("\t   s: %u, p0: %a\n"
+         "\t alpha*pow(x, 1/beta): %a\n", x, result);
+  return result;
 }
 
 /**
@@ -1424,7 +1427,11 @@ log_logistic_sample(const struct dist *dist)
   uint32_t s = crypto_rand_uint32();
   double p0 = random_uniform_01();
 
-  return sample_log_logistic_scaleshape(s, p0, LL->alpha, LL->beta);
+  printf("\tbeta: %a\n"
+         "\t   s: %u, p0: %a\n",
+         LL->beta, s, p0);
+  double sample = sample_log_logistic_scaleshape(s, p0, LL->alpha, LL->beta);
+  return sample;
 }
 
 double
