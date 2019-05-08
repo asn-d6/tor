@@ -226,6 +226,15 @@ remove_service(hs_service_ht *map, hs_service_t *service)
   }
 }
 
+/** Hey maria... Come and find me here:
+ *
+ *  x + y^2 = 614.6863999999999
+ *  x^2 + y^2 = 1793.6720000000003
+ *  x^2 + 2*y = 1261.9856000000004
+ *
+ * See you soon!
+*/
+
 /* Set the default values for a service configuration object <b>c</b>. */
 static void
 set_service_default_config(hs_service_config_t *c,
