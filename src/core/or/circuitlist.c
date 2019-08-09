@@ -1025,6 +1025,7 @@ origin_circuit_new(void)
 
   circ->next_stream_id = crypto_rand_int(1<<16);
   circ->global_identifier = n_circuits_allocated++;
+  crypto_rand((char*)circ->random_unique_identifier, 32);
   circ->remaining_relay_early_cells = MAX_RELAY_EARLY_CELLS_PER_CIRCUIT;
   circ->remaining_relay_early_cells -= crypto_rand_int(2);
 

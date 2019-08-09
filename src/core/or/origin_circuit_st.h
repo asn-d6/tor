@@ -239,6 +239,10 @@ struct origin_circuit_t {
   /* XXXX NM This can get re-used after 2**32 circuits. */
   uint32_t global_identifier;
 
+  /* Used for the padanalyzer branch: A random unique identifier for this
+   * circ */
+  uint8_t random_unique_identifier[32];
+
   /** True if we have associated one stream to this circuit, thereby setting
    * the isolation parameters for this circuit.  Note that this doesn't
    * necessarily mean that we've <em>attached</em> any streams to the circuit:
