@@ -95,6 +95,8 @@
 #include "core/or/socks_request_st.h"
 #include "core/or/sendme.h"
 
+static const char * relay_command_to_string(uint8_t command);
+
 static edge_connection_t *relay_lookup_conn(circuit_t *circ, cell_t *cell,
                                             cell_direction_t cell_direction,
                                             crypt_path_t *layer_hint);
@@ -640,6 +642,15 @@ relay_send_command_from_edge_,(streamid_t stream_id, circuit_t *circ,
 
   log_debug(LD_OR,"delivering %d cell %s.", relay_command,
             cell_direction == CELL_DIRECTION_OUT ? "forward" : "backward");
+
+  /* XXX what if not origin? */
+  if (CIRCUIT_IS_ORIGIN(circ)) {
+    /* outgoing-cell: global_id purpose command state */
+    log_warn(LD_GENERAL, "outgoing-cell: %s %u %s %d",
+         hex_str((char*)TO_ORIGIN_CIRCUIT(circ)->random_unique_identifier, 32),
+         circ->purpose, relay_command_to_string(relay_command),
+         circ->state);
+  }
 
   /* Tell circpad we're sending a relay cell */
   circpad_deliver_sent_relay_cell_events(circ, relay_command);
@@ -2011,7 +2022,15 @@ connection_edge_process_relay_cell(cell_t *cell, circuit_t *circ,
     }
   }
 
-  /* Tell circpad that we've received a recognized cell */
+  if (CIRCUIT_IS_ORIGIN(circ)) {
+    /* incoming-cell: global_id command purpose state length */
+    log_warn(LD_GENERAL, "incoming-cell: %s %u %s %d %u",
+         hex_str((char*)TO_ORIGIN_CIRCUIT(circ)->random_unique_identifier, 32),
+         circ->purpose, relay_command_to_string(rh.command),
+         circ->state, rh.length);
+  }
+
+  /* Tell circpad that we've recieved a recognized cell */
   circpad_deliver_recognized_relay_cell_events(circ, rh.command, layer_hint);
 
   /* either conn is NULL, in which case we've got a control cell, or else
