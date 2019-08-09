@@ -1250,6 +1250,8 @@ circuit_predict_and_launch_new(void)
   time_t now = time(NULL);
   int flags = 0;
 
+  flags |= CIRCLAUNCH_IS_PREDICTED;
+
   /* Count how many of each type of circuit we currently have. */
   SMARTLIST_FOREACH_BEGIN(circuit_get_global_list(), circuit_t *, circ) {
     if (!circuit_is_available_for_use(circ))
@@ -2259,7 +2261,7 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
   if (circ) {
     /* We got a circuit that will work for this stream!  We can return it. */
     *circp = circ;
-    return 1; /* we're happy */
+    goto found_open_circ; /* We are happy */
   }
 
   /* Okay, there's no circuit open that will work for this stream. Let's
@@ -2308,7 +2310,7 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
      * or when all directory attempts fail and directory_all_unreachable()
      * kills it.
      */
-    return 0;
+    goto launched_new_circ;
   }
 
   /* Check whether the exit policy of the chosen exit, or the exit policies
@@ -2328,7 +2330,7 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
                    "No Tor server allows exit to %s:%d. Rejecting.",
                    safe_str_client(conn->socks_request->address),
                    conn->socks_request->port);
-        return -1;
+        goto err;
       }
     } else {
       /* XXXX Duplicates checks in connection_ap_handshake_attach_circuit:
@@ -2348,7 +2350,7 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
                                                  desired_circuit_purpose,
                                                  circp);
         }
-        return -1;
+        goto err;
       }
     }
   }
@@ -2382,7 +2384,7 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
                    n_pending, m);
         tor_free(m);
       }
-      return 0;
+      goto launched_new_circ;
     }
 
     /* If this is a hidden service trying to start an introduction point,
@@ -2399,7 +2401,7 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
           hs_client_refetch_hsdesc(&edge_conn->hs_ident->identity_pk);
         }
         connection_ap_mark_as_waiting_for_renddesc(conn);
-        return 0;
+        goto launched_new_circ;
       }
       log_info(LD_REND,"Chose %s as intro point for '%s'.",
                extend_info_describe(extend_info),
@@ -2426,7 +2428,7 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
           if (!extend_info) {
             log_warn(LD_CIRC,"Could not make a one-hop connection to %s. "
                      "Discarding this circuit.", conn->chosen_exit_name);
-            return -1;
+            goto err;
           }
         } else  { /* ! (r && node_has_preferred_descriptor(...)) */
           log_debug(LD_DIR, "considering %d, %s",
@@ -2445,12 +2447,12 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
                 base16_decode(digest,DIGEST_LEN,
                               hexdigest,HEX_DIGEST_LEN) != DIGEST_LEN) {
               log_info(LD_DIR, "Broken exit digest on tunnel conn. Closing.");
-              return -1;
+              goto err;
             }
             if (tor_addr_parse(&addr, conn->socks_request->address) < 0) {
               log_info(LD_DIR, "Broken address %s on tunnel conn. Closing.",
                        escaped_safe_str_client(conn->socks_request->address));
-              return -1;
+              goto err;
             }
             /* XXXX prop220 add a workaround for ed25519 ID below*/
             extend_info = extend_info_new(conn->chosen_exit_name+1,
@@ -2472,7 +2474,7 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
                                                      desired_circuit_purpose,
                                                      circp);
             }
-            return -1;
+            goto err;
           }
         }
       }
@@ -2560,7 +2562,23 @@ circuit_get_open_circ_or_launch(entry_connection_t *conn,
              desired_circuit_purpose);
   }
   *circp = circ;
+  goto launched_new_circ;
+
+ launched_new_circ:
+  //  log_warn(LD_GENERAL, "Launched new circuit to satisfy %s",
+  //           circuit_purpose_to_string(desired_circuit_purpose));
   return 0;
+
+ found_open_circ:
+  tor_assert(circ);
+  /* found-circ: global_id purpose desired_purpose */
+  log_warn(LD_GENERAL, "found-circ: %s %u %u",
+           hex_str((char*)circ->random_unique_identifier, 32),
+           TO_CIRCUIT(circ)->purpose, desired_circuit_purpose);
+  return 1;
+
+ err:
+  return -1;
 }
 
 /** Return true iff <b>crypt_path</b> is one of the crypt_paths for

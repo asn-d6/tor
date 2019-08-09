@@ -496,6 +496,12 @@ circuit_establish_circuit(uint8_t purpose, extend_info_t *exit_ei, int flags)
 
   circuit_event_status(circ, CIRC_EVENT_LAUNCHED, 0);
 
+  /* new-circ: global-id purpose is_predicted_circuit */
+  log_warn(LD_GENERAL, "new-circ: %s %u %s",
+           hex_str((char*)circ->random_unique_identifier, 32),
+           TO_CIRCUIT(circ)->purpose,
+           flags & CIRCLAUNCH_IS_PREDICTED ? "predicted" : "on-demand");
+
   if ((err_reason = circuit_handle_first_hop(circ)) < 0) {
     circuit_mark_for_close(TO_CIRCUIT(circ), -err_reason);
     return NULL;
