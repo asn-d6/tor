@@ -151,7 +151,7 @@ static uint64_t stats_n_main_loop_errors = 0;
 static uint64_t stats_n_main_loop_idle = 0;
 
 /** How often will we honor SIGNEWNYM requests? */
-#define MAX_SIGNEWNYM_RATE 10
+#define MAX_SIGNEWNYM_RATE 1
 /** When did we last process a SIGNEWNYM request? */
 static time_t time_of_last_signewnym = 0;
 /** Is there a signewnym request we're currently waiting to handle? */
@@ -1337,6 +1337,7 @@ do_signewnym(time_t now)
                "Rate limiting NEWNYM request: delaying by %d second(s)",
                (int)(delay_sec));
   } else {
+    log_notice(LD_CONTROL, "Executing NEWNYM");
     signewnym_impl(now);
   }
 }
