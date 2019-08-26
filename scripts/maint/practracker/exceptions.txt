@@ -86,9 +86,9 @@ problem function-size /src/core/or/circuitlist.c:circuit_about_to_free() 120
 problem function-size /src/core/or/circuitlist.c:circuits_handle_oom() 117
 problem function-size /src/core/or/circuitmux.c:circuitmux_set_policy() 109
 problem function-size /src/core/or/circuitmux.c:circuitmux_attach_circuit() 113
-problem file-size /src/core/or/circuitpadding.c 3043
-problem function-size /src/core/or/circuitpadding.c:circpad_machine_schedule_padding() 107
-problem file-size /src/core/or/circuitpadding.h 809
+problem file-size /src/core/or/circuitpadding.c 3096
+problem function-size /src/core/or/circuitpadding.c:circpad_machine_schedule_padding() 113
+problem file-size /src/core/or/circuitpadding.h 813
 problem function-size /src/core/or/circuitpadding_machines.c:circpad_machine_relay_hide_intro_circuits() 103
 problem function-size /src/core/or/circuitpadding_machines.c:circpad_machine_client_hide_rend_circuits() 112
 problem function-size /src/core/or/circuitstats.c:circuit_build_times_parse_state() 123
@@ -117,7 +117,7 @@ problem include-count /src/core/or/connection_or.c 51
 problem function-size /src/core/or/connection_or.c:connection_or_group_set_badness_() 105
 problem function-size /src/core/or/connection_or.c:connection_or_client_learned_peer_id() 142
 problem function-size /src/core/or/connection_or.c:connection_or_compute_authenticate_cell_body() 231
-problem file-size /src/core/or/or.h 1103
+problem file-size /src/core/or/or.h 1107
 problem include-count /src/core/or/or.h 49
 problem file-size /src/core/or/policies.c 3249
 problem function-size /src/core/or/policies.c:policy_summarize() 107
@@ -239,7 +239,7 @@ problem function-size /src/feature/relay/routerkeys.c:load_ed_keys() 294
 problem function-size /src/feature/rend/rendcache.c:rend_cache_store_v2_desc_as_client() 190
 problem function-size /src/feature/rend/rendclient.c:rend_client_send_introduction() 219
 problem function-size /src/feature/rend/rendcommon.c:rend_encode_v2_descriptors() 221
-problem function-size /src/feature/rend/rendmid.c:rend_mid_establish_intro_legacy() 103
+problem function-size /src/feature/rend/rendmid.c:rend_mid_establish_intro_legacy() 104
 problem function-size /src/feature/rend/rendparse.c:rend_parse_v2_service_descriptor() 181
 problem function-size /src/feature/rend/rendparse.c:rend_parse_introduction_points() 129
 problem file-size /src/feature/rend/rendservice.c 4511
@@ -284,4 +284,3 @@ problem function-size /src/tools/tor-gencert.c:parse_commandline() 111
 problem function-size /src/tools/tor-resolve.c:build_socks5_resolve_request() 102
 problem function-size /src/tools/tor-resolve.c:do_resolve() 171
 problem function-size /src/tools/tor-resolve.c:main() 112
-
