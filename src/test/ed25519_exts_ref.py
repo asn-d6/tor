@@ -37,7 +37,7 @@ def blindESK(esk, param):
     s_prime = (s * mult) % ell
     k = esk[32:]
     assert(len(k) == 32)
-    k_prime = H("Derive temporary signing key hash input" + k)[:32]
+    k_prime = H(b"Derive temporary signing key hash input" + k)[:32]
     return encodeint(s_prime) + k_prime
 
 def blindPK(pk, param):
@@ -48,7 +48,7 @@ def blindPK(pk, param):
 def expandSK(sk):
     h = H(sk)
     a = 2**(b-2) + sum(2**i * bit(h,i) for i in range(3,b-2))
-    k = ''.join([h[i] for i in range(b/8,b/4)])
+    k = b''.join([bytes([h[i]]) for i in range(b//8,b//4)])
     assert len(k) == 32
     return encodeint(a)+k
 
@@ -59,7 +59,7 @@ def publickeyFromESK(h):
 
 def signatureWithESK(m,h,pk):
     a = decodeint(h[:32])
-    r = Hint(''.join([h[i] for i in range(b/8,b/4)]) + m)
+    r = Hint(b''.join([bytes([h[i]]) for i in range(b//8,b//4)]) + m)
     R = scalarmult(B,r)
     S = (r + Hint(encodepoint(R) + pk + m) * a) % l
     return encodepoint(R) + encodeint(S)
@@ -74,7 +74,7 @@ def random_scalar(entropy_f): # 0..L-1 inclusive
 
 # ------------------------------------------------------------
 
-MSG = "This is extremely silly. But it is also incredibly serious business!"
+MSG = b"This is extremely silly. But it is also incredibly serious business!"
 
 class SelfTest(unittest.TestCase):
 
@@ -88,7 +88,7 @@ class SelfTest(unittest.TestCase):
         except Exception:
             pass
 
-        self.failIf(bad)
+        self.assertFalse(bad)
 
     def testExpand(self):
         sk = newSK()
@@ -96,14 +96,14 @@ class SelfTest(unittest.TestCase):
         esk = expandSK(sk)
         sig1 = signature(MSG, sk, pk)
         sig2 = signatureWithESK(MSG, esk, pk)
-        self.assertEquals(sig1, sig2)
+        self.assertEqual(sig1, sig2)
 
     def testSignatures(self):
         sk = newSK()
         esk = expandSK(sk)
         pk = publickeyFromESK(esk)
         pk2 = publickey(sk)
-        self.assertEquals(pk, pk2)
+        self.assertEqual(pk, pk2)
 
         self._testSignatures(esk, pk)
 
@@ -112,10 +112,10 @@ class SelfTest(unittest.TestCase):
         pub = priv.get_public()
 
         ed_pub0 = publickeyFromESK(priv.private)
-        sign = (ord(ed_pub0[31]) & 255) >> 7
+        sign = (ed_pub0[31] & 255) >> 7
         ed_pub1 = curve25519ToEd25519(pub.public, sign)
 
-        self.assertEquals(ed_pub0, ed_pub1)
+        self.assertEqual(ed_pub0, ed_pub1)
 
     def testBlinding(self):
         sk = newSK()
@@ -125,7 +125,7 @@ class SelfTest(unittest.TestCase):
         besk = blindESK(esk, param)
         bpk = blindPK(pk, param)
         bpk2 = publickeyFromESK(besk)
-        self.assertEquals(bpk, bpk2)
+        self.assertEqual(bpk, bpk2)
 
         self._testSignatures(besk, bpk)
 
@@ -184,7 +184,7 @@ def writeArray(name, array):
     print("static const char *{prefix}{name}[] = {{".format(
         prefix=PREFIX,name=name))
     for a in array:
-        h = binascii.b2a_hex(a)
+        h = a.hex()
         if len(h) > 70:
             h1 = h[:70]
             h2 = h[70:]
@@ -206,7 +206,7 @@ def makeTestVectors():
 
     comment("""Secret key seeds used as inputs for the ed25519 test vectors.
                Randomly generated. """)
-    secretKeys = [ binascii.a2b_hex(r) for r in RAND_INPUTS ]
+    secretKeys = [ bytes.fromhex(r) for r in RAND_INPUTS ]
     writeArray("SECRET_KEYS", secretKeys)
 
     comment("""Secret ed25519 keys after expansion from seeds. This is how Tor
