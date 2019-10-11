@@ -2109,13 +2109,14 @@ circuit_mark_all_unused_circs(void)
  * streams will not be linkable to old streams.
  */
 void
-circuit_mark_all_dirty_circs_as_unusable(void)
+circuit_mark_all_dirty_circs_as_unusable(bool is_newnym)
 {
   SMARTLIST_FOREACH_BEGIN(circuit_get_global_list(), circuit_t *, circ) {
     if (CIRCUIT_IS_ORIGIN(circ) &&
         !circ->marked_for_close &&
         circ->timestamp_dirty) {
-      mark_circuit_unusable_for_new_conns(TO_ORIGIN_CIRCUIT(circ));
+      mark_circuit_unusable_for_new_conns(TO_ORIGIN_CIRCUIT(circ),
+                                          is_newnym ? false : true);
     }
   }
   SMARTLIST_FOREACH_END(circ);

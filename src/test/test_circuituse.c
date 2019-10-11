@@ -93,7 +93,7 @@ test_circuit_is_available_for_use_ret_false_unusable_for_new_conns(void *arg)
   (void)arg;
 
   circuit_t *circ = dummy_origin_circuit_new(30);
-  mark_circuit_unusable_for_new_conns(TO_ORIGIN_CIRCUIT(circ));
+  mark_circuit_unusable_for_new_conns(TO_ORIGIN_CIRCUIT(circ), true);
 
   tt_int_op(0, OP_EQ, circuit_is_available_for_use(circ));
 

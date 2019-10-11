@@ -168,7 +168,7 @@ do_hup(void)
   /* Rotate away from the old dirty circuits. This has to be done
    * after we've read the new options, but before we start using
    * circuits for directory fetches. */
-  circuit_mark_all_dirty_circs_as_unusable();
+  circuit_mark_all_dirty_circs_as_unusable(false);
 
   /* retry appropriate downloads */
   router_reset_status_download_failures();

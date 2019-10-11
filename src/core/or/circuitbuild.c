@@ -1193,7 +1193,7 @@ circuit_note_clock_jumped(int64_t seconds_elapsed, bool was_idle)
   control_event_client_status(severity, "CIRCUIT_NOT_ESTABLISHED REASON=%s",
                               "CLOCK_JUMPED");
   circuit_mark_all_unused_circs();
-  circuit_mark_all_dirty_circs_as_unusable();
+  circuit_mark_all_dirty_circs_as_unusable(false);
   if (seconds_elapsed < 0) {
     /* Restart all the timers in case we jumped a long way into the past. */
     reset_all_main_loop_timers();

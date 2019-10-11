@@ -1168,7 +1168,8 @@ connection_ap_expire_beginning(void)
     conn->end_reason = 0;
     /* make us not try this circuit again, but allow
      * current streams on it to survive if they can */
-    mark_circuit_unusable_for_new_conns(TO_ORIGIN_CIRCUIT(circ));
+    mark_circuit_unusable_for_new_conns(TO_ORIGIN_CIRCUIT(circ),
+                                        true);
 
     /* give our stream another 'cutoff' seconds to try */
     conn->base_.timestamp_last_read_allowed += cutoff;
@@ -3180,7 +3181,7 @@ connection_ap_handshake_send_begin,(entry_connection_t *ap_conn))
     connection_mark_unattached_ap(ap_conn, END_STREAM_REASON_INTERNAL);
 
     /* Mark this circuit "unusable for new streams". */
-    mark_circuit_unusable_for_new_conns(circ);
+    mark_circuit_unusable_for_new_conns(circ, true);
     return -1;
   }
 
@@ -3301,7 +3302,7 @@ connection_ap_handshake_send_resolve(entry_connection_t *ap_conn)
     connection_mark_unattached_ap(ap_conn, END_STREAM_REASON_INTERNAL);
 
     /* Mark this circuit "unusable for new streams". */
-    mark_circuit_unusable_for_new_conns(circ);
+    mark_circuit_unusable_for_new_conns(circ, true);
     return -1;
   }
 

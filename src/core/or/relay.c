@@ -950,7 +950,7 @@ connection_ap_process_end_not_open(
           /* We haven't retried too many times; reattach the connection. */
           circuit_log_path(LOG_INFO,LD_APP,circ);
           /* Mark this circuit "unusable for new streams". */
-          mark_circuit_unusable_for_new_conns(circ);
+          mark_circuit_unusable_for_new_conns(circ, true);
 
           if (conn->chosen_exit_optional) {
             /* stop wanting a specific exit */

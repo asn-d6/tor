@@ -3103,20 +3103,30 @@ circuit_change_purpose(circuit_t *circ, uint8_t new_purpose)
 
 /** Mark <b>circ</b> so that no more connections can be attached to it. */
 void
-mark_circuit_unusable_for_new_conns(origin_circuit_t *circ)
+mark_circuit_unusable_for_new_conns(origin_circuit_t *circ,
+                                    bool change_dirty_timestamp)
 {
   const or_options_t *options = get_options();
   tor_assert(circ);
 
-  /* XXXX This is a kludge; we're only keeping it around in case there's
-   * something that doesn't check unusable_for_new_conns, and to avoid
-   * deeper refactoring of our expiration logic. */
-  if (! circ->base_.timestamp_dirty)
-    circ->base_.timestamp_dirty = approx_time();
-  if (options->MaxCircuitDirtiness >= circ->base_.timestamp_dirty)
-    circ->base_.timestamp_dirty = 1; /* prevent underflow */
-  else
-    circ->base_.timestamp_dirty -= options->MaxCircuitDirtiness;
+  /** If we got called from NEWNYM, don't change the dirty timestamp of this
+      circuit since that will make it expire immediately after NEWNYM. */
+  if (change_dirty_timestamp) {
+    /* XXXX This is a kludge; we're only keeping it around in case there's
+     * something that doesn't check unusable_for_new_conns, and to avoid
+     * deeper refactoring of our expiration logic. */
+    if (! circ->base_.timestamp_dirty) {
+      log_warn(LD_GENERAL, "Setting ts of circ %d to approxtime", circ->global_identifier);
+      circ->base_.timestamp_dirty = approx_time();
+    }
+    if (options->MaxCircuitDirtiness >= circ->base_.timestamp_dirty) {
+      log_warn(LD_GENERAL, "Setting ts of circ %d to 1", circ->global_identifier);
+      circ->base_.timestamp_dirty = 1; /* prevent underflow */
+    } else {
+      log_warn(LD_GENERAL, "Setting ts of circ %d to wtf", circ->global_identifier);
+      circ->base_.timestamp_dirty -= options->MaxCircuitDirtiness;
+    }
+  }
 
   circ->unusable_for_new_conns = 1;
 }

@@ -61,7 +61,8 @@ void circuit_change_purpose(circuit_t *circ, uint8_t new_purpose);
 
 int hostname_in_track_host_exits(const or_options_t *options,
                                  const char *address);
-void mark_circuit_unusable_for_new_conns(origin_circuit_t *circ);
+void mark_circuit_unusable_for_new_conns(origin_circuit_t *circ,
+                                         bool change_ts);
 
 int circuit_purpose_is_hidden_service(uint8_t);
 int circuit_should_use_vanguards(uint8_t);
