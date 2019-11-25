@@ -2679,6 +2679,9 @@ link_apconn_to_circ(entry_connection_t *apconn, origin_circuit_t *circ,
              "hidden service",
            apconn->may_use_optimistic_data ? "does" : "doesn't",
            safe_str_client(apconn->socks_request->address));
+  log_warn(LD_GENERAL, "circ-destination: %s %u %s",
+           hex_str((char*)circ->random_unique_identifier, 32),
+           TO_CIRCUIT(circ)->purpose, apconn->socks_request->address);
 }
 
 /** Return true iff <b>address</b> is matched by one of the entries in
