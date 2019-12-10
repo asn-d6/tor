@@ -173,6 +173,59 @@ helper_parse_circuit_id_protocol(const char *key, const char *value, int *ok)
   return ret;
 }
 
+/* DOCDCODOC */
+static void
+helper_parse_onionbalance_frontend_config_line(const smartlist_t *key_value_list)
+{
+  if (smartlist_len(key_value_list) < 2) {
+    return;
+  }
+
+  option = smartlist_get(key_value_list, 0);
+  value = smartlist_get(key_value_list, 1);
+
+  if (!strcmp(option, "FrontendOnionAddress")) {
+    ed25519_public_key_t onion_pubkey;
+
+    if (!hs_address_is_valid(value)) {
+      ;
+    }
+
+    /* Parse the address and register it */
+    if (hs_parse_address(value, onion_pubkey, NULL, NULL) < 0) {
+      ;
+    }
+
+    
+  }
+
+}
+
+static smartlist_t *
+helper_parse_onionbalance_frontend_config_file(const char *key, const char *value, int *ok)
+{
+  smartlist_t *options_list = smartlist_new();
+
+  tor_assert(value);
+  tor_assert(ok);
+
+  file_str = read_file_to_str(value, 0, NULL);
+  if (!file_str) {
+    log_warn(LD_REND, "The file %s cannot be read.", filename);
+    goto err;
+  }
+
+  smartlist_split_string(options_list, file_str, "\n", 0, 0);
+
+  /* Validate the list */
+  SMARTLIST_FOREACH_BEGIN(options_list, const char *, option) {
+    smartlist_t *key_value_list = smartlist_new();
+    smartlist_split_string(key_value_list, option, " ", 0, 0);
+    helper_parse_onionbalance_frontend_config_line(key_value_list);
+    /* XXX */
+  } SMARTLIST_FOREACH_END(option);
+}
+
 /** Return the service version by trying to learn it from the key on disk if
  * any. If nothing is found, the current service configured version is
  * returned. */
@@ -221,6 +274,7 @@ config_has_invalid_options(const config_line_t *line_,
     "HiddenServiceEnableIntroDoSDefense",
     "HiddenServiceEnableIntroDoSRatePerSec",
     "HiddenServiceEnableIntroDoSBurstPerSec",
+    "HiddenServiceOnionbalanceFrontendConfigFile",
     NULL /* End marker. */
   };
 
@@ -402,6 +456,18 @@ config_service_v3(const config_line_t *line_,
       dos_burst_per_sec = true;
       log_info(LD_REND, "Service INTRO2 DoS defenses burst set to: %" PRIu32,
                config->intro_dos_burst_per_sec);
+      continue;
+    }
+    if (!strcasecmp(line->key, "HiddenServiceOnionbalanceFrontendConfigFile")) {
+      config->onionbalance_frontend_addresses =
+        helper_parse_onionbalance_frontend_config_file(line->key, line->value, &ok);
+      if (!ok || ob_frontend_server) {
+        if (ob_frontend_server) {
+          dup_opt_seen = line->key;
+        }
+        goto err;
+      }
+      ob_frontend_server = true;
       continue;
     }
   }

@@ -246,6 +246,10 @@ typedef struct hs_service_config_t {
   /** Does this service export the circuit ID of its clients? */
   hs_circuit_id_protocol_t circuit_id_protocol;
 
+  /** A smartlist containing the public keys of Onionbalance frontend servers
+   *  (used to compute key material for INTRODUCE2 cells). */
+  smartlist_t *onionbalance_frontend_pubkeys;
+
   /* DoS defenses. For the ESTABLISH_INTRO cell extension. */
   unsigned int has_dos_defense_enabled : 1;
   uint32_t intro_dos_rate_per_sec;

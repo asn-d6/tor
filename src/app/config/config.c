@@ -519,6 +519,7 @@ static const config_var_t option_vars_[] = {
   VAR("HiddenServiceEnableIntroDoSBurstPerSec",
       LINELIST_S, RendConfigLines, NULL),
   VAR("HiddenServiceStatistics", BOOL, HiddenServiceStatistics_option, "1"),
+  V("HiddenServiceOnionbalanceFrontendConfigFile", LINELIST_S, RendConfigLines, NULL),
   V(HidServAuth,                 LINELIST, NULL),
   V(ClientOnionAuthDir,          FILENAME, NULL),
   OBSOLETE("CloseHSClientCircuitsImmediatelyOnTimeout"),
