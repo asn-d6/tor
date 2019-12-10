@@ -76,7 +76,7 @@ get_introduce2_key_material(const ed25519_public_key_t *auth_key,
                             const curve25519_keypair_t *enc_key,
                             const uint8_t *subcredential,
                             const uint8_t *encrypted_section,
-                            curve25519_public_key_t *client_pk)
+                            const curve25519_public_key_t *client_pk)
 {
   hs_ntor_intro_cell_keys_t *keys;
 
@@ -88,13 +88,8 @@ get_introduce2_key_material(const ed25519_public_key_t *auth_key,
 
   keys = tor_malloc_zero(sizeof(*keys));
 
-  /* First bytes of the ENCRYPTED section are the client public key. */
-  memcpy(client_pk->public_key, encrypted_section, CURVE25519_PUBKEY_LEN);
-
   if (hs_ntor_service_get_introduce1_keys(auth_key, enc_key, client_pk,
                                           subcredential, keys) < 0) {
-    /* Don't rely on the caller to wipe this on error. */
-    memwipe(client_pk, 0, sizeof(curve25519_public_key_t));
     tor_free(keys);
     keys = NULL;
   }
@@ -753,7 +748,7 @@ hs_cell_parse_intro_established(const uint8_t *payload, size_t payload_len)
  * INTRO2 MAC to ensure that the keys are the right ones.
  */
 static hs_ntor_intro_cell_keys_t *
-get_introduce2_keys_and_verify_mac(hs_cell_introduce2_data_t *data,
+get_introduce2_keys_and_verify_mac(const hs_cell_introduce2_data_t *data,
                                    const uint8_t *encrypted_section,
                                    size_t encrypted_section_len)
 {
@@ -855,6 +850,11 @@ hs_cell_parse_introduce2(hs_cell_introduce2_data_t *data,
     goto done;
   }
 
+  /* First bytes of the ENCRYPTED section are the client public key (they are
+   * guaranteed to exist because of the length check above). We are gonna use
+   * the client public key to compute the ntor keys and decrypt the payload: */
+  memcpy(&data->client_pk.public_key, encrypted_section, CURVE25519_PUBKEY_LEN);
+
   /* Get the right INTRODUCE2 ntor keys and verify the cell MAC */
   intro_keys = get_introduce2_keys_and_verify_mac(data, encrypted_section,
                                                   encrypted_section_len);
@@ -927,6 +927,8 @@ hs_cell_parse_introduce2(hs_cell_introduce2_data_t *data,
   log_info(LD_REND, "Valid INTRODUCE2 cell. Launching rendezvous circuit.");
 
  done:
+  memwipe(&data->client_pk, 0, sizeof(curve25519_public_key_t));
+
   if (intro_keys) {
     memwipe(intro_keys, 0, sizeof(hs_ntor_intro_cell_keys_t));
     tor_free(intro_keys);
