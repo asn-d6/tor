@@ -4128,6 +4128,8 @@ hs_service_new(const or_options_t *options)
   /* Allocate the CLIENT_PK replay cache in service state. */
   service->state.replay_cache_rend_cookie =
     replaycache_new(REND_REPLAY_TIME_INTERVAL, REND_REPLAY_TIME_INTERVAL);
+  log_warn(LD_REND, "Replaycache new() %p for HS.",
+           service->state.replay_cache_rend_cookie);
 
   return service;
 }

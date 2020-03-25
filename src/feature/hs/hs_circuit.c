@@ -1051,6 +1051,11 @@ hs_circ_handle_introduce2(const hs_service_t *service,
     goto done;
   }
 
+  if ((digest256map_size(service->state.replay_cache_rend_cookie->digests_seen) % 1000) == 0) {
+    log_warn(LD_REND, "HS replaycache (%p) size: %d", service->state.replay_cache_rend_cookie,
+             digest256map_size(service->state.replay_cache_rend_cookie->digests_seen));
+  }
+
   /* At this point, we just confirmed that the full INTRODUCE2 cell is valid
    * so increment our counter that we've seen one on this intro point. */
   ip->introduce2_count++;
