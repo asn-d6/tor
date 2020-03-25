@@ -487,7 +487,7 @@ can_relaunch_service_rendezvous_point(const origin_circuit_t *circ)
   /* Avoid to relaunch twice a circuit to the same rendezvous point at the
    * same time. */
   if (circ->hs_service_side_rend_circ_has_been_relaunched) {
-    log_info(LD_REND, "Rendezvous circuit to %s has already been retried. "
+    log_warn(LD_REND, "Rendezvous circuit to %s has already been retried. "
                       "Skipping retry.",
              safe_str_client(
                   extend_info_describe(circ->build_state->chosen_exit)));
@@ -503,7 +503,7 @@ can_relaunch_service_rendezvous_point(const origin_circuit_t *circ)
    * we skip relaunching. */
   if (circ->build_state->failure_count > max_rend_failures ||
       circ->build_state->expiry_time <= time(NULL)) {
-    log_info(LD_REND, "Attempt to build a rendezvous circuit to %s has "
+    log_warn(LD_REND, "Attempt to build a rendezvous circuit to %s has "
                       "failed with %d attempts and expiry time %ld. "
                       "Giving up building.",
              safe_str_client(
@@ -764,6 +764,8 @@ hs_circ_launch_intro_point(hs_service_t *service,
   circ = circuit_launch_by_extend_info(CIRCUIT_PURPOSE_S_ESTABLISH_INTRO,
                                        ei, circ_flags);
   if (circ == NULL) {
+    log_warn(LD_REND, "Failed to launch intro circuit to %s",
+             safe_str_client(extend_info_describe(ei)));
     goto end;
   }
 
