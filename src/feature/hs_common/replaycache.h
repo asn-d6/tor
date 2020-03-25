@@ -10,8 +10,7 @@
 #define TOR_REPLAYCACHE_H
 
 typedef struct replaycache_t replaycache_t;
-
-#ifdef REPLAYCACHE_PRIVATE
+typedef struct digest256map_t digest256map_t;
 
 struct replaycache_t {
   /** Scrub interval */
@@ -28,8 +27,6 @@ struct replaycache_t {
    */
   digest256map_t *digests_seen;
 };
-
-#endif /* defined(REPLAYCACHE_PRIVATE) */
 
 /* replaycache_t free/new */
 

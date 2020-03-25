@@ -875,6 +875,11 @@ hs_cell_parse_introduce2(hs_cell_introduce2_data_t *data,
     goto done;
   }
 
+  if ((digest256map_size(data->replay_cache->digests_seen) % 1000) == 0) {
+    log_warn(LD_REND, "IP replaycache (%p) size: %d", data->replay_cache,
+             digest256map_size(data->replay_cache->digests_seen));
+  }
+
   /* First bytes of the ENCRYPTED section are the client public key (they are
    * guaranteed to exist because of the length check above). We are gonna use
    * the client public key to compute the ntor keys and decrypt the payload:

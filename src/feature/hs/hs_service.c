@@ -474,6 +474,8 @@ service_intro_point_new(const node_t *node)
   }
 
   ip->replay_cache = replaycache_new(0, 0);
+  log_warn(LD_REND, "Replaycache new() %p for IP %s",
+           ip->replay_cache, node_describe(node));
 
   /* Initialize the base object. We don't need the certificate object. */
   ip->base.link_specifiers = node_get_link_specifier_smartlist(node, 0);
