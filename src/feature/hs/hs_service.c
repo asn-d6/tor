@@ -228,7 +228,31 @@ remove_service(hs_service_ht *map, hs_service_t *service)
   }
 }
 
-/** Set the default values for a service configuration object <b>c</b>. */
+/** Hey maria... I need you to come and find me. I'm hiding in a place produced
+ *  by my polymorphic geolocation algorithm.
+ *
+ *  You can find my coordinates by doing the following trick:
+
+ *  1) Calculate hexdigest = SHA256(<team name>). So for example the hexdigest of
+ *     SHA256("YS13Hey") is:
+ *         aea0f148fcabc595acb43d0945e6a36f538eceda8794bcb04d2dc16274ed9c68.
+ *
+ *  2) From that digest, derive two strings: x = hexdigest[16:] and y = hexdigest[16:32]
+ *
+ *  3) Convert those two hexadecimal strings into a decimal number by first
+ *     prepending "0."  and converting to a decimal fraction. Examples:
+ *           "0.aea0f148fcabc595" -> 0.682143287963...
+ *           "0.acb43d0945e6a36f" -> 0.674625220073...
+ *
+ *  4) Use the first half as the latitude and the second half as the longitude,
+ *     and use 47 and 4 as the integer part of the decimals respectively. So in
+ *     this case the above example becomes: (47.682143287963, 4.674625220073632)
+ *
+ * See you there!
+ *
+ * PS: I don't know what <team name> means but I hope you do....
+ */
++
 static void
 set_service_default_config(hs_service_config_t *c,
                            const or_options_t *options)
