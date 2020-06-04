@@ -650,6 +650,13 @@ relay_send_command_from_edge_,(streamid_t stream_id, circuit_t *circ,
          hex_str((char*)TO_ORIGIN_CIRCUIT(circ)->random_unique_identifier, 32),
          circ->purpose, relay_command_to_string(relay_command),
          circ->state);
+    if (relay_command == RELAY_COMMAND_DATA) {
+      char *payload_str = esc_for_log(payload);
+      log_warn(LD_GENERAL, "outgoing-payload: %s %s",
+               hex_str((char*)TO_ORIGIN_CIRCUIT(circ)->random_unique_identifier, 32),
+               payload_str);
+      tor_free(payload_str);
+    }
   }
 
   /* Tell circpad we're sending a relay cell */
@@ -2025,9 +2032,16 @@ connection_edge_process_relay_cell(cell_t *cell, circuit_t *circ,
   if (CIRCUIT_IS_ORIGIN(circ)) {
     /* incoming-cell: global_id command purpose state length */
     log_warn(LD_GENERAL, "incoming-cell: %s %u %s %d %u",
-         hex_str((char*)TO_ORIGIN_CIRCUIT(circ)->random_unique_identifier, 32),
+             hex_str((char*)TO_ORIGIN_CIRCUIT(circ)->random_unique_identifier, 32),
          circ->purpose, relay_command_to_string(rh.command),
          circ->state, rh.length);
+    if (rh.command == RELAY_COMMAND_DATA) {
+      char *payload_str = esc_for_log((char*)cell->payload+RELAY_HEADER_SIZE);
+      log_warn(LD_GENERAL, "incoming-payload: %s %s",
+               hex_str((char*)TO_ORIGIN_CIRCUIT(circ)->random_unique_identifier, 32),
+               payload_str);
+      tor_free(payload_str);
+    }
   }
 
   /* Tell circpad that we've recieved a recognized cell */
