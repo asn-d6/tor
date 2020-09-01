@@ -2791,6 +2791,20 @@ rep_hist_hs_stats_write(time_t now, bool is_v3)
                          str, "hidden service stats");
   }
 
+  /* Write extrainfo to disk forever */
+  if (!check_or_create_data_subdir("stats")) {
+    char formatted_time[ISO_TIME_LEN+1];
+    char *perma_fname = NULL;
+
+    format_iso_time_nospace(formatted_time, approx_time());
+    tor_asprintf(&perma_fname,
+                 is_v3 ? "hidserv-v3-stats-%s" : "hidserv-stats-%s",
+                 formatted_time);
+    write_to_data_subdir("stats", perma_fname, str,
+                         "hidden service stats");
+    tor_free(perma_fname);
+  }
+
  done:
   tor_free(str);
   return start_of_hs_stats_interval + WRITE_STATS_INTERVAL;
