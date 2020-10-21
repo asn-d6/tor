@@ -1973,7 +1973,7 @@ rep_hist_hs_stats_term(void)
 
 /** Allocate and return a string containing hidden service stats that
  *  are meant to be placed in the extra-info descriptor. */
-static char *
+STATIC char *
 rep_hist_format_hs_v2_stats(time_t now)
 {
   char t[ISO_TIME_LEN+1];
