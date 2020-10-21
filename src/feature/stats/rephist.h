@@ -120,8 +120,7 @@ typedef struct bw_array_t bw_array_t;
 STATIC uint64_t find_largest_max(bw_array_t *b);
 STATIC void commit_max(bw_array_t *b);
 STATIC void advance_obs(bw_array_t *b);
-STATIC char *rep_hist_format_hs_v2_stats(time_t now);
-STATIC char *rep_hist_format_hs_v3_stats(time_t now);
+STATIC char *rep_hist_format_hs_stats(time_t now, bool is_v3);
 #endif /* defined(REPHIST_PRIVATE) */
 
 /**
