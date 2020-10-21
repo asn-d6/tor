@@ -2625,6 +2625,54 @@ rep_hist_hsdir_stored_maybe_new_v3_onion(const uint8_t *blinded_key)
   }
 }
 
+/** We saw a new HS relay cell: count it!
+ *  If <b>is_v2</b> is set then it's a v2 RP cell, otherwise it's a v3. */
+void
+rep_hist_seen_new_rp_cell(bool is_v2)
+{
+  if (is_v2 && hs_v2_stats) {
+    hs_v2_stats->rp_v2_relay_cells_seen++;
+    log_warn(LD_GENERAL, "New v2 RP cell (%d)", (int)hs_v2_stats->rp_v2_relay_cells_seen);
+  } else if (!is_v2 && hs_v3_stats) {
+    hs_v3_stats->rp_v3_relay_cells_seen++;
+    log_warn(LD_GENERAL, "New v3 RP cell (%d)", (int)hs_v3_stats->rp_v3_relay_cells_seen);
+  }
+}
+
+/** Generic HS stats code */
+
+/** Initialize v2 and v3 hidden service statistics. */
+void
+rep_hist_hs_stats_init(time_t now)
+{
+  if (!hs_v2_stats) {
+    hs_v2_stats = hs_v2_stats_new();
+  }
+
+  /* Start collecting v2 stats straight away */
+  start_of_hs_v2_stats_interval = now;
+
+
+  if (!hs_v3_stats) {
+    hs_v3_stats = hs_v3_stats_new();
+  }
+
+  /* Start collecting v3 stats at the next 12:00 UTC */
+  /* DOCDOCDOC */
+  start_of_hs_v3_stats_interval = hs_get_start_time_of_next_time_period(now);
+}
+
+/** Stop collecting hidden service stats in a way that we can re-start
+ * doing so in rep_hist_buffer_stats_init(). */
+void
+rep_hist_hs_stats_term(void)
+{
+  rep_hist_reset_hs_v2_stats(0);
+  rep_hist_reset_hs_v3_stats(0);
+}
+
+/** Stats reporting code */
+
 /* The number of cells that are supposed to be hidden from the adversary
  * by adding noise from the Laplace distribution.  This value, divided by
  * EPSILON, is Laplace parameter b. It must be greather than 0. */
