@@ -347,7 +347,7 @@ test_rephist_v3_onions(void *arg)
   hs_descriptor_free(desc1);
   tor_free(desc1_str);
 
-  stats_string = rep_hist_format_hs_v3_stats(approx_time());
+  stats_string = rep_hist_format_hs_stats(approx_time(), true);
   tt_assert(strstr(stats_string, "hidserv-dir-v3-onions-seen-unobfuscated 3"));
 
  done:
