@@ -347,6 +347,7 @@ rend_mid_rendezvous(or_circuit_t *circ, const uint8_t *request,
      stats from it. */
   if (options->HiddenServiceStatistics) {
     circ->circuit_carries_hs_traffic_stats = 1;
+    rend_circ->circuit_carries_hs_traffic_stats = 1;
   }
 
   /* Send the RENDEZVOUS2 cell to the client. */
