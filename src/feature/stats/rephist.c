@@ -2551,19 +2551,76 @@ rep_hist_hsdir_stored_maybe_new_v2_onion(const crypto_pk_t *pubkey)
   }
 }
 
+/*** HSv3 stats ******/
+
+/** Start of the current hidden service stats interval or 0 if we're
+ * not collecting hidden service statistics. */
+static time_t start_of_hs_v3_stats_interval;
+
+/** Our v3 statistics structure singleton. */
+static hs_v3_stats_t *hs_v3_stats = NULL;
+
+/** Allocate, initialize and return an hs_v3_stats_t structure. */
+static hs_v3_stats_t *
+hs_v3_stats_new(void)
+{
+  hs_v3_stats_t *new_hs_v3_stats = tor_malloc_zero(sizeof(hs_v3_stats_t));
+  new_hs_v3_stats->v3_onions_seen_this_period = digestmap_new();
+
+  return new_hs_v3_stats;
+}
+
+#define hs_v3_stats_free(val) \
+  FREE_AND_NULL(hs_v3_stats_t, hs_v3_stats_free_, (val))
+
+/** Free an hs_v3_stats_t structure. */
+static void
+hs_v3_stats_free_(hs_v3_stats_t *victim_hs_v3_stats)
+{
+  if (!victim_hs_v3_stats) {
+    return;
+  }
+
+  digestmap_free(victim_hs_v3_stats->v3_onions_seen_this_period, NULL);
+  tor_free(victim_hs_v3_stats);
+}
+
+/** Clear history of hidden service statistics and set the measurement
+ * interval start to <b>now</b>. */
+static void
+rep_hist_reset_hs_v3_stats(time_t now)
+{
+  if (!hs_v3_stats) {
+    hs_v3_stats = hs_v3_stats_new();
+  }
+
+  digestmap_free(hs_v3_stats->v3_onions_seen_this_period, NULL);
+  hs_v3_stats->v3_onions_seen_this_period = digestmap_new();
+
+  hs_v3_stats->rp_v3_relay_cells_seen = 0;
+
+  start_of_hs_v3_stats_interval = now;
+}
+
 /** We just received a new descriptor with <b>blinded_key</b>. See if we've
  * seen this blinded key before, and if not add it to the stats.  */
 void
 rep_hist_hsdir_stored_maybe_new_v3_onion(const uint8_t *blinded_key)
 {
-  if (!hs_stats) {
-    return; // We're not collecting stats
+  if (!hs_v3_stats || start_of_hs_v3_stats_interval > approx_time()) {
+    return; // We're not collecting stats (yet)
   }
 
+  bool seen_before = !!digestmap_get(hs_v3_stats->v3_onions_seen_this_period,
+                                     (char*)blinded_key);
+
+  log_warn(LD_GENERAL, "Considering v3 descriptor with %s (%sseen before)",
+           safe_str(hex_str((char*)blinded_key, 32)),
+           seen_before ? "" : "not ");
+
   /* Count it if we haven't seen it before. */
-  if (!digestmap_get(hs_stats->v3_onions_seen_this_period,
-                     (char*)blinded_key)) {
-    digestmap_set(hs_stats->v3_onions_seen_this_period,
+  if (!seen_before) {
+    digestmap_set(hs_v3_stats->v3_onions_seen_this_period,
                   (char*)blinded_key, (void*)(uintptr_t)1);
   }
 }
@@ -2874,7 +2931,8 @@ rep_hist_log_link_protocol_counts(void)
 void
 rep_hist_free_all(void)
 {
-  hs_stats_free(hs_stats);
+  hs_v2_stats_free(hs_v2_stats);
+  hs_v3_stats_free(hs_v3_stats);
   digestmap_free(history_map, free_or_history);
 
   bw_array_free(read_array);
@@ -2916,3 +2974,10 @@ rep_hist_get_hs_v2_stats(void)
   return hs_v2_stats;
 }
 
+/* only exists for unit tests: get HSv2 stats object */
+const hs_v3_stats_t *
+rep_hist_get_hs_v3_stats(void)
+{
+  return hs_v3_stats;
+}
+#endif /* defined(TOR_UNIT_TESTS) */
