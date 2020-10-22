@@ -1874,7 +1874,7 @@ rep_hist_reset_hs_v3_stats(time_t now)
 static bool
 should_collect_v3_stats(void)
 {
-  return start_of_hs_v3_stats_interval <= approx_time();
+  return true;
 }
 
 /** We just received a new descriptor with <b>blinded_key</b>. See if we've
