@@ -495,6 +495,12 @@ circuit_establish_circuit(uint8_t purpose, extend_info_t *exit_ei, int flags)
 
   circuit_event_status(circ, CIRC_EVENT_LAUNCHED, 0);
 
+  /* new-circ: global-id purpose is_predicted_circuit */
+  log_warn(LD_GENERAL, "new-circ: %s %u %s",
+           hex_str((char*)circ->random_unique_identifier, 32),
+           TO_CIRCUIT(circ)->purpose,
+           flags & CIRCLAUNCH_IS_PREDICTED ? "predicted" : "on-demand");
+
   if ((err_reason = circuit_handle_first_hop(circ)) < 0) {
     circuit_mark_for_close(TO_CIRCUIT(circ), -err_reason);
     return NULL;
@@ -1193,7 +1199,7 @@ circuit_note_clock_jumped(int64_t seconds_elapsed, bool was_idle)
   control_event_client_status(severity, "CIRCUIT_NOT_ESTABLISHED REASON=%s",
                               "CLOCK_JUMPED");
   circuit_mark_all_unused_circs();
-  circuit_mark_all_dirty_circs_as_unusable();
+  circuit_mark_all_dirty_circs_as_unusable(false);
   if (seconds_elapsed < 0) {
     /* Restart all the timers in case we jumped a long way into the past. */
     reset_all_main_loop_timers();

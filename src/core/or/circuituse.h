@@ -52,7 +52,8 @@ void circuit_build_failed(origin_circuit_t *circ);
  *  node in the circuit. (We are both the client and the last node in the
  *  circuit.) */
 #define CIRCLAUNCH_IS_IPV6_SELFTEST (1<<5)
-
+/* Flag to set for predicted circs */
+#define CIRCLAUNCH_IS_PREDICTED (1<<6)
 origin_circuit_t *circuit_launch_by_extend_info(uint8_t purpose,
                                                 extend_info_t *info,
                                                 int flags);
@@ -67,7 +68,8 @@ void circuit_change_purpose(circuit_t *circ, uint8_t new_purpose);
 
 int hostname_in_track_host_exits(const or_options_t *options,
                                  const char *address);
-void mark_circuit_unusable_for_new_conns(origin_circuit_t *circ);
+void mark_circuit_unusable_for_new_conns(origin_circuit_t *circ,
+                                         bool change_ts);
 
 int circuit_purpose_is_hidden_service(uint8_t);
 

@@ -2315,7 +2315,7 @@ options_act,(const or_options_t *old_options))
 
     if (abandon_circuits) {
       circuit_mark_all_unused_circs();
-      circuit_mark_all_dirty_circs_as_unusable();
+      circuit_mark_all_dirty_circs_as_unusable(false);
       revise_trackexithosts = 1;
     }
 

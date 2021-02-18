@@ -152,7 +152,7 @@ static uint64_t stats_n_main_loop_errors = 0;
 static uint64_t stats_n_main_loop_idle = 0;
 
 /** How often will we honor SIGNEWNYM requests? */
-#define MAX_SIGNEWNYM_RATE 10
+#define MAX_SIGNEWNYM_RATE 1
 /** When did we last process a SIGNEWNYM request? */
 static time_t time_of_last_signewnym = 0;
 /** Is there a signewnym request we're currently waiting to handle? */
@@ -1124,7 +1124,7 @@ directory_info_has_arrived(time_t now, int from_cache, int suppress_logs)
 
   if (invalidate_circs) {
     circuit_mark_all_unused_circs();
-    circuit_mark_all_dirty_circs_as_unusable();
+    circuit_mark_all_dirty_circs_as_unusable(false);
   }
 
   if (!router_have_minimum_dir_info()) {
@@ -1292,7 +1292,7 @@ signewnym_impl(time_t now)
     return;
   }
 
-  circuit_mark_all_dirty_circs_as_unusable();
+  circuit_mark_all_dirty_circs_as_unusable(true);
   addressmap_clear_transient();
   hs_client_purge_state();
   time_of_last_signewnym = now;
@@ -1333,6 +1333,7 @@ do_signewnym(time_t now)
                "Rate limiting NEWNYM request: delaying by %d second(s)",
                (int)(delay_sec));
   } else {
+    log_notice(LD_CONTROL, "Executing NEWNYM");
     signewnym_impl(now);
   }
 }
