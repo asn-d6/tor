@@ -1699,6 +1699,9 @@ notify_after_networkstatus_changes(void)
   channelpadding_new_consensus_params(c);
   circpad_new_consensus_params(c);
   router_new_consensus_params(c);
+
+  /* Maintanance of our L2 guard list */
+  maintain_l2_guards();
 }
 
 /** Copy all the ancillary information (like router download status and so on)

@@ -2261,8 +2261,13 @@ middle_node_must_be_vanguard(const or_options_t *options,
     return 0;
   }
 
-  /* If we have sticky L2 nodes, and this is an L2 pick, use vanguards */
+  /* If HSLayer2Nodes is set and we are picking an L2 node, we always want it
+   * to be a vanguard */
   if (options->HSLayer2Nodes && cur_len == 1) {
+    return 1;
+  }
+  /* If we are picking an L2 node as a client, we do want a vanguard */
+  if (circuit_purpose_is_hs_client(purpose) && cur_len == 1) {
     return 1;
   }
 
@@ -2286,12 +2291,17 @@ pick_vanguard_middle_node(const or_options_t *options,
 
   /* Pick the right routerset based on the current hop */
   if (cur_len == 1) {
-    vanguard_routerset = options->HSLayer2Nodes;
+    vanguard_routerset = options->HSLayer2Nodes ?
+      options->HSLayer2Nodes : get_l2_guards();
   } else if (cur_len == 2) {
     vanguard_routerset = options->HSLayer3Nodes;
   } else {
     /* guaranteed by middle_node_should_be_vanguard() */
     tor_assert_nonfatal_unreached();
+    return NULL;
+  }
+
+  if (BUG(!vanguard_routerset)) {
     return NULL;
   }
 
@@ -2305,6 +2315,8 @@ pick_vanguard_middle_node(const or_options_t *options,
             "Could not find a node that matches the configured "
             "_HSLayer%dNodes set", cur_len+1);
   }
+
+  log_warn(LD_GENERAL, "Picked %s", node_describe(node));
 
   return node;
 }
@@ -2336,9 +2348,11 @@ choose_good_middle_server(uint8_t purpose,
   flags |= cpath_build_state_to_crn_flags(state);
   flags |= cpath_build_state_to_crn_ipv6_extend_flag(state, cur_len);
 
+  log_warn(LD_GENERAL, "Choosing middle...");
+
   /** If a hidden service circuit wants a specific middle node, pin it. */
   if (middle_node_must_be_vanguard(options, purpose, cur_len)) {
-    log_debug(LD_GENERAL, "Picking a sticky node (cur_len = %d)", cur_len);
+    log_warn(LD_GENERAL, "Picking a sticky node (cur_len = %d)", cur_len);
     choice = pick_vanguard_middle_node(options, flags, cur_len, excluded);
     smartlist_free(excluded);
     return choice;
