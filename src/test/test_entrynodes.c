@@ -3087,6 +3087,22 @@ test_entry_guard_vanguard_path_selection(void *arg)
   circuit_free_(circ);
 }
 
+static void
+test_entry_guard_l2_guards(void *arg)
+{
+  (void) arg;
+
+  /* Create the guardset */
+  maintain_l2_guards();
+
+  routerset_t *l2_guards = get_l2_guards();
+  tt_assert(l2_guards);
+  tt_int_op(routerset_len(l2_guards), OP_EQ, 4);
+
+ done:
+  ;
+}
+
 static const struct testcase_setup_t big_fake_network = {
   big_fake_network_setup, big_fake_network_cleanup
 };
@@ -3151,6 +3167,8 @@ struct testcase_t entrynodes_tests[] = {
   BFN_TEST(retry_unreachable),
   BFN_TEST(manage_primary),
   BFN_TEST(correct_cascading_order),
+
+  BFN_TEST(l2_guards),
 
   EN_TEST_FORK(guard_preferred),
 
