@@ -3950,6 +3950,8 @@ entry_guards_free_all(void)
 
 /**********************************************************************/
 
+/** Layer2 guard subsystem used for client-side onion service circuits. */
+
 /** A simple representation of a layer2 guard. We just need its identity so
  *  that we feed it into a routerset, and a sampled timestamp to do expiration
  *  checks. */
@@ -3960,8 +3962,12 @@ typedef struct l2_guard_t {
   time_t sampled_on_date;
 } l2_guard_t;
 
-/** Global list of L2 guards. This gets created and updated periodically. */
+/** Global list and routerset of L2 guards. They are both synced and they get
+ * updated periodically. We need both the list and the routerset: we use the
+ * smartlist to keep track of expiration times and the routerset is what we
+ * return to the users of this subsystem. */
 static smartlist_t *l2_guards = NULL;
+static routerset_t *l2_routerset = NULL;
 
 /**
  * Return the number of guards our L2 guardset should have
@@ -3987,7 +3993,9 @@ get_lifetime_of_l2_hs_guards(void)
                                         1, INT32_MAX);
 }
 
-/** Maintain the L2 guard list */
+/** Maintain the L2 guard list. Make sure the list contains enough guards, do
+ *  expirations as necessary, and keep all the data structures of this
+ *  subsystem synchronized */
 void
 maintain_l2_guards(void)
 {
@@ -3999,19 +4007,21 @@ maintain_l2_guards(void)
   /* Go through the list and perform any needed expirations */
   SMARTLIST_FOREACH_BEGIN(l2_guards, l2_guard_t *, g) {
     if (g->sampled_on_date < approx_time() - get_lifetime_of_l2_hs_guards()) {
-      log_warn(LD_GENERAL, "Removing L2 guard %s", hex_str(g->identity, DIGEST_LEN));
+      log_warn(LD_GENERAL, "Removing L2 guard %s",
+               hex_str(g->identity, DIGEST_LEN));
       tor_free(g);
       SMARTLIST_DEL_CURRENT_KEEPORDER(l2_guards, g);
     }
   } SMARTLIST_FOREACH_END(g);
 
   /* Find out how many guards we need to add */
-  int new_guards_needed_n = get_number_of_l2_hs_guards() - smartlist_len(l2_guards);
+  int new_guards_needed_n =
+    get_number_of_l2_hs_guards() - smartlist_len(l2_guards);
   if (new_guards_needed_n <= 0) {
     return;
   }
 
-  log_warn(LD_GENERAL, "Adding %d guards to L2 routerset", new_guards_needed_n);
+  log_warn(LD_GENERAL, "Adding %d guards to L2 routerset",new_guards_needed_n);
 
   /** Add required guards to the list */
   for (int i = 0; i < new_guards_needed_n; i++) {
@@ -4024,34 +4034,26 @@ maintain_l2_guards(void)
       l2_guard_t *l2_guard = tor_malloc_zero(sizeof(l2_guard_t));
       memcpy(l2_guard->identity, choice->identity, DIGEST_LEN);
       l2_guard->sampled_on_date = randomize_time(approx_time(),
-                                                 get_lifetime_of_l2_hs_guards()/10);
+                                            get_lifetime_of_l2_hs_guards()/10);
       smartlist_add(l2_guards, l2_guard);
     }
   }
-}
 
-/** Global routerset of L2 guards. This is created on demand when other
- *  subsystems need to use L2 guards, and its not necessarily synchronized with
- *  `l2_guards`. */
-static routerset_t *l2_routerset = NULL;
-
-/** Return a routerset containing the L2 guards. Callers should not free the
- *  routerset */
-routerset_t *
-get_l2_guards(void)
-{
-  if (!l2_guards) {
-    return NULL;
-  }
-
-  log_warn(LD_GENERAL, "Using L2 routerset");
-
+  /* Now that the list is up to date, let's synchronize the routerset */
   routerset_free(l2_routerset);
   l2_routerset = routerset_new();
 
   SMARTLIST_FOREACH_BEGIN (l2_guards, l2_guard_t *, g) {
-    routerset_parse(l2_routerset, hex_str(g->identity, DIGEST_LEN), "l2 guards");
+    routerset_parse(l2_routerset,hex_str(g->identity, DIGEST_LEN),"l2 guards");
   } SMARTLIST_FOREACH_END(g);
+}
+
+/** Return a routerset containing the L2 guards or NULL if it's not yet
+ *  initialized. Callers must not free the routerset. */
+routerset_t *
+get_l2_guards(void)
+{
+  log_warn(LD_GENERAL, "Using L2 routerset");
 
   return l2_routerset;
 }
