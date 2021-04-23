@@ -481,10 +481,6 @@ MOCK_DECL(int,num_bridges_usable,(int use_maybe_reachable));
  * torrc, we are in an extremely restricted setting, and should warn.
  */
 #define DFLT_EXTREME_RESTRICTION_PERCENT 1
-/** Number of L2 guards */
-#define DFLT_L2_HS_GUARDS_NUMBER 4
-/** Lifetime of L2 guards (1 day) */
-#define DFLT_L2_HS_GUARDS_LIFETIME 3600*24
 /**@}*/
 
 STATIC double get_max_sample_threshold(void);
