@@ -4073,6 +4073,28 @@ maintain_l2_guards(void)
   } SMARTLIST_FOREACH_END(g);
 }
 
+/**
+ * Reset client-side vanguards list(s).
+ *
+ * Used for SIGNAL NEWNYM.
+ */
+void
+purge_client_vanguards()
+{
+  if (!l2_guards)
+    return;
+
+  /* Go through the list and perform any needed expirations */
+  SMARTLIST_FOREACH_BEGIN(l2_guards, l2_guard_t *, g) {
+    tor_free(g);
+  } SMARTLIST_FOREACH_END(g);
+
+  smartlist_clear(l2_guards);
+
+  /* Pick new l2 guards */
+  maintain_l2_guards();
+}
+
 /** Return a routerset containing the L2 guards or NULL if it's not yet
  *  initialized. Callers must not free the routerset. Designed for use in
  *  pick_vanguard_middle_node() and should not be used anywhere else (because

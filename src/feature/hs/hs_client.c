@@ -19,6 +19,7 @@
 #include "core/or/extendinfo.h"
 #include "core/or/reasons.h"
 #include "feature/client/circpathbias.h"
+#include "feature/client/entrynodes.h"
 #include "feature/dirclient/dirclient.h"
 #include "feature/dircommon/directory.h"
 #include "feature/hs/hs_cache.h"
@@ -2568,6 +2569,8 @@ hs_client_purge_state(void)
   hs_purge_last_hid_serv_requests();
   /* Purge ephemeral client authorization. */
   purge_ephemeral_client_auth();
+  /* Purge client vanguards-lite lists */
+  purge_client_vanguards();
 
   log_info(LD_REND, "Hidden service client state has been purged.");
 }

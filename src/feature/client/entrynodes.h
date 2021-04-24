@@ -653,5 +653,6 @@ guard_get_guardfraction_bandwidth(guardfraction_bandwidth_t *guardfraction_bw,
 
 routerset_t *get_l2_guards(void);
 void maintain_l2_guards(void);
+void purge_client_vanguards(void);
 
 #endif /* !defined(TOR_ENTRYNODES_H) */
