@@ -3958,7 +3958,7 @@ entry_guards_free_all(void)
 typedef struct l2_guard_t {
   /** Identity of the guard */
   char identity[DIGEST_LEN];
-  /** When was this L2 guard sampled? (randomized timestamp) */
+  /** When does this guard expire? (randomized timestamp) */
   time_t expire_on_date;
 } l2_guard_t;
 
@@ -4075,7 +4075,7 @@ maintain_l2_guards(void)
 
 /** Return a routerset containing the L2 guards or NULL if it's not yet
  *  initialized. Callers must not free the routerset. Designed for use in
- *  pick_vanguard_middle_node() and snould not be used anywhere else (because
+ *  pick_vanguard_middle_node() and should not be used anywhere else (because
  *  the routerset pointer can dangle under your feet) */
 routerset_t *
 get_l2_guards(void)
