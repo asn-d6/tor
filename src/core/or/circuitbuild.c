@@ -1359,6 +1359,7 @@ route_len_for_purpose(uint8_t purpose, extend_info_t *exit_ei)
   int routelen = DEFAULT_ROUTE_LEN;
   int known_purpose = 0;
 
+  /* XXX: If vanguards-lite only uses L2, this check needs to change */
   if (circuit_should_use_vanguards(purpose)) {
     /* Clients want an extra hop for rends to avoid linkability.
      * Services want it for intro points to avoid publishing their
@@ -2266,8 +2267,11 @@ middle_node_must_be_vanguard(const or_options_t *options,
   if (options->HSLayer2Nodes && cur_len == 1) {
     return 1;
   }
-  /* If we are picking an L2 node as a client, we do want a vanguard */
-  if (circuit_purpose_is_hs_client(purpose) && cur_len == 1) {
+
+  /* If we are picking an L2 node as a client or pre-built vanguards circ,
+   * we do want a vanguard */
+  if ((circuit_purpose_is_hs_client(purpose) ||
+       purpose == CIRCUIT_PURPOSE_HS_VANGUARDS) && cur_len == 1) {
     return 1;
   }
 

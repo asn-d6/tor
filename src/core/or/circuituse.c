@@ -1214,7 +1214,7 @@ circuit_launch_predicted_hs_circ(int flags)
   /* K.I.S.S. implementation of bug #23101: If we are using
    * vanguards or pinned middles, pre-build a specific purpose
    * for HS circs. */
-  if (circuit_should_use_vanguards(CIRCUIT_PURPOSE_HS_VANGUARDS)) {
+  if (circuit_should_use_vanguards(CIRCUIT_PURPOSE_C_GENERAL)) {
     circuit_launch(CIRCUIT_PURPOSE_HS_VANGUARDS, flags);
   } else {
     /* If no vanguards, then no HS-specific prebuilt circuits are needed.
@@ -1295,7 +1295,10 @@ circuit_predict_and_launch_new(void)
              " another hidden service circ.",
              num, num_uptime_internal, num_internal);
 
-    circuit_launch_predicted_hs_circ(flags);
+    /* Always launch vanguards purpose circuits for HS clients,
+     * for vanguards-lite. This prevents us from cannibalizing
+     * to build these circuits (and thus not use vanguards). */
+    circuit_launch(CIRCUIT_PURPOSE_HS_VANGUARDS, flags);
     return;
   }
 
@@ -2027,6 +2030,16 @@ circuit_should_use_vanguards(uint8_t purpose)
   /* Only hidden service circuits use vanguards */
   if (!circuit_purpose_is_hidden_service(purpose))
     return 0;
+
+  /* Client-side purpose should use vanguards-lite */
+  if (circuit_purpose_is_hs_client(purpose)) {
+    return 1;
+  }
+
+  /* Circuits already with HS_VANGUARDS purpose use vanguards */
+  if (circuit_purpose_is_hs_vanguards(purpose)) {
+    return 1;
+  }
 
   /* Pinned middles are effectively vanguards */
   if (options->HSLayer2Nodes || options->HSLayer3Nodes)
