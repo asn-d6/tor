@@ -3973,7 +3973,7 @@ static routerset_t *l2_routerset = NULL;
 #define NUMBER_SECOND_GUARDS 4
 /** Lifetime of L2 guards (1 day to 45 days) */
 #define MIN_SECOND_GUARD_LIFETIME 3600*24
-#define MAX_SECOND_GUARD_LIFETIME 3600*24*45
+#define MAX_SECOND_GUARD_LIFETIME 3600*24*12
 
 /** Return the number of guards our L2 guardset should have */
 static int
