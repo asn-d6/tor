@@ -4031,11 +4031,22 @@ maintain_layer2_guards(void)
 
   /* Go through the list and perform any needed expirations */
   SMARTLIST_FOREACH_BEGIN(layer2_guards, layer2_guard_t *, g) {
+    /* Expire if expirty time has passed */
     if (g->expire_on_date <= approx_time()) {
-      log_warn(LD_GENERAL, "Removing L2 guard %s",
+      log_warn(LD_GENERAL, "Removing expired L2 guard %s",
                hex_str(g->identity, DIGEST_LEN));
       tor_free(g);
       SMARTLIST_DEL_CURRENT_KEEPORDER(layer2_guards, g);
+      continue;
+    }
+
+    /* Expire if relay has left consensus */
+    if (router_get_consensus_status_by_id(g->identity) == NULL) {
+      log_warn(LD_GENERAL, "Removing missing L2 guard %s",
+               hex_str(g->identity, DIGEST_LEN));
+      tor_free(g);
+      SMARTLIST_DEL_CURRENT_KEEPORDER(layer2_guards, g);
+      continue;
     }
   } SMARTLIST_FOREACH_END(g);
 
