@@ -1204,25 +1204,6 @@ needs_circuits_for_build(int num)
   return 0;
 }
 
-/**
- * Launch the appropriate type of predicted circuit for hidden
- * services, depending on our options.
- */
-static void
-circuit_launch_predicted_hs_circ(int flags)
-{
-  /* K.I.S.S. implementation of bug #23101: If we are using
-   * vanguards or pinned middles, pre-build a specific purpose
-   * for HS circs. */
-  if (circuit_should_use_vanguards(CIRCUIT_PURPOSE_C_GENERAL)) {
-    circuit_launch(CIRCUIT_PURPOSE_HS_VANGUARDS, flags);
-  } else {
-    /* If no vanguards, then no HS-specific prebuilt circuits are needed.
-     * Normal GENERAL circs are fine */
-    circuit_launch(CIRCUIT_PURPOSE_C_GENERAL, flags);
-  }
-}
-
 /** Determine how many circuits we have open that are clean,
  * Make sure it's enough for all the upcoming behaviors we predict we'll have.
  * But put an upper bound on the total number of circuits.
@@ -1276,7 +1257,7 @@ circuit_predict_and_launch_new(void)
              "Have %d clean circs (%d internal), need another internal "
              "circ for my hidden service.",
              num, num_internal);
-    circuit_launch_predicted_hs_circ(flags);
+    circuit_launch(CIRCUIT_PURPOSE_HS_VANGUARDS, flags);
     return;
   }
 
@@ -2033,6 +2014,11 @@ circuit_should_use_vanguards(uint8_t purpose)
 
   /* Client-side purpose should use vanguards-lite */
   if (circuit_purpose_is_hs_client(purpose)) {
+    return 1;
+  }
+
+  /* Service-side purpose should use vanguards-lite */
+  if (circuit_purpose_is_hs_service(purpose)) {
     return 1;
   }
 

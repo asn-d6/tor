@@ -2275,6 +2275,12 @@ middle_node_must_be_vanguard(const or_options_t *options,
     return 1;
   }
 
+  /* Let's also do layer2 vanguards for services. Not enough for long-lived
+   * services, but will be enough for eg onionshare. */
+  if (circuit_purpose_is_hs_service(purpose) && cur_len == 1) {
+    return 1;
+  }
+
   /* If we have sticky L3 nodes, and this is an L3 pick, use vanguards */
   if (options->HSLayer3Nodes && cur_len == 2) {
     return 1;

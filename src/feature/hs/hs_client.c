@@ -2569,8 +2569,6 @@ hs_client_purge_state(void)
   hs_purge_last_hid_serv_requests();
   /* Purge ephemeral client authorization. */
   purge_ephemeral_client_auth();
-  /* Purge client vanguards-lite lists */
-  purge_client_vanguards();
 
   log_info(LD_REND, "Hidden service client state has been purged.");
 }

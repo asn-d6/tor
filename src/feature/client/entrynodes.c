@@ -4088,12 +4088,12 @@ maintain_layer2_guards(void)
 }
 
 /**
- * Reset client-side vanguards list(s).
+ * Reset vanguards-lite list(s).
  *
  * Used for SIGNAL NEWNYM.
  */
 void
-purge_client_vanguards()
+purge_vanguards_lite()
 {
   if (!layer2_guards)
     return;

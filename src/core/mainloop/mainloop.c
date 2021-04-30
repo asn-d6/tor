@@ -1293,6 +1293,7 @@ signewnym_impl(time_t now)
   circuit_mark_all_dirty_circs_as_unusable();
   addressmap_clear_transient();
   hs_client_purge_state();
+  purge_vanguards_lite();
   time_of_last_signewnym = now;
   signewnym_is_pending = 0;
 
