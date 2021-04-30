@@ -1700,7 +1700,7 @@ notify_after_networkstatus_changes(void)
   circpad_new_consensus_params(c);
   router_new_consensus_params(c);
 
-  /* Maintanance of our L2 guard list */
+  /* Maintenance of our L2 guard list */
   maintain_layer2_guards();
 }
 

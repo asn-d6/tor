@@ -3972,8 +3972,8 @@ static routerset_t *layer2_routerset = NULL;
 /** Number of L2 guards */
 #define NUMBER_SECOND_GUARDS 4
 /** Lifetime of L2 guards (1 day to 45 days) */
-#define MIN_SECOND_GUARD_LIFETIME 3600*24
-#define MAX_SECOND_GUARD_LIFETIME 3600*24*12
+#define MIN_SECOND_GUARD_LIFETIME (3600*24)
+#define MAX_SECOND_GUARD_LIFETIME (3600*24*12)
 
 /** Return the number of guards our L2 guardset should have */
 static int
@@ -3990,7 +3990,7 @@ static int
 get_min_lifetime_of_layer2_hs_guards(void)
 {
   return (int) networkstatus_get_param(NULL,
-                                        "guard-hs-l2-lifetime-min",
+                                       "guard-hs-l2-lifetime-min",
                                        MIN_SECOND_GUARD_LIFETIME,
                                        1, INT32_MAX);
 }
