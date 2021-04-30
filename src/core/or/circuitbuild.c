@@ -2296,7 +2296,7 @@ pick_vanguard_middle_node(const or_options_t *options,
   /* Pick the right routerset based on the current hop */
   if (cur_len == 1) {
     vanguard_routerset = options->HSLayer2Nodes ?
-      options->HSLayer2Nodes : get_l2_guards();
+      options->HSLayer2Nodes : get_layer2_guards();
   } else if (cur_len == 2) {
     vanguard_routerset = options->HSLayer3Nodes;
   } else {

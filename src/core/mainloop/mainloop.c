@@ -1680,7 +1680,7 @@ second_elapsed_callback(time_t now, const or_options_t *options)
   circuit_upgrade_circuits_from_guard_wait();
 
   /* XXX here for testing. REMOVE */
-  maintain_l2_guards();
+  maintain_layer2_guards();
 
   if (options->UseBridges && !net_is_disabled()) {
     /* Note: this check uses net_is_disabled(), not should_delay_dir_fetches()

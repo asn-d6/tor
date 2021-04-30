@@ -1701,7 +1701,7 @@ notify_after_networkstatus_changes(void)
   router_new_consensus_params(c);
 
   /* Maintanance of our L2 guard list */
-  maintain_l2_guards();
+  maintain_layer2_guards();
 }
 
 /** Copy all the ancillary information (like router download status and so on)
