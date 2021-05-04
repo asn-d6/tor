@@ -1371,6 +1371,7 @@ CALLBACK(save_state);
 CALLBACK(write_stats_file);
 CALLBACK(control_per_second_events);
 CALLBACK(second_elapsed);
+CALLBACK(manage_vglite);
 
 #undef CALLBACK
 
@@ -1392,6 +1393,9 @@ STATIC periodic_event_item_t mainloop_periodic_events[] = {
    * we are online and active. */
   CALLBACK(second_elapsed, NET_PARTICIPANT,
            FL(RUN_ON_DISABLE)),
+
+  /* Update vanguards-lite once per hour, if we have networking */
+  CALLBACK(manage_vglite, NET_PARTICIPANT, FL(NEED_NET)),
 
   /* XXXX Do we have a reason to do this on a callback? Does it do any good at
    * all?  For now, if we're dormant, we can let our listeners decay. */
@@ -1663,6 +1667,19 @@ mainloop_schedule_shutdown(int delay_sec)
   mainloop_event_schedule(scheduled_shutdown_ev, &delay_tv);
 }
 
+/**
+ * Update vanguards-lite layer2 nodes, once per hour
+ */
+static int
+manage_vglite_callback(time_t now, const or_options_t *options)
+{
+#define VANGUARDS_LITE_INTERVAL (60*60)
+
+  maintain_layer2_guards();
+
+  return VANGUARDS_LITE_INTERVAL;
+}
+
 /** Perform regular maintenance tasks.  This function gets run once per
  * second.
  */
@@ -1679,9 +1696,6 @@ second_elapsed_callback(time_t now, const or_options_t *options)
 
   /* Maybe enough time elapsed for us to reconsider a circuit. */
   circuit_upgrade_circuits_from_guard_wait();
-
-  /* XXX here for testing. REMOVE */
-  maintain_layer2_guards();
 
   if (options->UseBridges && !net_is_disabled()) {
     /* Note: this check uses net_is_disabled(), not should_delay_dir_fetches()
