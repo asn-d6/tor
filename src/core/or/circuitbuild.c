@@ -2255,22 +2255,9 @@ middle_node_must_be_vanguard(const or_options_t *options,
     return 0;
   }
 
-  /* If HSLayer2Nodes is set and we are picking an L2 node, we always want it
-   * to be a vanguard */
-  if (options->HSLayer2Nodes && cur_len == 1) {
-    return 1;
-  }
-
-  /* If we are picking an L2 node as a client or pre-built vanguards circ,
-   * we do want a vanguard */
-  if ((circuit_purpose_is_hs_client(purpose) ||
-       purpose == CIRCUIT_PURPOSE_HS_VANGUARDS) && cur_len == 1) {
-    return 1;
-  }
-
-  /* Let's also do layer2 vanguards for services. Not enough for long-lived
-   * services, but will be enough for eg onionshare. */
-  if (circuit_purpose_is_hs_service(purpose) && cur_len == 1) {
+  /* If we are a hidden service circuit, always use either vanguards-lite
+   * or HSLayer2Nodes for 2nd hop. */
+  if (cur_len == 1) {
     return 1;
   }
 

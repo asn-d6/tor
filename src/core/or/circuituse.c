@@ -2006,31 +2006,12 @@ circuit_is_hs_v3(const circuit_t *circ)
 int
 circuit_should_use_vanguards(uint8_t purpose)
 {
-  const or_options_t *options = get_options();
-
-  /* Only hidden service circuits use vanguards */
-  if (!circuit_purpose_is_hidden_service(purpose))
-    return 0;
-
-  /* Client-side purpose should use vanguards-lite */
-  if (circuit_purpose_is_hs_client(purpose)) {
-    return 1;
-  }
-
-  /* Service-side purpose should use vanguards-lite */
-  if (circuit_purpose_is_hs_service(purpose)) {
-    return 1;
-  }
-
-  /* Circuits already with HS_VANGUARDS purpose use vanguards */
-  if (circuit_purpose_is_hs_vanguards(purpose)) {
-    return 1;
-  }
-
-  /* Pinned middles are effectively vanguards */
-  if (options->HSLayer2Nodes || options->HSLayer3Nodes)
+  /* All hidden service circuits use either vanguards or
+   * vanguards-lite. */
+  if (circuit_purpose_is_hidden_service(purpose))
     return 1;
 
+  /* Everything else is a normal circuit */
   return 0;
 }
 
@@ -2068,13 +2049,11 @@ circuit_should_cannibalize_to_build(uint8_t purpose_to_build,
     return 0;
   }
 
-  /* For vanguards, the server-side intro circ is not cannibalized
-   * because we pre-build 4 hop HS circuits, and it only needs a 3 hop
-   * circuit. It is also long-lived, so it is more important that
-   * it have lower latency than get built fast.
+  /* The server-side intro circ is not cannibalized because it only
+   * needs a 3 hop circuit. It is also long-lived, so it is more
+   * important that it have lower latency than get built fast.
    */
-  if (circuit_should_use_vanguards(purpose_to_build) &&
-      purpose_to_build == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO) {
+  if (purpose_to_build == CIRCUIT_PURPOSE_S_ESTABLISH_INTRO) {
     return 0;
   }
 
