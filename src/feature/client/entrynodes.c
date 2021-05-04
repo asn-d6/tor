@@ -4093,7 +4093,7 @@ maintain_layer2_guards(void)
  * Used for SIGNAL NEWNYM.
  */
 void
-purge_vanguards_lite()
+purge_vanguards_lite(void)
 {
   if (!layer2_guards)
     return;
