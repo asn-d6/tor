@@ -3930,24 +3930,6 @@ guard_selection_free_(guard_selection_t *gs)
   tor_free(gs);
 }
 
-/** Release all storage held by the list of entry guards and related
- * memory structs. */
-void
-entry_guards_free_all(void)
-{
-  /* Null out the default */
-  curr_guard_context = NULL;
-  /* Free all the guard contexts */
-  if (guard_contexts != NULL) {
-    SMARTLIST_FOREACH_BEGIN(guard_contexts, guard_selection_t *, gs) {
-      guard_selection_free(gs);
-    } SMARTLIST_FOREACH_END(gs);
-    smartlist_free(guard_contexts);
-    guard_contexts = NULL;
-  }
-  circuit_build_times_free_timeouts(get_circuit_build_times_mutable());
-}
-
 /**********************************************************************/
 
 /** Layer2 guard subsystem used for client-side onion service circuits. */
@@ -4119,4 +4101,35 @@ get_layer2_guards(void)
   log_warn(LD_GENERAL, "Using L2 routerset");
 
   return layer2_routerset;
+}
+
+/*****************************************************************************/
+
+/** Release all storage held by the list of entry guards and related
+ * memory structs. */
+void
+entry_guards_free_all(void)
+{
+  /* Null out the default */
+  curr_guard_context = NULL;
+  /* Free all the guard contexts */
+  if (guard_contexts != NULL) {
+    SMARTLIST_FOREACH_BEGIN(guard_contexts, guard_selection_t *, gs) {
+      guard_selection_free(gs);
+    } SMARTLIST_FOREACH_END(gs);
+    smartlist_free(guard_contexts);
+    guard_contexts = NULL;
+  }
+  circuit_build_times_free_timeouts(get_circuit_build_times_mutable());
+
+  if (!layer2_guards) {
+    return;
+  }
+
+  SMARTLIST_FOREACH_BEGIN(layer2_guards, layer2_guard_t *, g) {
+    tor_free(g);
+  } SMARTLIST_FOREACH_END(g);
+
+  smartlist_free(layer2_guards);
+  routerset_free(layer2_routerset);
 }
