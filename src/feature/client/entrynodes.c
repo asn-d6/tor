@@ -3953,7 +3953,8 @@ static routerset_t *layer2_routerset = NULL;
 
 /** Number of L2 guards */
 #define NUMBER_SECOND_GUARDS 4
-/** Lifetime of L2 guards (1 day to 45 days) */
+/** Lifetime of L2 guards:
+ *  1 to 12 days, for an average of a week using the max(x,x) distribution */
 #define MIN_SECOND_GUARD_LIFETIME (3600*24)
 #define MAX_SECOND_GUARD_LIFETIME (3600*24*12)
 
@@ -4017,7 +4018,7 @@ maintain_layer2_guards(void)
 
   /* Go through the list and perform any needed expirations */
   SMARTLIST_FOREACH_BEGIN(layer2_guards, layer2_guard_t *, g) {
-    /* Expire if expirty time has passed */
+    /* Expire based on expiration date */
     if (g->expire_on_date <= approx_time()) {
       log_warn(LD_GENERAL, "Removing expired L2 guard %s",
                hex_str(g->identity, DIGEST_LEN));
@@ -4103,6 +4104,10 @@ routerset_t *
 get_layer2_guards(void)
 {
   log_warn(LD_GENERAL, "Using L2 routerset");
+
+  if (!layer2_guards) {
+    maintain_layer2_guards();
+  }
 
   return layer2_routerset;
 }
