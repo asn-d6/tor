@@ -4006,6 +4006,10 @@ get_layer2_hs_guard_lifetime(void)
 void
 maintain_layer2_guards(void)
 {
+  if (!router_have_minimum_dir_info()) {
+    return;
+  }
+
   /* Create the list if it doesn't exist */
   if (!layer2_guards) {
     layer2_guards = smartlist_new();
