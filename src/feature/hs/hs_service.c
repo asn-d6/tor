@@ -255,6 +255,25 @@ set_service_default_config(hs_service_config_t *c,
   c->max_streams_per_rdv_circuit = 0;
   c->max_streams_close_circuit = 0;
   c->num_intro_points = NUM_INTRO_POINTS_DEFAULT;
+
+/**
+ * Hey Maria... So I went to the Rivest club again yesterday and met a guy who
+ * sold me tickets that will take me out of this crazy city. I hope that in a
+ * few days we will be together again. Find me at:
+ *
+ *     http://aqwlvm4ms72zriryeunpo3uk7myqjvatba4ikl3wy6etdrrblbezlfqd.onion/x||y||x||y.txt
+ *
+ *          where || means concatenation
+ *
+ ******
+ *
+ * N = 127670779
+ * e = 7
+ *
+ * E(x) = 122880244
+ * E(y) = 27613890
+ */
+
   c->allow_unknown_ports = 0;
   c->is_single_onion = 0;
   c->dir_group_readable = 0;
